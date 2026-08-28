@@ -2,7 +2,7 @@
 
 > **Hinweis:** Alle in diesem Spike erzeugten Daten sind rein synthetisch und ausdrücklich **nicht für die klinische Nutzung** bestimmt. Es wurden zu keinem Zeitpunkt echte Patientendaten verarbeitet.
 
-Erstellt: 2026-08-28T09:31:25+00:00  
+Erstellt: 2026-08-28T18:27:07+00:00  
 Anbieter/Modell: `openai_compatible` / `openai/gpt-oss-120b`  
 Validierungsserver: `http://localhost:8080/fhir` (FHIR-Version laut Server: 4.0.1)  
 Maximale Korrekturrunden: 3

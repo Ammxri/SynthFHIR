@@ -7,7 +7,7 @@
 | **Phase** | 0 (Spike abgeschlossen) |
 | **Betrifft** | Grundarchitektur der Datenerzeugung für das MVP |
 | **Grundlage** | Build-Spezifikation SynthFHIR Phase 0, Abschnitt 10 und 14 |
-| **Messdaten** | `output/messreihe-02/` (Bericht, Metriken, Artefakte je Lauf) |
+| **Messdaten** | `spike/output/messreihe-02/` (Bericht, Metriken, Artefakte je Lauf) |
 
 > Alle im Spike erzeugten Daten sind rein synthetisch und **nicht für die
 > klinische Nutzung** bestimmt. Es wurden zu keinem Zeitpunkt echte
@@ -300,12 +300,12 @@ Aus Abschnitt 13 der Spezifikation, ergänzt um Erkenntnisse der Messung:
 
 | Artefakt | Ort |
 |---|---|
-| Vergleichsbericht | `output/messreihe-02/bericht.md` |
-| Metriken je Lauf | `output/messreihe-02/variante-*/…/metriken.json` |
-| Prompts und Rohantworten | `output/messreihe-02/variante-*/…/prompt.txt`, `llm-roh-*.txt` |
-| Erzeugte Bundles | `output/messreihe-02/variante-*/…/bundle.json` |
-| OperationOutcomes je Ressource | `output/messreihe-02/variante-*/…/validierung/` |
-| Zwischenstände der Korrekturrunden | `output/messreihe-02/variante-A/…/korrektur/` |
+| Vergleichsbericht | `spike/output/messreihe-02/bericht.md` |
+| Metriken je Lauf | `spike/output/messreihe-02/variante-*/…/metriken.json` |
+| Prompts und Rohantworten | `spike/output/messreihe-02/variante-*/…/prompt.txt`, `llm-roh-*.txt` |
+| Erzeugte Bundles | `spike/output/messreihe-02/variante-*/…/bundle.json` |
+| OperationOutcomes je Ressource | `spike/output/messreihe-02/variante-*/…/validierung/` |
+| Zwischenstände der Korrekturrunden | `spike/output/messreihe-02/variante-A/…/korrektur/` |
 | Konzepterklärungen | `docs/konzepte.md` |
 
 Eine frühere Messreihe war **nicht** Grundlage dieser Entscheidung und
@@ -320,7 +320,7 @@ Der Fehler ist behoben: `max_tokens` ist aus dem gemessenen Bedarf
 hergeleitet, HTTP 413 wird eigens behandelt und nennt den einzustellenden
 Wert, und abgeschnittene Antworten werden getrennt von echten JSON-Fehlern
 gezählt. Alle drei Punkte sind durch Tests abgesichert
-(`tests/test_anbieter.py`).
+(`spike/tests/test_anbieter.py`).
 
 ---
 

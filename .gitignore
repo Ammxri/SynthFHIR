@@ -6,22 +6,24 @@
 __pycache__/
 *.pyc
 .pytest_cache/
+*.egg-info/
+build/
+dist/
 
-# Messartefakte werden bei jedem Lauf neu erzeugt und bleiben draußen.
-output/**
+# Messartefakte der Phase 0 werden bei jedem Lauf neu erzeugt.
+spike/output/**
 
 # Ausnahme: der Beleg-Kern der Messreihe, auf die sich ADR-001 stützt.
-# Ohne ihn stünde die Architekturentscheidung ohne Nachweis da - ein
-# "rm -rf output/" würde die Belege löschen und das Dokument allein
-# zurücklassen. Die Rohartefakte (Prompts, Modellantworten, Bundles,
-# OperationOutcomes) bleiben ignoriert: Sie sind regenerierbar und machen
-# den Unterschied zwischen 184 KB und 3,2 MB aus.
+# Ohne ihn stünde die Architekturentscheidung ohne Nachweis da. Die
+# Rohartefakte (Prompts, Modellantworten, Bundles, OperationOutcomes)
+# bleiben ignoriert: Sie sind regenerierbar und machen den Unterschied
+# zwischen 184 KB und 3,2 MB aus.
 #
 # Die beiden Verzeichnis-Ausnahmen sind zwingend: Git steigt in ein
 # ausgeschlossenes Verzeichnis gar nicht erst hinein, Datei-Ausnahmen
 # darin blieben also wirkungslos.
-!output/messreihe-02/
-!output/messreihe-02/**/
-!output/messreihe-02/bericht.md
-!output/messreihe-02/session.json
-!output/messreihe-02/**/metriken.json
+!spike/output/messreihe-02/
+!spike/output/messreihe-02/**/
+!spike/output/messreihe-02/bericht.md
+!spike/output/messreihe-02/session.json
+!spike/output/messreihe-02/**/metriken.json

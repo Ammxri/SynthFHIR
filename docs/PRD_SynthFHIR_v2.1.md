@@ -16,7 +16,7 @@
 | **[ANNAHME]** | Plausibel, aber unvalidiert |
 | **[OFFEN]** | Noch zu klären |
 | **[SPIKE →]** | ~~Wird durch Phase 0 beantwortet~~ — in v2.1 vollständig aufgelöst |
-| **[GEMESSEN]** | Wert aus der Messreihe der Phase 0, Beleg unter `output/messreihe-02/` |
+| **[GEMESSEN]** | Wert aus der Messreihe der Phase 0, Beleg unter `spike/output/messreihe-02/` |
 | **[GEKLÄRT]** | Frühere Annahme, durch Phase 0 beantwortet |
 
 > **Änderungen gegenüber v2.0:** Phase 0 ist abgeschlossen. Die zentrale Architekturfrage ist entschieden (**Variante B**), alle mit `[SPIKE →]` markierten Felder sind durch Messwerte ersetzt, die Annahmen 2, 4 und 5 aus Block 10 sind bestätigt, Annahme 3 bleibt ungeprüft. Grundlage: 42 Messläufe, dokumentiert in `docs/architekturentscheidung.md`.
@@ -474,7 +474,7 @@ Nach Abschluss von Phase 0 sind folgende Felder zu ergänzen und dieses Dokument
 **[GEMESSEN]** ist neu in v2.1 und bezeichnet Werte aus der Messreihe der Phase 0:
 42 Durchläufe, 21 je Variante, drei Szenarien, Modell `openai/gpt-oss-120b`, Validator
 HAPI FHIR 4.0.1, durchgeführt am 2026-08-28. Rohdaten und Bericht liegen versioniert
-unter `output/messreihe-02/`, die Herleitung in `docs/architekturentscheidung.md`.
+unter `spike/output/messreihe-02/`, die Herleitung in `docs/architekturentscheidung.md`.
 Kostenangaben sind Hochrechnungen aus Token-Zahlen zu einem Referenztarif von
 1 USD / 5 USD je 1 Mio. Ein- bzw. Ausgabe-Token, keine Abrechnung.
 

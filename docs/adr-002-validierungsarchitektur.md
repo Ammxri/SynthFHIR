@@ -161,6 +161,6 @@ wegzulassen hieße, den einzigen variablen Teil ungeprüft zu lassen.
 
 | Was | Wo |
 |---|---|
-| Gelabelte Vergleichsdaten (339 Ressourcen mit HAPI-Urteil) | `output/messreihe-02/**/ressourcen.json`, `**/validierung/` |
+| Gelabelte Vergleichsdaten (339 Ressourcen mit HAPI-Urteil) | `spike/output/messreihe-02/**/ressourcen.json`, `**/validierung/` |
 | Architekturentscheidung Variante B | `docs/architekturentscheidung.md` |
 | Warum Referenzintegrität eigenständig geprüft wird | `docs/konzepte.md`, Abschnitt 2 |

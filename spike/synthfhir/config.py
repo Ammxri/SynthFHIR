@@ -130,7 +130,12 @@ class Settings:
 def load_settings(project_root: Path | None = None) -> Settings:
     """Liest die Konfiguration aus `.env` und Umgebungsvariablen."""
     root = project_root or Path(__file__).resolve().parent.parent
+    # Der Spike liegt seit der Umstrukturierung unter spike/, die gemeinsame
+    # .env aber weiterhin in der Repository-Wurzel. Beide Orte werden
+    # gelesen; `load_dotenv` überschreibt bereits gesetzte Werte nicht, der
+    # projektnähere Ort gewinnt also.
     load_dotenv(root / ".env")
+    load_dotenv(root.parent / ".env")
 
     # Ein leer gelassener Schlüssel in der .env würde sonst einen echten
     # Schlüssel aus der Shell-Umgebung überschatten.

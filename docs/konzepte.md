@@ -7,10 +7,10 @@ Modul.
 
 | Konzept | Modul |
 |---|---|
-| 1. `$validate` und `OperationOutcome` | `synthfhir/validator.py` |
-| 2. Warum Strukturvalidierung Referenzen ins Leere nicht findet | `synthfhir/integrity.py` |
-| 3. Welche Pflichtfelder die drei Ressourcen wirklich brauchen | `synthfhir/templates.py` |
-| 4. Wo die Korrekturschleife an ihre Grenzen stößt | `synthfhir/repair.py` |
+| 1. `$validate` und `OperationOutcome` | `spike/synthfhir/validator.py` |
+| 2. Warum Strukturvalidierung Referenzen ins Leere nicht findet | `spike/synthfhir/integrity.py` |
+| 3. Welche Pflichtfelder die drei Ressourcen wirklich brauchen | `spike/synthfhir/templates.py` |
+| 4. Wo die Korrekturschleife an ihre Grenzen stößt | `spike/synthfhir/repair.py` |
 
 ---
 

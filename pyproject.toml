@@ -1,0 +1,35 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "synthfhir"
+version = "0.1.0"
+description = "Erzeugt aus einer natürlichsprachlichen Beschreibung validierte, deutsch lokalisierte FHIR-R4-Testdaten"
+readme = "README.md"
+requires-python = ">=3.11"
+license = { text = "MIT" }
+
+dependencies = [
+    # Strukturvalidierung zur Laufzeit (ADR-002). Bietet R4B und R5;
+    # die Differenz zu R4 4.0.1 deckt die HAPI-Prüfung in der CI ab.
+    "fhir.resources>=8.3.0",
+    # LLM-Anbindung über OpenAI-kompatible Endpunkte
+    "requests>=2.32.0",
+    # Schlüssel ausschließlich aus Umgebungsvariablen
+    "python-dotenv>=1.0.1",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0.0",
+]
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+# Der eingefrorene Spike hat eine eigene Suite und wird nicht mitgelaufen;
+# separat prüfbar mit:  pytest spike/tests
+norecursedirs = ["spike", ".venv"]
