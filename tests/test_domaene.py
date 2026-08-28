@@ -13,6 +13,7 @@ import pytest
 
 from synthfhir.domain.codes import (
     CONDITION_CODES,
+    ConditionCode,
     ICD10GM_SYSTEM,
     OBSERVATION_CODES,
     SNOMED_SYSTEM,
@@ -59,8 +60,12 @@ def test_icd_schluessel_haben_gueltiges_format():
 
     HAPI kennt das CodeSystem nicht und meldet einen falschen Schlüssel
     allenfalls als Warnung. Ein Formatfehler ist damit die einzige Klasse
-    von ICD-Fehlern, die automatisch auffällt — inhaltliche Richtigkeit
-    braucht den Abgleich gegen den BfArM-Katalog von Hand.
+    von ICD-Fehlern, die automatisch auffällt.
+
+    Wie eng diese Grenze ist, hat die Prüfung vom 2026-08-28 gezeigt: `J45.9`
+    und `B18.1` bestehen diesen Test mühelos und sind trotzdem nicht
+    kodierbar, weil ICD-10-GM dort eine fünfte Stelle verlangt. Inhaltliche
+    Richtigkeit braucht den Abgleich mit der Primärquelle.
     """
     for eintrag in CONDITION_CODES.values():
         if eintrag.icd10gm is None:
@@ -77,11 +82,20 @@ def test_icd_eintrag_hat_immer_auch_einen_anzeigetext():
             assert eintrag.icd10gm_display, f"{eintrag.code}: ICD-Code ohne Anzeigetext"
 
 
-def test_icd_abdeckung_ist_dokumentiert():
-    """Hält den Pflegestand sichtbar. Sinkt die Abdeckung, fällt es auf."""
+def test_icd_abdeckung_faellt_nicht_still_zurueck():
+    """Hält den Pflegestand sichtbar.
+
+    Nach der BfArM-Prüfung vom 2026-08-28 tragen alle 25 Diagnosen einen
+    Schlüssel. Ein einzelner bewusst leer gelassener Eintrag ist erlaubt -
+    das ist die Entscheidung aus ADR-003 -, ein Einbruch darüber hinaus
+    wäre dagegen ein Versehen und soll auffallen.
+    """
     mit, gesamt = icd_abdeckung()
     assert gesamt == len(CONDITION_CODES)
-    assert mit >= 20, f"Nur {mit} von {gesamt} Diagnosen haben einen ICD-10-GM-Schlüssel"
+    assert mit >= gesamt - 2, (
+        f"Nur {mit} von {gesamt} Diagnosen haben einen ICD-10-GM-Schlüssel. "
+        "Absicht? Dann diesen Test anpassen und die Begründung notieren."
+    )
 
 
 def test_ucum_und_anzeigeeinheit_sind_getrennt_gepflegt():
@@ -110,11 +124,22 @@ def test_condition_traegt_beide_kodierungen():
     assert condition["code"]["text"] == "Diabetes mellitus Typ 2"
 
 
-def test_condition_ohne_icd_traegt_nur_snomed():
+def test_condition_ohne_icd_traegt_nur_snomed(monkeypatch):
     """Fehlt ein geprüfter Schlüssel, bleibt es bei SNOMED — weiterhin
-    gültiges FHIR, statt einen Code zu raten."""
+    gültiges FHIR, statt einen Code zu raten.
+
+    Der Fall wird mit einem eigens eingesetzten Eintrag geprüft, nicht mit
+    einem echten aus dem Katalog: Nach der BfArM-Prüfung vom 2026-08-28
+    haben alle 25 Diagnosen einen Schlüssel. Ein Test, der sich auf eine
+    zufällig leere Zeile stützt, bricht bei der nächsten Ergänzung — genau
+    das ist hier passiert, als Arthrose ihren Schlüssel M19.99 bekam.
+    """
+    ohne_icd = ConditionCode("000000000", "Test condition", "Testdiagnose")
+    assert not ohne_icd.hat_icd
+    monkeypatch.setitem(CONDITION_CODES, ohne_icd.code, ohne_icd)
+
     b: list[Beanstandung] = []
-    condition = baue_condition({"code": "396275006", "beginn": "2020-01-01"}, 0, 0, b)  # Arthrose
+    condition = baue_condition({"code": ohne_icd.code, "beginn": "2020-01-01"}, 0, 0, b)
     systeme = [c["system"] for c in condition["code"]["coding"]]
     assert systeme == [SNOMED_SYSTEM]
     assert not b

@@ -39,16 +39,31 @@ Daraus folgt für die Pflege dieses Katalogs:
 STAND DER ICD-10-GM-EINTRÄGE
 ===========================================================================
 
-Die ICD-10-GM-Schlüssel unten sind ein **erster Entwurf und noch nicht gegen
-den amtlichen BfArM-Katalog geprüft**. Sie sind bewusst `optional`: Ein
-Eintrag ohne geprüften Schlüssel trägt schlicht keine zweite Kodierung und
-bleibt trotzdem gültiges FHIR (ADR-003, US-4 AC2: „wo anwendbar").
+Alle 25 Schlüssel wurden am **2026-08-28 gegen den amtlichen Katalog des
+BfArM geprüft** (ICD-10-GM Version 2026, klassifikationen.bfarm.de, ergänzt
+über icd-code.de). Ergebnis:
 
-Besonderheit von ICD-10-GM gegenüber ICD-10-WHO: Viele Schlüssel verlangen
-eine fünfte Stelle (Diabetes E10–E14, Hypertonie I10, Lokalisationsangaben
-bei Muskel-Skelett-Diagnosen). Ein vierstelliger Schlüssel ist dort nicht
-kodierbar. Einträge, bei denen diese Stelle nicht zweifelsfrei bestimmbar
-war, führen deshalb absichtlich `None` statt eines geratenen Schlüssels.
+  * 19 Schlüssel waren korrekt.
+  * **2 waren nicht kodierbar** und wurden korrigiert: `J45.9` -> `J45.99`
+    und `B18.1` -> `B18.19`. Beide sind in ICD-10-GM nur Kategorie-
+    überschriften; ohne fünfte Stelle sind sie kein gültiger Schlüssel.
+  * 4 Einträge hatten bis dahin gar keinen Schlüssel, weil die geforderte
+    fünfte Stelle unklar war. Alle vier haben eine "nicht näher
+    bezeichnet"-Variante und sind jetzt gefüllt: E66.99, M19.99, M06.99,
+    M81.99.
+
+Die Abdeckung liegt damit bei 25 von 25.
+
+Die eigentliche Lehre steckt in den beiden Fehlern: ICD-10-GM verlangt an
+vielen Stellen eine fünfte Stelle, wo ICD-10-WHO mit vier Zeichen auskommt.
+Der Formattest in `tests/test_domaene.py` hätte sie nicht gefunden — `J45.9`
+ist formal einwandfrei und trotzdem nicht kodierbar. HAPI findet sie
+ebenfalls nicht, weil ihm das CodeSystem fehlt. Beide Fehler waren nur durch
+den Abgleich mit der Primärquelle zu finden.
+
+Das Feld bleibt trotzdem `optional`: Kommt eine Diagnose hinzu, deren
+Schlüssel nicht zweifelsfrei bestimmbar ist, trägt sie lieber keine zweite
+Kodierung als eine geratene (ADR-003, US-4 AC2: „wo anwendbar").
 """
 
 from __future__ import annotations
@@ -155,12 +170,11 @@ OBSERVATION_CODES: dict[str, ObservationCode] = {
 # ---------------------------------------------------------------------------
 # Diagnosen (SNOMED CT + ICD-10-GM)
 #
-# ACHTUNG: Die ICD-10-GM-Schlüssel sind ein ungeprüfter Entwurf, siehe den
-# Modulkopf. Vor der Veröffentlichung müssen sie gegen den amtlichen
-# BfArM-Katalog abgeglichen werden. Einträge mit `icd10gm=None` sind
-# bewusst leer gelassen, weil dort die geforderte fünfte Stelle nicht
-# zweifelsfrei bestimmbar war — ein geratener Schlüssel wäre schlechter als
-# gar keiner.
+# Die ICD-10-GM-Schlüssel sind am 2026-08-28 gegen den amtlichen
+# BfArM-Katalog (Version 2026) geprüft; Einzelheiten im Modulkopf und in
+# docs/icd-pruefliste.md. Wer hier eine Diagnose ergänzt, prüft den
+# Schlüssel bitte ebenso an der Primärquelle: Weder der Formattest noch
+# HAPI können ihn verifizieren.
 # ---------------------------------------------------------------------------
 
 CONDITION_CODES: dict[str, ConditionCode] = {
@@ -174,11 +188,15 @@ CONDITION_CODES: dict[str, ConditionCode] = {
                       "I10.90", "Essentielle Hypertonie, nicht näher bezeichnet, ohne Angabe einer hypertensiven Krise"),
         ConditionCode("13644009", "Hypercholesterolemia", "Hypercholesterinämie",
                       "E78.0", "Reine Hypercholesterinämie"),
-        ConditionCode("414916001", "Obesity", "Adipositas"),  # 5. Stelle (BMI-Klasse) nicht bestimmbar
+        ConditionCode("414916001", "Obesity", "Adipositas",
+                      "E66.99", "Adipositas, nicht näher bezeichnet: Grad oder Ausmaß "
+                                "der Adipositas nicht näher bezeichnet"),
         ConditionCode("195967001", "Asthma", "Asthma bronchiale",
-                      "J45.9", "Asthma bronchiale, nicht näher bezeichnet"),
+                      "J45.99", "Asthma bronchiale, nicht näher bezeichnet: "
+                                "Ohne Angabe zu Kontrollstatus und Schweregrad"),
         ConditionCode("13645005", "Chronic obstructive lung disease", "COPD",
-                      "J44.99", "Chronische obstruktive Lungenkrankheit, nicht näher bezeichnet"),
+                      "J44.99", "Chronische obstruktive Lungenkrankheit, nicht näher "
+                                "bezeichnet: FEV1 nicht näher bezeichnet"),
         ConditionCode("84114007", "Heart failure", "Herzinsuffizienz",
                       "I50.9", "Herzinsuffizienz, nicht näher bezeichnet"),
         ConditionCode("49436004", "Atrial fibrillation", "Vorhofflimmern",
@@ -195,9 +213,15 @@ CONDITION_CODES: dict[str, ConditionCode] = {
                       "E03.9", "Hypothyreose, nicht näher bezeichnet"),
         ConditionCode("34486009", "Hyperthyroidism", "Hyperthyreose",
                       "E05.9", "Hyperthyreose, nicht näher bezeichnet"),
-        ConditionCode("396275006", "Osteoarthritis", "Arthrose"),        # 5. Stelle (Lokalisation) nötig
-        ConditionCode("69896004", "Rheumatoid arthritis", "Rheumatoide Arthritis"),  # 5. Stelle nötig
-        ConditionCode("64859006", "Osteoporosis", "Osteoporose"),        # 5. Stelle nötig
+        ConditionCode("396275006", "Osteoarthritis", "Arthrose",
+                      "M19.99", "Arthrose, nicht näher bezeichnet: Nicht näher "
+                                "bezeichnete Lokalisation"),
+        ConditionCode("69896004", "Rheumatoid arthritis", "Rheumatoide Arthritis",
+                      "M06.99", "Chronische Polyarthritis, nicht näher bezeichnet: "
+                                "Nicht näher bezeichnete Lokalisation"),
+        ConditionCode("64859006", "Osteoporosis", "Osteoporose",
+                      "M81.99", "Osteoporose, nicht näher bezeichnet: Nicht näher "
+                                "bezeichnete Lokalisation"),
         ConditionCode("35489007", "Depressive disorder", "Depressive Episode",
                       "F32.9", "Depressive Episode, nicht näher bezeichnet"),
         ConditionCode("197480006", "Anxiety disorder", "Angststörung",
@@ -205,7 +229,8 @@ CONDITION_CODES: dict[str, ConditionCode] = {
         ConditionCode("24700007", "Multiple sclerosis", "Multiple Sklerose",
                       "G35.9", "Multiple Sklerose, nicht näher bezeichnet"),
         ConditionCode("66071002", "Viral hepatitis type B", "Chronische Hepatitis B",
-                      "B18.1", "Chronische Virushepatitis B ohne Delta-Virus"),
+                      "B18.19", "Chronische Virushepatitis B ohne Delta-Virus, "
+                                "Phase nicht näher bezeichnet"),
         ConditionCode("235595009", "Gastroesophageal reflux disease", "Refluxkrankheit",
                       "K21.9", "Gastroösophageale Refluxkrankheit ohne Ösophagitis"),
         ConditionCode("363346000", "Malignant neoplastic disease", "Bösartige Neubildung",

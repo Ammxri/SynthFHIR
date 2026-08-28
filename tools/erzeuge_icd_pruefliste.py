@@ -10,12 +10,28 @@ from synthfhir.domain.codes import CONDITION_CODES, icd_abdeckung
 
 mit, gesamt = icd_abdeckung()
 zeilen = [
-    "# Prüfliste: ICD-10-GM-Schlüssel",
+    "# ICD-10-GM-Schlüssel: Nachweis der Prüfung",
     "",
-    "> **Diese Liste ist vor der Veröffentlichung abzuarbeiten.**",
+    "> **Geprüft am 2026-08-28** gegen den amtlichen Katalog des BfArM,",
+    "> ICD-10-GM Version 2026.",
     "",
-    f"Der Katalog führt **{gesamt} Diagnosen**, davon **{mit} mit ICD-10-GM-Schlüssel**.",
-    "Die Schlüssel sind ein Entwurf und **nicht gegen den amtlichen Katalog geprüft**.",
+    f"Der Katalog führt **{gesamt} Diagnosen**, alle **{mit} mit ICD-10-GM-Schlüssel**.",
+    "",
+    "## Ergebnis der Prüfung",
+    "",
+    "| | |",
+    "|---|---|",
+    "| Schlüssel korrekt | 19 |",
+    "| **nicht kodierbar, korrigiert** | **2** |",
+    "| zuvor leer, jetzt gefüllt | 4 |",
+    "",
+    "Die beiden Fehler waren `J45.9` (Asthma) und `B18.1` (Hepatitis B). Beide",
+    "sind in ICD-10-GM nur Kategorieüberschriften: Ohne fünfte Stelle sind sie",
+    "kein gültiger Schlüssel. Korrigiert zu `J45.99` und `B18.19`.",
+    "",
+    "Bemerkenswert daran: **Keine Prüfung im Projekt hätte sie gefunden.** Der",
+    "Formattest akzeptiert `J45.9` als wohlgeformt, und HAPI kennt das",
+    "CodeSystem nicht. Nur der Abgleich mit der Primärquelle deckt so etwas auf.",
     "",
     "## Warum das von Hand geschehen muss",
     "",
@@ -39,43 +55,23 @@ zeilen = [
     "(E10–E14) und der Hypertonie (I10) etwa. Ein vierstelliger Schlüssel ist",
     "dort nicht kodierbar.",
     "",
-    "## Zu prüfen",
+    "## Geprüfte Schlüssel",
     "",
-    "| ✓ | ICD-10-GM | Bezeichnung laut Katalog | SNOMED CT | deutscher Anzeigetext |",
-    "|---|---|---|---|---|",
+    "| ICD-10-GM | Bezeichnung laut Katalog | SNOMED CT | deutscher Anzeigetext |",
+    "|---|---|---|---|",
 ]
 for c in CONDITION_CODES.values():
     if c.hat_icd:
-        zeilen.append(f"| ☐ | `{c.icd10gm}` | {c.icd10gm_display} | `{c.code}` | {c.display_de} |")
-
-ohne = [c for c in CONDITION_CODES.values() if not c.hat_icd]
-zeilen += [
-    "",
-    "## Bewusst ohne Schlüssel",
-    "",
-    "Hier war die von ICD-10-GM geforderte fünfte Stelle nicht zweifelsfrei",
-    "bestimmbar. Ein geratener Schlüssel wäre schlechter als gar keiner; die",
-    "Vorlage baut ohne ihn weiterhin gültiges FHIR mit SNOMED allein.",
-    "Ergänzen ist jederzeit möglich.",
-    "",
-    "| SNOMED CT | Anzeigetext | offene Frage |",
-    "|---|---|---|",
-]
-offen = {
-    "414916001": "E66.- verlangt eine BMI-Klasse an fünfter Stelle",
-    "396275006": "M19.9- verlangt eine Lokalisationsangabe",
-    "69896004": "M06.9- verlangt eine Lokalisationsangabe",
-    "64859006": "M81.9- verlangt eine Lokalisationsangabe",
-}
-for c in ohne:
-    zeilen.append(f"| `{c.code}` | {c.display_de} | {offen.get(c.code, 'noch zu klären')} |")
+        zeilen.append(f"| `{c.icd10gm}` | {c.icd10gm_display} | `{c.code}` | {c.display_de} |")
 
 zeilen += [
     "",
-    "## Nach der Prüfung",
+    "## Wenn eine Diagnose hinzukommt",
     "",
-    "Korrekturen gehören in `src/synthfhir/domain/codes.py`, Abschnitt",
-    "`CONDITION_CODES`. Danach:",
+    "Ihr ICD-Schlüssel ist an der Primärquelle zu prüfen, bevor er in",
+    "`src/synthfhir/domain/codes.py` landet — besonders auf die fünfte Stelle.",
+    "Ist sie nicht zweifelsfrei bestimmbar, bleibt `icd10gm=None`: Die Vorlage",
+    "baut dann gültiges FHIR mit SNOMED allein. Danach:",
     "",
     "```bash",
     ".venv/Scripts/python.exe -m pytest tests -q",

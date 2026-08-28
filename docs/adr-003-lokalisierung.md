@@ -36,7 +36,7 @@ hängt (ADR-001), entscheidet diese Frage unmittelbar über `codes.py`.
 "code": {
   "coding": [
     { "system": "http://snomed.info/sct",       "code": "44054006", "display": "Diabetes mellitus type 2" },
-    { "system": "http://fhir.de/CodeSystem/bfarm/icd-10-gm", "code": "E11.9", "display": "Diabetes mellitus, Typ 2, ohne Komplikationen" }
+    { "system": "http://fhir.de/CodeSystem/bfarm/icd-10-gm", "code": "E11.90", "display": "Diabetes mellitus, Typ 2, ohne Komplikationen, nicht als entgleist bezeichnet" }
   ],
   "text": "Diabetes mellitus Typ 2"
 }
@@ -95,13 +95,55 @@ beides führt, ergänzt nur die Profil-Metadaten.
   im MVP verwendeten Codes werden als kleine, handverlesene Liste im Code
   geführt und mit Quellenangabe versehen. Eine vollständige Katalogeinbindung
   wäre gesondert zu klären und ist nicht Teil des MVP.
+- **Kein Automatismus kann die Schlüssel prüfen.** Weder der Formattest noch
+  HAPI erkennen einen falschen ICD-Schlüssel — siehe den Nachtrag unten.
 
-### Auflage
+### Auflage — und ihre Grenze
 
-Die Regel aus ADR-002 gilt unverändert und erweitert sich auf die neuen Codes:
-Jeder ICD-10-GM-Eintrag muss durch den CI-Test gedeckt sein, der aus ihm eine
-Ressource baut und gegen HAPI validiert. Ein Tippfehler im Schlüssel fällt
-sonst erst beim Nutzer auf.
+Die Regel aus ADR-002 gilt unverändert: Jeder Eintrag muss durch den CI-Test
+gedeckt sein, der aus ihm eine Ressource baut und gegen HAPI validiert.
+
+**Für ICD-10-GM leistet dieser Test allerdings weniger, als hier ursprünglich
+stand.** HAPI kennt das CodeSystem nicht und meldet einen unbekannten Code
+höchstens als Warnung. Der Test sichert damit auch bei Diagnosen nur
+Struktur und Invarianten ab — nicht die Richtigkeit des Schlüssels. Die
+ursprüngliche Formulierung, ein Tippfehler falle „sonst erst beim Nutzer
+auf", war zu optimistisch: Er fällt auch mit dem Test nicht auf.
+
+Was bleibt, ist der Abgleich mit der Primärquelle. Siehe den Nachtrag.
+
+---
+
+## 4a. Nachtrag: Prüfung gegen den BfArM-Katalog (2026-08-28)
+
+Alle 25 Diagnosen wurden gegen den amtlichen Katalog des BfArM abgeglichen
+(ICD-10-GM Version 2026). Ergebnis:
+
+| | Anzahl |
+|---|---:|
+| Schlüssel korrekt | 19 |
+| **nicht kodierbar, korrigiert** | **2** |
+| zuvor leer, jetzt gefüllt | 4 |
+| **Abdeckung danach** | **25 von 25** |
+
+Die beiden Fehler:
+
+| war | ist | Grund |
+|---|---|---|
+| `J45.9` | `J45.99` | In ICD-10-GM nur Kategorieüberschrift; die fünfte Stelle (Kontrollstatus und Schweregrad) ist zwingend. |
+| `B18.1` | `B18.19` | Ebenso; die fünfte Stelle bezeichnet die Phase. |
+
+Vier Einträge hatten bis dahin gar keinen Schlüssel, weil die geforderte
+fünfte Stelle unklar schien. Alle vier haben eine „nicht näher bezeichnet"-
+Variante: `E66.99` (Adipositas), `M19.99` (Arthrose), `M06.99` (Rheumatoide
+Arthritis, amtlich „Chronische Polyarthritis"), `M81.99` (Osteoporose).
+
+**Die Lehre daraus ist wichtiger als die zwei Korrekturen.** Beide falschen
+Schlüssel hätten jede Prüfung im Projekt bestanden: Der Formattest
+akzeptiert `J45.9` als wohlgeformt, und HAPI kennt das CodeSystem nicht.
+Sie waren ausschließlich durch den Abgleich mit der Primärquelle zu finden.
+Wer eine Diagnose ergänzt, muss diesen Abgleich also von Hand führen — die
+Automatik trägt hier nicht.
 
 ---
 
