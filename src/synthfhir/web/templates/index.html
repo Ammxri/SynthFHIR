@@ -1,0 +1,213 @@
+<!doctype html>
+<html lang="de">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>SynthFHIR — synthetische FHIR-Testdaten</title>
+  <link rel="stylesheet" href="{{ url_for('static', path='/style.css') }}">
+  {# Inline statt eigener Datei: spart einen Request und den 404 im Log. #}
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' rx='6' fill='%231b4a6b'/><path d='M10 9h12v3h-8v4h7v3h-7v7h-4z' fill='white'/></svg>">
+</head>
+<body>
+
+<header class="kopf">
+  <div class="huelle">
+    <h1>SynthFHIR</h1>
+    <p class="untertitel">
+      Beschreib die Testkohorte, die du brauchst — bekomme validierte,
+      deutsch lokalisierte FHIR-R4-Bundles.
+    </p>
+  </div>
+</header>
+
+<p class="warnung" role="note">
+  <strong>Synthetische Testdaten.</strong> Alle hier erzeugten Daten sind
+  frei erfunden und <strong>nicht für die klinische Nutzung</strong>
+  bestimmt. Es werden keine echten Patientendaten verarbeitet.
+</p>
+
+<main class="huelle">
+
+  {% if konfigurationsfehler %}
+  <div class="kasten fehler">
+    <h2>Der Dienst ist nicht einsatzbereit</h2>
+    <p>Das betrifft die Konfiguration des Servers, nicht deine Anfrage.</p>
+    <pre>{{ konfigurationsfehler }}</pre>
+  </div>
+  {% endif %}
+
+  <form method="post" action="/erzeugen" class="eingabe">
+    <label for="beschreibung">
+      Welche Testdaten brauchst du? Deutsch oder Englisch, ein Satz genügt.
+    </label>
+    <textarea id="beschreibung" name="beschreibung" rows="3"
+              placeholder="Zum Beispiel: Eine 68-jährige Patientin mit Diabetes Typ 2 und HbA1c-Verlauf"
+              required>{{ beschreibung or "" }}</textarea>
+
+    <div class="zeile">
+      <button type="submit">Testdaten erzeugen</button>
+      <span class="hinweis">höchstens {{ max_patienten }} Patienten je Anfrage</span>
+    </div>
+
+    <details class="beispiele">
+      <summary>Beispiele</summary>
+      <ul>
+        {% for b in beispiele %}<li>{{ b }}</li>{% endfor %}
+      </ul>
+    </details>
+  </form>
+
+  {% if ergebnis %}
+  {% if ergebnis.fehler %}
+  <div class="kasten fehler">
+    <h2>Das hat nicht geklappt</h2>
+    <p>{{ ergebnis.fehler }}</p>
+    <p class="hinweis">Versuche es erneut oder formuliere die Anfrage etwas anders.</p>
+  </div>
+
+  {% else %}
+
+  <div class="kasten {{ 'gut' if ergebnis.fertig else 'warnend' }}">
+    <h2>
+      {% if ergebnis.fertig %}
+        Valide gegen FHIR R4
+      {% else %}
+        Nicht ausgelieferbar
+      {% endif %}
+    </h2>
+    <ul class="pruefliste">
+      <li class="{{ 'ja' if ergebnis.validierung and ergebnis.validierung|selectattr('valide')|list|length == ergebnis.validierung|length else 'nein' }}">
+        Struktur: {{ ergebnis.validierung|selectattr('valide')|list|length }} von
+        {{ ergebnis.validierung|length }} Ressourcen valide
+      </li>
+      <li class="{{ 'ja' if ergebnis.integritaet and ergebnis.integritaet.broken_reference_count == 0 else 'nein' }}">
+        Referenzen: {{ ergebnis.integritaet.broken_reference_count }} kaputt
+      </li>
+      <li class="{{ 'ja' if ergebnis.erfundene_codes == 0 else 'nein' }}">
+        Codes: {{ ergebnis.erfundene_codes }} außerhalb des Katalogs
+      </li>
+    </ul>
+    <p class="hinweis">
+      Geprüft werden Pflichtfelder, Kardinalitäten, Datentypen und die
+      Referenzintegrität innerhalb des Bundles. Einheiten und Codes stammen
+      aus einem festen Katalog und werden nicht vom Sprachmodell erzeugt.
+    </p>
+  </div>
+
+  {% if ergebnis.verstanden %}
+  <section class="kasten verstanden">
+    <h2>So wurde deine Anfrage gelesen</h2>
+    <p>
+      <strong>{{ ergebnis.verstanden.anzahl_patienten or "?" }}</strong> Patienten
+      {% if ergebnis.verstanden.kernkriterien %}
+      · {{ ergebnis.verstanden.kernkriterien | join(" · ") }}
+      {% endif %}
+    </p>
+    {% if ergebnis.verstanden.nicht_abbildbar %}
+    <div class="luecke">
+      <strong>Nicht abbildbar:</strong>
+      <ul>
+        {% for l in ergebnis.verstanden.nicht_abbildbar %}<li>{{ l }}</li>{% endfor %}
+      </ul>
+      <p class="hinweis">
+        Diese Punkte kann der Katalog nicht ausdrücken. Die erzeugten Daten
+        sind gültig, decken aber diesen Teil deiner Anfrage nicht ab.
+      </p>
+    </div>
+    {% endif %}
+  </section>
+  {% endif %}
+
+  {% if ansicht %}
+  <section class="vorschau">
+    <h2>Vorschau — {{ ansicht|length }} Patienten</h2>
+    {% for p in ansicht %}
+    <article class="patient">
+      <h3>{{ p.name }} <span class="kennung">{{ p.id }}</span></h3>
+      <p class="stamm">{{ p.geschlecht }} · geboren {{ p.geburtsdatum }}</p>
+
+      {% if p.diagnosen %}
+      <h4>Diagnosen</h4>
+      <table>
+        <thead><tr><th>Diagnose</th><th>Codes</th><th>Beginn</th></tr></thead>
+        <tbody>
+        {% for d in p.diagnosen %}
+          <tr>
+            <td>{{ d.text }}</td>
+            <td class="code">{{ d.codes | join(" · ") }}</td>
+            <td class="zahl">{{ d.beginn }}</td>
+          </tr>
+        {% endfor %}
+        </tbody>
+      </table>
+      {% endif %}
+
+      {% if p.messwerte %}
+      <h4>Messwerte</h4>
+      <table>
+        <thead><tr><th>Messwert</th><th>Wert</th><th>LOINC</th><th>Datum</th></tr></thead>
+        <tbody>
+        {% for m in p.messwerte %}
+          <tr>
+            <td>{{ m.text }}</td>
+            <td class="zahl">{{ m.wert }}</td>
+            <td class="code">{{ m.code }}</td>
+            <td class="zahl">{{ m.datum }}</td>
+          </tr>
+        {% endfor %}
+        </tbody>
+      </table>
+      {% endif %}
+    </article>
+    {% endfor %}
+  </section>
+  {% endif %}
+
+  {% if ergebnis.beanstandungen %}
+  <details class="kasten anmerkungen">
+    <summary>{{ ergebnis.beanstandungen|length }} Anmerkungen zur Erzeugung</summary>
+    <ul>
+      {% for b in ergebnis.beanstandungen %}
+      <li><code>{{ b.art }}</code> {{ b.detail }}</li>
+      {% endfor %}
+    </ul>
+  </details>
+  {% endif %}
+
+  {% if bundle_json %}
+  <section class="ausgabe">
+    <form method="post" action="/export" class="zeile">
+      <input type="hidden" name="bundle" value="{{ bundle_json }}">
+      <input type="hidden" name="dateiname" value="synthfhir-bundle.json">
+      <button type="submit" {% if not ergebnis.fertig %}disabled{% endif %}>
+        Als FHIR-JSON herunterladen
+      </button>
+      {% if not ergebnis.fertig %}
+      <span class="hinweis">
+        Der Download ist gesperrt, solange die Prüfung nicht durchgeht.
+      </span>
+      {% endif %}
+    </form>
+
+    <details>
+      <summary>Roh-JSON ansehen ({{ bundle_json|length }} Zeichen)</summary>
+      <pre class="json">{{ bundle_json }}</pre>
+    </details>
+  </section>
+  {% endif %}
+
+  {% endif %}
+  {% endif %}
+
+</main>
+
+<footer class="huelle">
+  <p>
+    Erzeugt Patient-, Condition- und Observation-Ressourcen nach FHIR R4.
+    Diagnosen tragen SNOMED CT und, wo vorhanden, ICD-10-GM.
+    Messwerte tragen LOINC mit UCUM-Einheiten.
+  </p>
+</footer>
+
+</body>
+</html>

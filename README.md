@@ -31,9 +31,25 @@ Produkt.
 ```
 docs/     Produktdokumentation und Architekturentscheidungen
 src/      das Produkt (Phase 1)
+  synthfhir/
+    domain/       Katalog, Vorlagen, Identität, Referenzintegrität
+    validation.py Strukturprüfung zur Laufzeit
+    llm.py        Anbindung an OpenAI-kompatible Endpunkte
+    prompts.py    Freitext → Parameter
+    generation.py die Kette bis zum Bundle
+    web/          Oberfläche (FastAPI, serverseitig gerendert)
 tests/    Tests des Produkts
 spike/    Phase 0 — eingefrorener Wegwerf-Code samt Messbelegen
 ```
+
+## Starten
+
+```bash
+.venv/Scripts/python.exe -m uvicorn synthfhir.web:app --reload
+```
+
+Danach auf <http://127.0.0.1:8000>. Die App liest ihre Konfiguration selbst
+aus der `.env`; im Betrieb gewinnen die Umgebungsvariablen des Anbieters.
 
 Der Spike ist **nicht** das Produkt. Er hat eine Frage beantwortet und bleibt
 nur als Nachweis und als Messkette für eine mögliche Neuprüfung erhalten.

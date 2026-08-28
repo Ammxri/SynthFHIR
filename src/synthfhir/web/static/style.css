@@ -1,0 +1,221 @@
+/* SynthFHIR — Oberfläche.
+   Ein Werkzeug für Entwickler: ruhige Farben, Tabellenziffern für alles,
+   was in Spalten steht, und Zustände, die man an Form und Farbe zugleich
+   erkennt. Die Ampelfarben sind für Validitätszustände reserviert und
+   werden nirgends dekorativ eingesetzt. */
+
+:root {
+  --grund:        #f5f7f9;
+  --flaeche:      #ffffff;
+  --flaeche-alt:  #eef2f5;
+  --tinte:        #16202b;
+  --tinte-weich:  #4b5b6b;
+  --tinte-leise:  #6f8090;
+  --linie:        #d9e0e6;
+  --linie-leise:  #e8edf1;
+  --akzent:       #1b4a6b;
+  --akzent-weich: #e3edf4;
+  --gut:          #2c6e52;
+  --gut-grund:    #e3efe9;
+  --warn:         #8a6410;
+  --warn-grund:   #f6ecd8;
+  --schlecht:     #a8433a;
+  --schlecht-grund:#f6e4e2;
+  --radius: 4px;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --grund:        #0f151b;
+    --flaeche:      #161f27;
+    --flaeche-alt:  #1c2731;
+    --tinte:        #e6ecf2;
+    --tinte-weich:  #aebecc;
+    --tinte-leise:  #8496a6;
+    --linie:        #27333e;
+    --linie-leise:  #1f2a34;
+    --akzent:       #7fb2d6;
+    --akzent-weich: #1a2a38;
+    --gut:          #7fc4a2;
+    --gut-grund:    #162a22;
+    --warn:         #d9b063;
+    --warn-grund:   #2c2415;
+    --schlecht:     #e08a80;
+    --schlecht-grund:#2e1b19;
+  }
+}
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  background: var(--grund);
+  color: var(--tinte);
+  font: 16px/1.6 system-ui, -apple-system, "Segoe UI", sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+
+.huelle { max-width: 56rem; margin: 0 auto; padding: 0 1.25rem; }
+
+/* --- Kopf ---------------------------------------------------------- */
+
+.kopf { padding: 2.5rem 0 1.25rem; }
+.kopf h1 {
+  margin: 0;
+  font-size: clamp(1.9rem, 1.5rem + 1.6vw, 2.6rem);
+  letter-spacing: -.02em;
+}
+.untertitel { margin: .4rem 0 0; color: var(--tinte-weich); max-width: 42rem; }
+
+/* Der Hinweis auf synthetische Daten ist eine Auflage aus dem PRD und
+   steht deshalb dauerhaft sichtbar, nicht in einer Fußnote. */
+.warnung {
+  margin: 0 0 2rem;
+  padding: .7rem 1.25rem;
+  background: var(--warn-grund);
+  color: var(--warn);
+  border-top: 1px solid var(--linie);
+  border-bottom: 1px solid var(--linie);
+  font-size: .9rem;
+  text-align: center;
+}
+
+/* --- Eingabe ------------------------------------------------------- */
+
+.eingabe { display: flex; flex-direction: column; gap: .7rem; margin-bottom: 2.5rem; }
+.eingabe label { font-weight: 600; }
+
+textarea {
+  width: 100%;
+  padding: .8rem;
+  font: inherit;
+  color: var(--tinte);
+  background: var(--flaeche);
+  border: 1px solid var(--linie);
+  border-radius: var(--radius);
+  resize: vertical;
+}
+textarea:focus-visible, button:focus-visible, summary:focus-visible {
+  outline: 2px solid var(--akzent);
+  outline-offset: 2px;
+}
+
+button {
+  padding: .6rem 1.2rem;
+  font: inherit;
+  font-weight: 600;
+  color: var(--flaeche);
+  background: var(--akzent);
+  border: 1px solid var(--akzent);
+  border-radius: var(--radius);
+  cursor: pointer;
+}
+button:hover:not(:disabled) { filter: brightness(1.15); }
+button:disabled { opacity: .45; cursor: not-allowed; }
+
+.zeile { display: flex; align-items: center; gap: 1rem; flex-wrap: wrap; }
+.hinweis { color: var(--tinte-leise); font-size: .87rem; }
+
+.beispiele summary { cursor: pointer; color: var(--tinte-weich); font-size: .9rem; }
+.beispiele ul { margin: .5rem 0 0; padding-left: 1.2rem; color: var(--tinte-weich); font-size: .92rem; }
+
+/* --- Kästen -------------------------------------------------------- */
+
+.kasten {
+  background: var(--flaeche);
+  border: 1px solid var(--linie);
+  border-left-width: 3px;
+  border-radius: var(--radius);
+  padding: 1.1rem 1.25rem;
+  margin-bottom: 1.5rem;
+}
+.kasten h2 { margin: 0 0 .6rem; font-size: 1.1rem; }
+.kasten.gut      { border-left-color: var(--gut); }
+.kasten.warnend  { border-left-color: var(--warn); }
+.kasten.fehler   { border-left-color: var(--schlecht); background: var(--schlecht-grund); }
+.kasten.verstanden { border-left-color: var(--akzent); }
+
+/* Zustand an Form UND Farbe erkennbar, nicht nur an der Farbe. */
+.pruefliste { list-style: none; margin: 0; padding: 0; display: flex;
+              flex-direction: column; gap: .3rem; }
+.pruefliste li { display: flex; align-items: baseline; gap: .55rem; font-size: .95rem; }
+.pruefliste li::before { font-weight: 700; }
+.pruefliste li.ja::before   { content: "✓"; color: var(--gut); }
+.pruefliste li.nein::before { content: "✕"; color: var(--schlecht); }
+
+.luecke {
+  margin-top: .8rem;
+  padding: .7rem .9rem;
+  background: var(--warn-grund);
+  border-radius: var(--radius);
+}
+.luecke ul { margin: .35rem 0 .5rem; padding-left: 1.2rem; }
+.luecke .hinweis { margin: 0; }
+
+.anmerkungen summary { cursor: pointer; font-weight: 600; }
+.anmerkungen ul { margin: .7rem 0 0; padding-left: 1.2rem; }
+.anmerkungen li { font-size: .9rem; color: var(--tinte-weich); margin-bottom: .3rem; }
+
+/* --- Vorschau ------------------------------------------------------ */
+
+.vorschau h2 { font-size: 1.1rem; margin: 0 0 1rem; }
+
+.patient {
+  background: var(--flaeche);
+  border: 1px solid var(--linie);
+  border-radius: var(--radius);
+  padding: 1.1rem 1.25rem;
+  margin-bottom: 1rem;
+}
+.patient h3 { margin: 0; font-size: 1.02rem; display: flex; align-items: baseline; gap: .6rem; }
+.patient h4 { margin: 1rem 0 .4rem; font-size: .78rem; text-transform: uppercase;
+              letter-spacing: .08em; color: var(--tinte-leise); font-weight: 600; }
+.kennung { font: 400 .78rem/1 ui-monospace, monospace; color: var(--tinte-leise); }
+.stamm { margin: .2rem 0 0; color: var(--tinte-weich); font-size: .9rem; }
+
+table { width: 100%; border-collapse: collapse; font-size: .9rem; display: block;
+        overflow-x: auto; }
+thead th {
+  text-align: left; font-size: .74rem; text-transform: uppercase; letter-spacing: .06em;
+  color: var(--tinte-leise); font-weight: 600; padding: .35rem .7rem .35rem 0;
+  border-bottom: 1px solid var(--linie); white-space: nowrap;
+}
+tbody td { padding: .42rem .7rem .42rem 0; border-bottom: 1px solid var(--linie-leise);
+           vertical-align: top; }
+tbody tr:last-child td { border-bottom: none; }
+.code { font-family: ui-monospace, "SFMono-Regular", monospace; font-size: .84rem;
+        color: var(--tinte-weich); white-space: nowrap; }
+.zahl { font-variant-numeric: tabular-nums; white-space: nowrap; }
+
+/* --- Ausgabe ------------------------------------------------------- */
+
+.ausgabe { margin-top: 2rem; display: flex; flex-direction: column; gap: 1rem; }
+.ausgabe summary { cursor: pointer; color: var(--tinte-weich); font-size: .9rem; }
+
+pre {
+  margin: .7rem 0 0;
+  padding: .9rem;
+  background: var(--flaeche-alt);
+  border: 1px solid var(--linie);
+  border-radius: var(--radius);
+  overflow-x: auto;
+  font-family: ui-monospace, "SFMono-Regular", monospace;
+  font-size: .82rem;
+  line-height: 1.5;
+}
+pre.json { max-height: 26rem; overflow-y: auto; }
+
+/* --- Fuß ----------------------------------------------------------- */
+
+footer {
+  margin: 3rem 0 2rem;
+  padding-top: 1.2rem;
+  border-top: 1px solid var(--linie);
+  color: var(--tinte-leise);
+  font-size: .87rem;
+}
+footer p { max-width: 44rem; }
+
+@media (prefers-reduced-motion: reduce) {
+  * { animation: none !important; transition: none !important; }
+}
