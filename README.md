@@ -1,5 +1,7 @@
 # SynthFHIR
 
+**Live: <https://synthfhir.onrender.com>**
+
 > **Alle erzeugten Daten sind rein synthetisch und ausdrücklich nicht für die
 > klinische Nutzung bestimmt.** Es werden zu keinem Zeitpunkt echte
 > Patientendaten verarbeitet.
@@ -20,7 +22,7 @@ Produkt.
 | Phase | Inhalt | Status |
 |---|---|---|
 | **0 — Spike** | Architekturentscheidung mit Messdaten | ✅ abgeschlossen 2026-08-28 |
-| **1 — MVP** | Eingabe, Generierung, Validierung, Lokalisierung, Export, Veröffentlichung | 🔨 in Arbeit |
+| **1 — MVP** | Eingabe, Generierung, Validierung, Lokalisierung, Export, Veröffentlichung | ✅ veröffentlicht 2026-08-29 |
 | 2 — v1.x | Weitere Ressourcentypen, Bulk-Export, Seed, größere Kohorten | geplant |
 | 3 — Vision | Deutsche Profile (KBV/ISiK), API, weitere Standards | langfristig |
 

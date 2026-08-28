@@ -2,7 +2,7 @@
 ## SynthFHIR — KI-gestützter, deutsch-lokalisierter Generator für synthetische FHIR-Testdaten
 
 **Version:** 2.1 (nach Phase 0, Spike-Ergebnisse eingearbeitet) · **Datum:** 28. August 2026
-**Status:** Phase 0 abgeschlossen, MVP-Umsetzung beginnt · **Primärzweck:** Portfolio-Nachweis (Medizininformatik + KI + Lokalisierung)
+**Status:** Phase 0 und Phase 1 abgeschlossen, MVP veröffentlicht · **Primärzweck:** Portfolio-Nachweis (Medizininformatik + KI + Lokalisierung)
 **Ersetzt:** PRD v2.0 · **Begleitdokumente:** `BUILD-SPEC_SynthFHIR_Phase0_Spike.md`, `docs/architekturentscheidung.md` (ADR-001)
 
 ---
@@ -412,6 +412,7 @@ Validierung.
 
 | Risiko | Typ | Wahrscheinlichkeit | Auswirkung | Ampel | Mitigation |
 |---|---|---|---|---|---|
+| ~~Projekt bleibt unveröffentlicht~~ | Umsetzung | M | H | 🟢 | **Erledigt 2026-08-29:** veröffentlicht unter <https://synthfhir.onrender.com>, Repository öffentlich. Das einzige rote Risiko des Registers ist damit geschlossen. |
 | Variante A unzuverlässig | Technik | M | H | 🟡 | Variante B vollwertig spezifiziert; Spike entscheidet |
 | Referenzinkonsistenz bei Masse | Technik | M | M | 🟡 | Deterministische ID-Vergabe; kleine Kohorten im MVP |
 | Kosten sprengen Budget | Ressource | M | M | 🟡 | Günstiges Modell, Kohortenbegrenzung, optional Nutzerschlüssel |
@@ -443,7 +444,7 @@ Validierung.
 | Phase | Inhalt | Zeitschätzung | Team | Gate-Kriterium |
 |---|---|---|---|---|
 | **Phase 0 — Spike** ✅ | Beide Varianten, Validierung, Referenzprüfung, Messreihe, Vergleichsbericht | abgeschlossen 2026-08-28 | Solo | **Erfüllt:** Architekturentscheidung mit Messdaten liegt vor (ADR-001) |
-| **Phase 1 — MVP** | Eingabe, Generierung, Validierung, Referenzintegrität, DE-Lokalisierung, Vorschau, Export | 4–8 Wochen | Solo | **Veröffentlicht** (erreichbare URL + Repository + Dokumentation); Exporte laden fehlerfrei in einen FHIR-Server |
+| **Phase 1 — MVP** ✅ | Eingabe, Generierung, Validierung, Referenzintegrität, DE-Lokalisierung, Vorschau, Export | abgeschlossen 2026-08-29 | Solo | **Erfüllt:** <https://synthfhir.onrender.com>, öffentliches Repository, Dokumentation. Export mit 8 Ressourcen ohne Nacharbeit in HAPI FHIR 4.0.1 geladen, Referenzen dort auflösbar. |
 | **Phase 2 — v1.x** | Weitere Ressourcentypen, Bulk, Seed, Server-Push, größere Kohorten | nach MVP | Solo | Stabile Validität bei größeren Kohorten |
 | **Phase 3 — Vision** | Deutsche Profile, API, weitere Standards, Szenario-Bibliothek | langfristig | wächst | Nachweisbare Nachfrage aus der Nische |
 
