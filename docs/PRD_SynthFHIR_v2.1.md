@@ -248,7 +248,7 @@ ausschließlich klinische Inhalte.
 |---|---|---|
 | Validitätsrate der ausgegebenen Bundles | 100 % der als fertig gekennzeichneten | [ENTSCHIEDEN als Kernziel] |
 | Kaputte Referenzen | 0 | [ENTSCHIEDEN als Kernziel] |
-| Generierungszeit kleine Kohorte | wenige Sekunden bis ca. 1 Minute | [ANNAHME] |
+| Generierungszeit kleine Kohorte | 2,7–3,8 s beim Modell; 55–61 s mit der Wartepause des Gratiskontingents | [GEMESSEN] |
 | Ø Korrekturrunden bis valide | **0** — entfällt, Variante B hat keine Korrekturschleife (Variante A: 0,07 über alle Ressourcen) | [GEMESSEN] |
 | Kosten pro Patient | **0,0036 €** bei Variante B (Variante A: 0,0072 €) | [GEMESSEN, Referenztarif] |
 | Datenschutzfläche | keine Verarbeitung echter Patientendaten | [GESICHERT] |
@@ -301,6 +301,24 @@ ausschließlich klinische Inhalte.
 
 **North Star Metric:**
 **Validitätsrate der Ausgabe** — Anteil der ausgegebenen Bundles, die gegen FHIR R4 valide sind. Zielwert: 100 % der als fertig gekennzeichneten Bundles. Dies ist der Beweis, dass das Tool mehr ist als ein LLM-Wrapper.
+
+**Ausgangswerte der Freitext-Stufe (2026-08-28, sieben Anfragen, `openai/gpt-oss-120b`):**
+
+| Metrik | Gemessen |
+|---|---|
+| Anfragen mit verwertbarem Ergebnis | 7 von 7 |
+| davon strukturell valide und referenziell sauber | 7 von 7 |
+| Erfundene Codes | 0 |
+| Erkannte, aber nicht abbildbare Kriterien | in 3 von 7 Anfragen korrekt benannt |
+| Größte Kohorte in einem Aufruf | 25 Patienten, 100 Ressourcen |
+| Antwortzeit ohne Ratengrenze | 2,7–3,8 s |
+| Antwortzeit mit Wartepause des Gratiskontingents | 55–61 s |
+
+Die Antwortzeit erfüllt die Annahme aus Block 6 („wenige Sekunden bis ca.
+1 Minute"), aber aus einem anderen Grund als erwartet: Das Modell antwortet
+in drei bis vier Sekunden. Die Minute entsteht durch die Wartepause des
+kostenlosen Kontingents. Ein bezahltes Kontingent oder ein anderer Anbieter
+würde die Antwortzeit auf wenige Sekunden drücken.
 
 **Ausgangswerte aus Phase 0 (Variante B, 21 Läufe, 189 Ressourcen):**
 
@@ -402,8 +420,9 @@ Validierung.
 | Projekt bleibt unveröffentlicht | Umsetzung | M | H | 🔴 | Veröffentlichung ist Gate-Kriterium für Phase 1, nicht optional |
 | ~~HAPI FHIR im kostenlosen Hosting-Tier nicht betreibbar~~ | Technik | H | H | 🟢 | **Gelöst durch ADR-002:** zweistufige Validierung, HAPI läuft nur noch in der CI. Neues Restrisiko siehe nächste Zeile. |
 | **Katalog wird sicherheitskritisch** | Technik | M | H | 🟡 | Folge aus ADR-002: Die Laufzeitprüfung sieht Einheiten und Codes nicht. Ein falscher UCUM-Code im Katalog erzeugt unbemerkt invalide Ausgaben. Mitigation: CI-Test über den **vollständigen** Katalog gegen HAPI, verbindlich bei jedem Commit. |
-| **Kohorten bis 25 Patienten ungetestet** | Technik | M | M | 🟡 | Der Spike maß bis 3 Patienten (18 Ressourcen). 25 Patienten bedeuten etwa das Achtfache an Ausgabemenge; ob ein einzelner LLM-Aufruf das trägt, ist offen. Mitigation: stückweise Erzeugung. |
-| **Freitext → Parameter ist eine ungemessene Stufe** | Technik | M | M | 🟡 | Der Spike gab die Stückzahlen fest vor. Im MVP muss das Modell sie aus einem Satz ableiten. Neue Fehlerquelle, die direkt auf die Metrik „Trefferquote" wirkt. |
+| ~~Kohorten bis 25 Patienten ungetestet~~ | Technik | M | M | 🟢 | **Gemessen 2026-08-28:** 25 Patienten und 100 Ressourcen gehen in einem Aufruf, 84,9 % der Token-Obergrenze. Restrisiko bei mehr Messwerten je Patient — siehe Anhang A. |
+| ~~Freitext → Parameter ist eine ungemessene Stufe~~ | Technik | M | M | 🟢 | **Gemessen 2026-08-28** an sieben Anfragen (DE und EN, vage und präzise): alle valide, alle referenziell sauber, keine erfundenen Codes. |
+| **Anfrage wird stillschweigend verfehlt** | Produkt | M | M | 🟡 | Bei der ersten Messung aufgefallen: Eine Anfrage nach Vitamin-D-Werten ergab formal einwandfreie Daten mit anderen Laborwerten — ohne Hinweis. Alle Zusagen erfüllt, die Anfrage trotzdem verfehlt. Mitigation eingebaut: Das Modell benennt nicht abbildbare Kriterien im Feld `nicht_abbildbar`, sie erscheinen als Beanstandung. |
 
 **Top-3 offene Fragen:**
 
@@ -460,8 +479,19 @@ Nach Abschluss von Phase 0 sind folgende Felder zu ergänzen und dieses Dokument
       erkannt; die 7 übersehenen Befunde liegen ausnahmslos in Einheiten und Codes,
       also in dem Teil, den Variante B dem Modell entzieht. Begründung und die daraus
       folgende CI-Auflage: `docs/adr-002-validierungsarchitektur.md`
-- [ ] **Wie werden Kohorten bis 25 Patienten erzeugt?** In einem Aufruf oder stückweise.
-      Gemessen wurde bis 3 Patienten.
+- [x] **Wie werden Kohorten bis 25 Patienten erzeugt?** In **einem** Aufruf.
+      Gemessen am 2026-08-28 mit `openai/gpt-oss-120b`: 25 Patienten,
+      25 Diagnosen und 50 Messwerte — 100 Ressourcen — in einem einzigen
+      Aufruf, 4753 Ausgabe-Token. Kein Abschneiden, alles valide.
+
+      **Aber knapp.** Das sind 84,9 % der Obergrenze von 5600 Token. Und die
+      Obergrenze selbst ist beim genutzten Gratiskontingent kaum erhöhbar:
+      Der Prompt trägt rund 2120 Token, das Minutenkontingent liegt bei 8000,
+      also bleiben höchstens etwa 5880 für die Antwort. Eine Kohorte von
+      25 Patienten mit **drei** Messwerten je Patient würde reißen.
+      Stückweise Erzeugung ist damit kein Muss für das MVP, aber die
+      naheliegende Antwort, sobald Kohorten oder Messwertzahlen wachsen
+      (Phase 2).
 
 ---
 
