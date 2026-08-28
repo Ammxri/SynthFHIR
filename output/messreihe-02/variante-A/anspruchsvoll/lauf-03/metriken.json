@@ -1,0 +1,110 @@
+{
+  "run_id": "A-anspruchsvoll-03",
+  "variant": "A",
+  "status": "ok",
+  "notes": [],
+  "scenario": {
+    "key": "anspruchsvoll",
+    "name": "Anspruchsvoll - drei Patienten, unterschiedliche Konstellationen",
+    "fingerprint": "e8a7fec0c1ec650e"
+  },
+  "started_at": "2026-08-28T09:17:47+00:00",
+  "duration_s": 78.93,
+  "llm": {
+    "provider": "openai_compatible",
+    "model": "openai/gpt-oss-120b",
+    "calls": 2,
+    "input_tokens": 761,
+    "output_tokens": 5115,
+    "cost_usd": 0.026336,
+    "cost_eur": 0.024229
+  },
+  "generation": {
+    "variant": "A",
+    "attempts": 1,
+    "llm_calls": 1,
+    "llm_failures": 0,
+    "json_failures": 0,
+    "truncations": 0,
+    "resource_count": 18,
+    "invented_codes": 0,
+    "template_issues": [],
+    "normalisation": {
+      "id_map": {
+        "Patient/patient-1": "Patient/pat-001",
+        "Patient/patient-2": "Patient/pat-002",
+        "Patient/patient-3": "Patient/pat-003",
+        "Condition/condition-1a": "Condition/cond-001",
+        "Condition/condition-1b": "Condition/cond-002",
+        "Condition/condition-2a": "Condition/cond-003",
+        "Condition/condition-2b": "Condition/cond-004",
+        "Condition/condition-3a": "Condition/cond-005",
+        "Condition/condition-3b": "Condition/cond-006",
+        "Observation/observation-1a": "Observation/obs-001",
+        "Observation/observation-1b": "Observation/obs-002",
+        "Observation/observation-1c": "Observation/obs-003",
+        "Observation/observation-2a": "Observation/obs-004",
+        "Observation/observation-2b": "Observation/obs-005",
+        "Observation/observation-2c": "Observation/obs-006",
+        "Observation/observation-3a": "Observation/obs-007",
+        "Observation/observation-3b": "Observation/obs-008",
+        "Observation/observation-3c": "Observation/obs-009"
+      },
+      "duplicate_ids_from_llm": [],
+      "unresolved_references": [],
+      "ambiguous_references": [],
+      "rewritten_references": 15,
+      "unexpected_resource_types": []
+    },
+    "error": null
+  },
+  "resources": {
+    "total": 18,
+    "by_type": {
+      "Patient": 3,
+      "Condition": 6,
+      "Observation": 9
+    },
+    "expected_by_type": {
+      "Patient": 3,
+      "Condition": 6,
+      "Observation": 9
+    },
+    "expected_total": 18
+  },
+  "validation": {
+    "valid_first_attempt": 17,
+    "valid_final": 18,
+    "invalid_final": 0,
+    "warning_count": 36,
+    "code_related_issues": 1,
+    "code_related_warnings": 9,
+    "error_signatures": {
+      "[error] Observation.value.ofType(Quantity) · Terminology_PassThrough_TX_Message: Error processing unit '…': The unit '…' is unknown'…'http://unitsofmeasure.org#IU/mL')": 1
+    },
+    "error_categories": {
+      "terminologie/code": 1
+    }
+  },
+  "repair": {
+    "repaired_resources": 1,
+    "rounds_total": 1,
+    "rounds_avg_over_all": 0.056,
+    "rounds_avg_over_repaired": 1.0,
+    "non_improving_rounds": 0,
+    "json_failures": 0,
+    "identity_corrections": []
+  },
+  "integrity": {
+    "ok": true,
+    "resources_checked": 18,
+    "total_references": 15,
+    "broken_reference_count": 0,
+    "broken_references": [],
+    "duplicate_ids": [],
+    "missing_patient_link": []
+  },
+  "codes": {
+    "invented": 0
+  }
+}

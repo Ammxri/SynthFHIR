@@ -1,0 +1,27 @@
+{
+  "session": "messreihe-02",
+  "settings": {
+    "provider": "openai_compatible",
+    "model": "openai/gpt-oss-120b",
+    "temperature": 0.8,
+    "max_tokens": 5600,
+    "max_repair_rounds": 3,
+    "max_generation_attempts": 3,
+    "llm_base_url": "https://api.groq.com/openai/v1",
+    "fhir_base_url": "http://localhost:8080/fhir",
+    "fhir_version": "4.0.1",
+    "budget_limit_eur": 5.0,
+    "scenarios_file": "C:\\Users\\ammar\\Desktop\\Buisness\\Projekte\\synthfhir\\scenarios.yaml"
+  },
+  "variants": [
+    "A",
+    "B"
+  ],
+  "scenarios": [
+    "einfach",
+    "mittel",
+    "anspruchsvoll"
+  ],
+  "repeats": 7,
+  "planned_runs": 42
+}

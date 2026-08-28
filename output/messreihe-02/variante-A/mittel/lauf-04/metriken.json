@@ -1,0 +1,87 @@
+{
+  "run_id": "A-mittel-04",
+  "variant": "A",
+  "status": "ok",
+  "notes": [],
+  "scenario": {
+    "key": "mittel",
+    "name": "Mittel - ein Patient, eine Diagnose, Laborwertverlauf",
+    "fingerprint": "c2da4f612cac58e5"
+  },
+  "started_at": "2026-08-28T09:15:39+00:00",
+  "duration_s": 3.251,
+  "llm": {
+    "provider": "openai_compatible",
+    "model": "openai/gpt-oss-120b",
+    "calls": 1,
+    "input_tokens": 331,
+    "output_tokens": 1470,
+    "cost_usd": 0.007681,
+    "cost_eur": 0.007067
+  },
+  "generation": {
+    "variant": "A",
+    "attempts": 1,
+    "llm_calls": 1,
+    "llm_failures": 0,
+    "json_failures": 0,
+    "truncations": 0,
+    "resource_count": 1,
+    "invented_codes": 0,
+    "template_issues": [],
+    "normalisation": {
+      "id_map": {
+        "Patient/patient-1": "Patient/pat-001"
+      },
+      "duplicate_ids_from_llm": [],
+      "unresolved_references": [],
+      "ambiguous_references": [],
+      "rewritten_references": 0,
+      "unexpected_resource_types": []
+    },
+    "error": null
+  },
+  "resources": {
+    "total": 1,
+    "by_type": {
+      "Patient": 1
+    },
+    "expected_by_type": {
+      "Patient": 1,
+      "Condition": 1,
+      "Observation": 4
+    },
+    "expected_total": 6
+  },
+  "validation": {
+    "valid_first_attempt": 1,
+    "valid_final": 1,
+    "invalid_final": 0,
+    "warning_count": 1,
+    "code_related_issues": 0,
+    "code_related_warnings": 0,
+    "error_signatures": {},
+    "error_categories": {}
+  },
+  "repair": {
+    "repaired_resources": 0,
+    "rounds_total": 0,
+    "rounds_avg_over_all": 0.0,
+    "rounds_avg_over_repaired": 0.0,
+    "non_improving_rounds": 0,
+    "json_failures": 0,
+    "identity_corrections": []
+  },
+  "integrity": {
+    "ok": true,
+    "resources_checked": 1,
+    "total_references": 0,
+    "broken_reference_count": 0,
+    "broken_references": [],
+    "duplicate_ids": [],
+    "missing_patient_link": []
+  },
+  "codes": {
+    "invented": 0
+  }
+}
