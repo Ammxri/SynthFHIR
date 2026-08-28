@@ -1,0 +1,49 @@
+# Deployment-Beschreibung für Render.
+#
+# Warum Render: Von den betrachteten Anbietern ist es der einzige, der einen
+# echten kostenlosen Tier ohne Kreditkarte bietet. Fly.io verlangt eine
+# Kreditkarte und kostet rund 2-3 USD im Monat für die kleinste Maschine,
+# Railway gibt nur ein monatliches Startguthaben.
+#
+# Der Preis dafür steht in der README: Ein kostenloser Dienst wird nach
+# 15 Minuten ohne Zugriff schlafen gelegt und braucht beim nächsten Aufruf
+# etwa eine Minute zum Aufwachen.
+#
+# Einrichtung: Im Render-Dashboard "New" -> "Blueprint" -> dieses Repository
+# auswählen. Render liest diese Datei und fragt beim Anlegen genau nach den
+# Werten, die hier mit `sync: false` markiert sind.
+
+services:
+  - type: web
+    name: synthfhir
+    runtime: docker
+    plan: free
+    # Frankfurt: Das Werkzeug ist deutsch lokalisiert, die Zielgruppe sitzt
+    # überwiegend in Europa. Falls die Region im kostenlosen Tier nicht
+    # verfügbar ist, tut es auch `oregon`.
+    region: frankfurt
+    dockerfilePath: ./Dockerfile
+    # Render prüft diesen Pfad, um den Dienst als bereit zu erkennen. Er
+    # antwortet ohne LLM-Aufruf und kostet damit kein Kontingent.
+    healthCheckPath: /health
+    autoDeploy: true
+
+    envVars:
+      - key: SYNTHFHIR_LLM_MODEL
+        value: openai/gpt-oss-120b
+
+      - key: SYNTHFHIR_LLM_BASE_URL
+        value: https://api.groq.com/openai/v1
+
+      # `sync: false` heißt: Render fragt den Wert beim Anlegen ab und
+      # speichert ihn verschlüsselt im Dashboard. Er steht damit NIE im
+      # Repository - die einzige zulässige Handhabung für einen Schlüssel.
+      - key: SYNTHFHIR_LLM_API_KEY
+        sync: false
+
+      # Demo-Kontingent je Adresse und Stunde. Wer mehr braucht, hinterlegt
+      # in der Oberfläche seinen eigenen Schlüssel.
+      - key: SYNTHFHIR_DEMO_ANFRAGEN
+        value: "5"
+      - key: SYNTHFHIR_DEMO_FENSTER_S
+        value: "3600"

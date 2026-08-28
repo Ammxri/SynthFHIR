@@ -127,6 +127,43 @@ HAPI FHIR für die Validierungstests starten:
 docker compose up -d
 ```
 
+## Veröffentlichen
+
+Das Repository enthält ein `Dockerfile` und eine `render.yaml`. Für den
+Betrieb genügt ein Anbieter, der ein Container-Abbild startet — HAPI FHIR
+wird **nicht** mitbetrieben, es läuft nur in der CI (ADR-002). Deshalb reicht
+eine kleine Instanz mit wenigen hundert Megabyte.
+
+### Warum Render
+
+| Anbieter | kostenlos | Kreditkarte | Anmerkung |
+|---|---|---|---|
+| **Render** | ja, 750 Instanzstunden/Monat | **nein** | schläft nach 15 Min ohne Zugriff ein |
+| Fly.io | nein | ja | ~2–3 USD/Monat für die kleinste Maschine |
+| Railway | nur Startguthaben | ja | danach kostenpflichtig |
+
+Render ist der einzige der drei, der ohne Kreditkarte auskommt und dauerhaft
+kostenlos bleibt.
+
+### Vorgehen
+
+1. Im Render-Dashboard **New → Blueprint**, dieses Repository auswählen.
+2. Render liest `render.yaml` und fragt nach `SYNTHFHIR_LLM_API_KEY` —
+   der Schlüssel wird dort verschlüsselt abgelegt und steht nie im Repo.
+3. Fertig. Jeder Push auf `main` löst ein neues Deployment aus.
+
+### Was der kostenlose Tier kostet
+
+Der Dienst wird nach **15 Minuten ohne Zugriff schlafen gelegt** und braucht
+beim nächsten Aufruf rund **eine Minute** zum Aufwachen. Für eine
+Portfolio-Demo ist das hinnehmbar, für ernsthafte Nutzung nicht — dann ist
+der kostenpflichtige Tier oder ein anderer Anbieter die Antwort.
+
+Dazu kommt die Wartezeit des LLM-Kontingents: Ohne eigenen Schlüssel sind
+fünf Anfragen je Stunde und Adresse erlaubt, und bei ausgelastetem
+Gratiskontingent wartet eine Anfrage bis zu einer Minute. Beides ist in der
+Oberfläche erklärt, statt den Nutzer raten zu lassen.
+
 ## Tests
 
 ```bash
