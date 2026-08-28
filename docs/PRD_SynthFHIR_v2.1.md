@@ -190,9 +190,12 @@ Bewertet Kompetenz anhand des Projekts. Überzeugt durch sichtbare FHIR-Tiefe, s
 
 | Bereich | Entscheidung | Begründung |
 |---|---|---|
+| Validierung (Laufzeit) | `fhir.resources`, Pydantic-Modelle | ADR-002: kein Java-Server im Betrieb, Gate-Kriterium Veröffentlichung erreichbar |
+| Validierung (CI) | HAPI FHIR via Docker über Katalog und Vorlagen | ADR-002: löst die Produktzusage tatsächlich ein |
+| Kodierung Condition | SNOMED CT **und** ICD-10-GM nebeneinander | ADR-003: erfüllt US-4 AC2 ohne Verlust internationaler Anschlussfähigkeit |
 | Sprache | Python | FHIR-/Health-Ökosystem ist Python-lastig; passt zum Medizininformatik-Kontext und zu späterer Signalverarbeitung |
 | FHIR-Version | R4 | Verbreitetste Version, beste Werkzeugunterstützung |
-| Validierung | HAPI FHIR lokal via Docker, `$validate` | Kostenlos, liefert echtes OperationOutcome mit Fehlerorten, realitätsnah |
+| Validierung (Phase 0) | HAPI FHIR lokal via Docker, `$validate` | Kostenlos, liefert echtes OperationOutcome mit Fehlerorten, realitätsnah — im MVP ersetzt durch die zweistufige Lösung oben |
 | LLM-Anbindung | Anbieterunabhängige Abstraktionsschicht, Modell konfigurierbar | Kostenkontrolle, kein Lock-in |
 | Schlüssel | Ausschließlich Umgebungsvariablen | Sicherheit, Budgetkontrolle |
 | Persistenz (MVP) | Keine Datenbank; Ergebnis wird erzeugt und exportiert | Minimale Datenschutzfläche, minimale Komplexität |
@@ -397,7 +400,8 @@ Validierung.
 | Wahrnehmung als LLM-Wrapper | Wahrnehmung | M | M | 🟢 | Validierungsarchitektur sichtbar machen |
 | Kein zahlender Markt | Markt | H | L (Portfolio-Zweck) | 🟢 | Umsatz war nie das Primärziel |
 | Projekt bleibt unveröffentlicht | Umsetzung | M | H | 🔴 | Veröffentlichung ist Gate-Kriterium für Phase 1, nicht optional |
-| **HAPI FHIR im kostenlosen Hosting-Tier nicht betreibbar** | Technik | H | H | 🔴 | Neu erkannt nach Phase 0: HAPI ist ein Java-Server mit 1–2 GB Speicherbedarf. Der Spike ließ ihn lokal laufen; für ein veröffentlichtes Web-Tool ist die Validierungsinstanz noch ungeklärt. Blockiert das Gate-Kriterium von Phase 1. |
+| ~~HAPI FHIR im kostenlosen Hosting-Tier nicht betreibbar~~ | Technik | H | H | 🟢 | **Gelöst durch ADR-002:** zweistufige Validierung, HAPI läuft nur noch in der CI. Neues Restrisiko siehe nächste Zeile. |
+| **Katalog wird sicherheitskritisch** | Technik | M | H | 🟡 | Folge aus ADR-002: Die Laufzeitprüfung sieht Einheiten und Codes nicht. Ein falscher UCUM-Code im Katalog erzeugt unbemerkt invalide Ausgaben. Mitigation: CI-Test über den **vollständigen** Katalog gegen HAPI, verbindlich bei jedem Commit. |
 | **Kohorten bis 25 Patienten ungetestet** | Technik | M | M | 🟡 | Der Spike maß bis 3 Patienten (18 Ressourcen). 25 Patienten bedeuten etwa das Achtfache an Ausgabemenge; ob ein einzelner LLM-Aufruf das trägt, ist offen. Mitigation: stückweise Erzeugung. |
 | **Freitext → Parameter ist eine ungemessene Stufe** | Technik | M | M | 🟡 | Der Spike gab die Stückzahlen fest vor. Im MVP muss das Modell sie aus einem Satz ableiten. Neue Fehlerquelle, die direkt auf die Metrik „Trefferquote" wirkt. |
 
@@ -446,14 +450,16 @@ Nach Abschluss von Phase 0 sind folgende Felder zu ergänzen und dieses Dokument
 - [x] Kosten pro erzeugtem Patienten → Block 6, Block 8 — B 0,0036 €, A 0,0072 €
 - [x] Liste der häufigsten Fehlerarten → Block 10, mit Konsequenzen für den MVP-Scope
 - [x] Bestätigung oder Korrektur der Annahmen 2–5 aus Block 10 — 2, 4, 5 bestätigt; **3 bleibt ungeprüft**
-- [ ] **Entscheidung zum Lokalisierungsumfang im MVP → Block 4** — offen
+- [x] **Entscheidung zum Lokalisierungsumfang im MVP → Block 4** — ICD-10-GM **zusätzlich** zu SNOMED CT in derselben CodeableConcept, deutsche Namen und Demografie; Observation bleibt bei LOINC. Begründung: `docs/adr-003-lokalisierung.md`
 
 **Zusätzlich vor Baubeginn zu entscheiden (in Phase 0 neu aufgetaucht):**
 
-- [ ] **Wo läuft die Validierung im veröffentlichten MVP?** HAPI FHIR braucht 1–2 GB
-      Speicher und ist in einem kostenlosen Hosting-Tier voraussichtlich nicht
-      betreibbar. Das Gate-Kriterium von Phase 1 ist Veröffentlichung — diese Frage
-      blockiert sie.
+- [x] **Wo läuft die Validierung im veröffentlichten MVP?** Zweistufig: Struktur zur
+      Laufzeit über `fhir.resources`, HAPI in der CI über Katalog und Vorlagen.
+      Gemessen an 339 gelabelten Ressourcen: 0 falsche Alarme, alle 5 Strukturfehler
+      erkannt; die 7 übersehenen Befunde liegen ausnahmslos in Einheiten und Codes,
+      also in dem Teil, den Variante B dem Modell entzieht. Begründung und die daraus
+      folgende CI-Auflage: `docs/adr-002-validierungsarchitektur.md`
 - [ ] **Wie werden Kohorten bis 25 Patienten erzeugt?** In einem Aufruf oder stückweise.
       Gemessen wurde bis 3 Patienten.
 
