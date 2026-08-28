@@ -27,3 +27,8 @@ spike/output/**
 !spike/output/messreihe-02/bericht.md
 !spike/output/messreihe-02/session.json
 !spike/output/messreihe-02/**/metriken.json
+
+# Ein Klon dieses Repositorys im Projektordner. Entsteht, wenn man zum
+# Nachschauen hierher klont; git trüge ihn sonst als Submodul-Verweis ein
+# und auf GitHub erschiene ein leerer, kaputter Ordner.
+SynthFHIR/
