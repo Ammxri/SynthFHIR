@@ -121,3 +121,36 @@ def baue_prompt(beschreibung: str, max_patienten: int = MAX_PATIENTEN) -> tuple[
         diagnose_katalog=condition_catalog_text(),
         messwert_katalog=observation_catalog_text(),
     )
+
+
+# --- Stückweise Erzeugung großer Kohorten (Phase 2) ------------------------
+
+TEIL_HINWEIS = """
+
+DIESER AUFRUF IST TEIL {teil} VON {gesamt} EINER GRÖSSEREN KOHORTE.
+Erzeuge genau {anzahl} Patienten für diesen Teil — nicht mehr, nicht weniger.
+Die Patienten dieses Teils müssen sich von denen der übrigen Teile
+unterscheiden: andere Namen, andere Geburtsjahre, andere Wertelagen. Wähle
+Vor- und Nachnamen, die in den anderen Teilen unwahrscheinlich sind, und
+verteile die Geburtsjahre über den vom Auftrag erlaubten Bereich."""
+
+
+def baue_teil_prompt(
+    beschreibung: str, anzahl: int, teil: int, gesamt: int
+) -> tuple[str, str]:
+    """Prompt für einen Teil einer großen Kohorte.
+
+    Der Zusatz ist nötig, weil sonst jeder Teil dieselbe Handvoll Namen und
+    Geburtsjahre liefert: Das Modell sieht die anderen Teile nicht und
+    greift ohne Hinweis auf seine wahrscheinlichsten Vorschläge zurück. Für
+    Testdaten wäre eine Kohorte aus 200-mal derselben Anna Müller wertlos.
+
+    Echte Sperren gegen Wiederholung sind das nicht — der Hinweis kann nur
+    streuen, nicht garantieren. Wie gut es wirkt, misst
+    `Kohortenergebnis.namensvielfalt`.
+    """
+    system, benutzer = baue_prompt(beschreibung, max_patienten=anzahl)
+    zusatz = TEIL_HINWEIS.format(teil=teil, gesamt=gesamt, anzahl=anzahl)
+    return system, benutzer.replace(
+        "Return the JSON object now.", zusatz.strip() + "\n\nReturn the JSON object now."
+    )

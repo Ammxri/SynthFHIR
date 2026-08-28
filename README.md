@@ -39,6 +39,8 @@ src/      das Produkt (Phase 1)
     llm.py        Anbindung an OpenAI-kompatible Endpunkte
     prompts.py    Freitext → Parameter
     generation.py die Kette bis zum Bundle
+    kohorte.py    große Kohorten in Teilen (Phase 2)
+    cli.py        Kommandozeile
     web/          Oberfläche (FastAPI, serverseitig gerendert)
 tests/    Tests des Produkts
 spike/    Phase 0 — eingefrorener Wegwerf-Code samt Messbelegen
@@ -52,6 +54,36 @@ spike/    Phase 0 — eingefrorener Wegwerf-Code samt Messbelegen
 
 Danach auf <http://127.0.0.1:8000>. Die App liest ihre Konfiguration selbst
 aus der `.env`; im Betrieb gewinnen die Umgebungsvariablen des Anbieters.
+
+### Große Kohorten von der Kommandozeile
+
+Die Weboberfläche bleibt bei 25 Patienten je Anfrage: Ein Lauf über Hunderte
+dauert im kostenlosen Kontingent Minuten und belegt so lange einen
+Arbeitsprozess. Alles darüber läuft über die Kommandozeile.
+
+```bash
+synthfhir "Patientinnen mit Typ-2-Diabetes, 45 bis 80 Jahre" -n 200 -o kohorte.json
+```
+
+Der Lauf wird in Teile zu je 15 Patienten zerlegt, weil ein einzelner
+LLM-Aufruf bei etwa 25 Patienten an die Token-Obergrenze stößt. Die Teile
+werden erst am Ende zusammengeführt und **einmal** durchnummeriert — sonst
+trüge jeder Teil wieder `pat-001` und die Verweise zeigten quer.
+
+Fällt ein Teil aus, laufen die übrigen weiter und die Mengentreue weist die
+Lücke aus. Der Rückgabewert sagt dasselbe ohne Lesen der Ausgabe: `0`
+vollständig und valide, `1` Lücken, `2` Abbruch. Der Fortschritt geht auf
+stderr, das Bundle auf stdout — `synthfhir … > datei.json` ergibt also eine
+saubere Datei.
+
+| Schalter | Wirkung |
+|---|---|
+| `-n`, `--anzahl` | Anzahl der Patienten |
+| `-o`, `--ausgabe` | Zieldatei statt stdout |
+| `--teilgroesse` | Patienten je LLM-Aufruf (Standard 15) |
+| `--versuche` | Versuche je Teil, bevor er als ausgefallen gilt (Standard 2) |
+| `--bericht` | Messwerte des Laufs als JSON |
+| `--still` | kein Fortschritt auf stderr |
 
 Der Spike ist **nicht** das Produkt. Er hat eine Frage beantwortet und bleibt
 nur als Nachweis und als Messkette für eine mögliche Neuprüfung erhalten.

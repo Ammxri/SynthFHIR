@@ -31,4 +31,10 @@ spike/output/**
 # Ein Klon dieses Repositorys im Projektordner. Entsteht, wenn man zum
 # Nachschauen hierher klont; git trüge ihn sonst als Submodul-Verweis ein
 # und auf GitHub erschiene ein leerer, kaputter Ordner.
-SynthFHIR/
+#
+# Der führende Schrägstrich ist zwingend. Ohne ihn greift das Muster in
+# JEDER Ebene, und weil git unter Windows Groß- und Kleinschreibung
+# ignoriert (core.ignorecase=true), schloss es damit auch das Paket
+# src/synthfhir/ aus: Bereits verfolgte Dateien blieben verfolgt, aber neue
+# Module wären beim Commit stillschweigend liegen geblieben.
+/SynthFHIR/

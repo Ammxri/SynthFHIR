@@ -257,13 +257,26 @@ def baue_observation(
     }
 
 
-def baue_aus_parametern(parameter: dict, erwartet: dict[str, int] | None = None) -> Bauergebnis:
+def baue_aus_parametern(
+    parameter: dict,
+    erwartet: dict[str, int] | None = None,
+    *,
+    index_versatz: int = 0,
+) -> Bauergebnis:
     """Setzt den kompletten Ressourcensatz aus dem Parameterobjekt zusammen.
 
     `erwartet` ist optional: Wenn Sollzahlen bekannt sind, werden
     Abweichungen protokolliert, aber **nicht** aufgefüllt. Die Mengentreue
     war in Phase 0 das entscheidende Kriterium — sie muss messbar bleiben,
     nicht stillschweigend korrigiert werden.
+
+    `index_versatz` verschiebt die vorläufigen Kennungen (`tmp-pat-0`,
+    `tmp-cond-0` …). Für die stückweise Erzeugung großer Kohorten ist das
+    zwingend: Ohne Versatz begänne jeder Teil wieder bei null, zwei
+    aneinandergehängte Teile trügen kollidierende Kennungen, und die
+    Verweise des zweiten Teils zeigten auf Patienten des ersten. Die
+    Integritätsprüfung meldete das zwar — aber erst, nachdem der Schaden
+    entstanden ist.
     """
     ergebnis = Bauergebnis()
     b = ergebnis.beanstandungen
@@ -280,8 +293,9 @@ def baue_aus_parametern(parameter: dict, erwartet: dict[str, int] | None = None)
             Beanstandung("mengenabweichung", f"{len(patienten)} Patienten geliefert, {soll_p} erwartet")
         )
 
-    cond_index = obs_index = 0
-    for p_index, roh in enumerate(patienten):
+    cond_index = obs_index = index_versatz
+    for roh_index, roh in enumerate(patienten):
+        p_index = index_versatz + roh_index
         if not isinstance(roh, dict):
             b.append(Beanstandung("fehlendes_feld", f"Patienteneintrag {p_index} ist kein Objekt."))
             continue
