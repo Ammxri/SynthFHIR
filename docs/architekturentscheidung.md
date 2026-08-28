@@ -308,11 +308,19 @@ Aus Abschnitt 13 der Spezifikation, ergänzt um Erkenntnisse der Messung:
 | Zwischenstände der Korrekturrunden | `output/messreihe-02/variante-A/…/korrektur/` |
 | Konzepterklärungen | `docs/konzepte.md` |
 
-Eine frühere Messreihe (`output/messreihe-01/`) ist **nicht** Grundlage
-dieser Entscheidung: Ein zu großzügiges `max_tokens` überschritt das
-Minutenkontingent des Anbieters, wodurch 17 von 42 Läufen mit HTTP 413
-abbrachen. Der Fehler ist behoben und durch einen Test abgesichert; die
-Reihe bleibt nur zur Nachvollziehbarkeit erhalten.
+Eine frühere Messreihe war **nicht** Grundlage dieser Entscheidung und
+wurde am 2026-08-28 gelöscht: Ein zu großzügiges `max_tokens` überschritt
+das Minutenkontingent des Anbieters, wodurch 17 von 42 Läufen mit HTTP 413
+abbrachen, bevor das Modell überhaupt etwas gesehen hatte. Der Ausfall traf
+beide Varianten ungleich — Variante B häufiger, weil ihr Prompt den
+Code-Katalog mitführt und damit näher am Kontingent lag. Wer das für ein
+Architekturergebnis gehalten hätte, wäre zum umgekehrten Schluss gekommen.
+
+Der Fehler ist behoben: `max_tokens` ist aus dem gemessenen Bedarf
+hergeleitet, HTTP 413 wird eigens behandelt und nennt den einzustellenden
+Wert, und abgeschnittene Antworten werden getrennt von echten JSON-Fehlern
+gezählt. Alle drei Punkte sind durch Tests abgesichert
+(`tests/test_anbieter.py`).
 
 ---
 
