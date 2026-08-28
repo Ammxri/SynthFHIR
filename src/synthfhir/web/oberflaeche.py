@@ -15,6 +15,7 @@ JavaScript, ohne Sitzung und ohne Zwischenspeicher.
 from __future__ import annotations
 
 import json
+import os
 from pathlib import Path
 
 from dotenv import load_dotenv
@@ -24,8 +25,9 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
 from ..generation import Ergebnis, generiere
-from ..llm import LLMFehler, client_aus_umgebung
+from ..llm import LLMFehler, OpenAIKompatiblerClient, client_aus_umgebung
 from ..prompts import MAX_PATIENTEN
+from .ratenbremse import Ratenbremse, kennung_aus_anfrage
 
 # Die App liest ihre Konfiguration selbst ein, statt sich auf den
 # Startbefehl zu verlassen. Jeder Hosting-Anbieter startet uvicorn direkt
@@ -46,6 +48,14 @@ app = FastAPI(
 app.mount("/static", StaticFiles(directory=HIER / "static"), name="static")
 vorlagen = Jinja2Templates(directory=str(HIER / "templates"))
 
+# Demo-Betrieb: Der Schlüssel des Betreibers bedient anonyme Besucher, aber
+# nur begrenzt. Wer mehr braucht, bringt seinen eigenen mit - genau die
+# Mitigation, die das PRD im Risikoregister vorsieht.
+BREMSE = Ratenbremse(
+    anfragen=int(os.environ.get("SYNTHFHIR_DEMO_ANFRAGEN", "5")),
+    zeitfenster_s=float(os.environ.get("SYNTHFHIR_DEMO_FENSTER_S", "3600")),
+)
+
 BEISPIELE = [
     "Eine 68-jährige Patientin mit Diabetes Typ 2 und HbA1c-Verlauf über ein Jahr",
     "Drei Patienten mit chronischer Nierenkrankheit, je Kreatinin und eGFR",
@@ -57,26 +67,59 @@ BEISPIELE = [
 # mit HEAD, und ein 405 an dieser Stelle liest sich für sie wie ein Ausfall.
 @app.api_route("/", methods=["GET", "HEAD"], response_class=HTMLResponse)
 def startseite(request: Request):
+    BREMSE.aufraeumen()
     return vorlagen.TemplateResponse(
-        request, "index.html", {"beispiele": BEISPIELE, "max_patienten": MAX_PATIENTEN}
+        request,
+        "index.html",
+        {
+            "beispiele": BEISPIELE,
+            "max_patienten": MAX_PATIENTEN,
+            "demo_anfragen": BREMSE.anfragen,
+        },
     )
 
 
 @app.post("/erzeugen", response_class=HTMLResponse)
-def erzeugen(request: Request, beschreibung: str = Form("")):
+def erzeugen(
+    request: Request,
+    beschreibung: str = Form(""),
+    eigener_schluessel: str = Form(""),
+):
     kontext: dict = {
         "beispiele": BEISPIELE,
         "max_patienten": MAX_PATIENTEN,
         "beschreibung": beschreibung,
+        "demo_anfragen": BREMSE.anfragen,
     }
 
-    try:
-        client = client_aus_umgebung()
-    except LLMFehler as exc:
-        # Konfigurationsfehler klar von Erzeugungsfehlern trennen: Der eine
-        # betrifft den Betreiber, der andere den Nutzer.
-        kontext["konfigurationsfehler"] = str(exc)
-        return vorlagen.TemplateResponse(request, "index.html", kontext, status_code=503)
+    schluessel = eigener_schluessel.strip()
+    # Der eigene Schlüssel wird ausschließlich für diesen einen Aufruf
+    # benutzt: nicht gespeichert, nicht protokolliert und nicht in die Seite
+    # zurückgeschrieben. Deshalb steht er auch nirgends im Kontext.
+    if schluessel:
+        try:
+            client = OpenAIKompatiblerClient(
+                modell=os.environ.get("SYNTHFHIR_LLM_MODEL", "").strip()
+                or "openai/gpt-oss-120b",
+                basis_url=os.environ.get("SYNTHFHIR_LLM_BASE_URL") or None,
+                api_schluessel=schluessel,
+            )
+        except LLMFehler as exc:
+            kontext["konfigurationsfehler"] = str(exc)
+            return vorlagen.TemplateResponse(request, "index.html", kontext, status_code=503)
+    else:
+        erlaubt, wartezeit = BREMSE.pruefe(kennung_aus_anfrage(request))
+        if not erlaubt:
+            kontext["bremse_greift"] = True
+            kontext["wartezeit_min"] = max(1, round(wartezeit / 60))
+            return vorlagen.TemplateResponse(request, "index.html", kontext, status_code=429)
+        try:
+            client = client_aus_umgebung()
+        except LLMFehler as exc:
+            # Konfigurationsfehler klar von Erzeugungsfehlern trennen: Der
+            # eine betrifft den Betreiber, der andere den Nutzer.
+            kontext["konfigurationsfehler"] = str(exc)
+            return vorlagen.TemplateResponse(request, "index.html", kontext, status_code=503)
 
     ergebnis = generiere(client, beschreibung)
     kontext["ergebnis"] = ergebnis

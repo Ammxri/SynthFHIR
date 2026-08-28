@@ -17,6 +17,19 @@ from synthfhir.web import oberflaeche as app_modul
 from synthfhir.llm import FesterClient, LLMFehler
 
 
+@pytest.fixture(autouse=True)
+def bremse_zuruecksetzen():
+    """Jeder Test beginnt mit leerer Ratenbremse.
+
+    Ohne das teilen sich alle Tests dieselbe Kennung ("testclient") und
+    laufen ab dem sechsten POST in die Bremse - was beim ersten Lauf auch
+    prompt passiert ist.
+    """
+    app_modul.BREMSE.zuruecksetzen()
+    yield
+    app_modul.BREMSE.zuruecksetzen()
+
+
 @pytest.fixture
 def klient() -> TestClient:
     return TestClient(app)
@@ -203,3 +216,65 @@ def test_favicon_erzeugt_keinen_zweiten_request(klient):
     text = klient.get("/").text
     assert 'rel="icon"' in text
     assert "data:image/svg+xml" in text
+
+
+# --- Demo-Betrieb: Ratenbremse und eigener Schlüssel ------------------------
+
+
+def test_bremse_greift_nach_dem_kontingent(klient, monkeypatch):
+    """Beim Gratiskontingent reicht es für rund eine Anfrage pro Minute -
+    weltweit. Ohne Bremse leert ein einzelner Besucher es für alle."""
+    _mit_fester_antwort(monkeypatch, _antwort())
+    for _ in range(app_modul.BREMSE.anfragen):
+        assert klient.post("/erzeugen", data={"beschreibung": "Test"}).status_code == 200
+
+    antwort = klient.post("/erzeugen", data={"beschreibung": "Test"})
+    assert antwort.status_code == 429
+    assert "Demo-Kontingent" in antwort.text
+    assert "eigenen Schlüssel" in antwort.text
+
+
+def test_eigener_schluessel_umgeht_die_bremse(klient, monkeypatch):
+    """Der vorgesehene Weg für alle, die mehr brauchen - genau die
+    Mitigation aus dem Risikoregister des PRD."""
+    gebaute: list[str] = []
+
+    class Attrappe(FesterClient):
+        def __init__(self, *a, api_schluessel="", **kw):
+            super().__init__(_antwort())
+            gebaute.append(api_schluessel)
+
+    monkeypatch.setattr(app_modul, "OpenAIKompatiblerClient", Attrappe)
+    app_modul.BREMSE.zuruecksetzen()
+    for _ in range(app_modul.BREMSE.anfragen + 3):
+        antwort = klient.post(
+            "/erzeugen", data={"beschreibung": "Test", "eigener_schluessel": "gsk_geheim"}
+        )
+        assert antwort.status_code == 200
+
+    assert gebaute == ["gsk_geheim"] * (app_modul.BREMSE.anfragen + 3)
+
+
+def test_eigener_schluessel_erscheint_nirgends_in_der_antwort(klient, monkeypatch):
+    """Er wird nicht gespeichert, nicht protokolliert und nicht in die Seite
+    zurückgeschrieben - anders als die Beschreibung, die absichtlich stehen
+    bleibt."""
+
+    class Attrappe(FesterClient):
+        def __init__(self, *a, api_schluessel="", **kw):
+            super().__init__(_antwort())
+
+    monkeypatch.setattr(app_modul, "OpenAIKompatiblerClient", Attrappe)
+    antwort = klient.post(
+        "/erzeugen",
+        data={"beschreibung": "Eine Patientin", "eigener_schluessel": "gsk_streng_geheim"},
+    )
+    assert "gsk_streng_geheim" not in antwort.text
+    assert "Eine Patientin" in antwort.text, "Die Beschreibung soll dagegen stehen bleiben"
+
+
+def test_schluesselfeld_ist_ein_passwortfeld(klient):
+    text = klient.get("/").text
+    assert 'type="password"' in text
+    assert 'name="eigener_schluessel"' in text
+    assert "nicht gespeichert" in text

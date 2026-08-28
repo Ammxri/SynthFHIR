@@ -28,6 +28,22 @@
 
 <main class="huelle">
 
+  {% if bremse_greift %}
+  <div class="kasten warnend">
+    <h2>Das Demo-Kontingent ist vorerst aufgebraucht</h2>
+    <p>
+      Diese Seite läuft als Demo auf einem kostenlosen Kontingent — es reicht
+      für etwa eine Anfrage pro Minute, für alle Besucher zusammen. Deshalb
+      sind {{ demo_anfragen }} Anfragen je Stunde und Adresse erlaubt.
+    </p>
+    <p>
+      In etwa <strong>{{ wartezeit_min }} Minuten</strong> geht es wieder, oder
+      du hinterlegst unten deinen eigenen Schlüssel — dann gilt die Bremse für
+      dich nicht.
+    </p>
+  </div>
+  {% endif %}
+
   {% if konfigurationsfehler %}
   <div class="kasten fehler">
     <h2>Der Dienst ist nicht einsatzbereit</h2>
@@ -48,6 +64,26 @@
       <button type="submit">Testdaten erzeugen</button>
       <span class="hinweis">höchstens {{ max_patienten }} Patienten je Anfrage</span>
     </div>
+
+    <details class="schluessel">
+      <summary>Eigenen API-Schlüssel verwenden (optional)</summary>
+      <p class="hinweis">
+        Ohne Schlüssel läuft die Seite als Demo auf einem kostenlosen
+        Kontingent: {{ demo_anfragen }} Anfragen je Stunde und Adresse. Mit
+        eigenem Schlüssel entfällt die Bremse.
+      </p>
+      <label for="eigener_schluessel">API-Schlüssel</label>
+      <input type="password" id="eigener_schluessel" name="eigener_schluessel"
+             autocomplete="off" spellcheck="false"
+             placeholder="wird nur für diese eine Anfrage verwendet">
+      <p class="hinweis">
+        Der Schlüssel wird <strong>nicht gespeichert, nicht protokolliert und
+        nicht auf die Seite zurückgeschrieben</strong> — er dient allein diesem
+        einen Aufruf. Ein kostenloser Schlüssel von
+        <a href="https://console.groq.com/keys" rel="noopener noreferrer">Groq</a>
+        genügt.
+      </p>
+    </details>
 
     <details class="beispiele">
       <summary>Beispiele</summary>

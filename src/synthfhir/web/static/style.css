@@ -116,7 +116,22 @@ button:disabled { opacity: .45; cursor: not-allowed; }
 .zeile { display: flex; align-items: center; gap: 1rem; flex-wrap: wrap; }
 .hinweis { color: var(--tinte-leise); font-size: .87rem; }
 
-.beispiele summary { cursor: pointer; color: var(--tinte-weich); font-size: .9rem; }
+.beispiele summary, .schluessel summary {
+  cursor: pointer; color: var(--tinte-weich); font-size: .9rem;
+}
+.schluessel { border-top: 1px solid var(--linie-leise); padding-top: .8rem; }
+.schluessel label {
+  display: block; margin: .6rem 0 .3rem; font-size: .87rem; font-weight: 600;
+}
+.schluessel input {
+  width: 100%; max-width: 28rem; padding: .55rem .7rem; font: inherit;
+  font-family: ui-monospace, monospace; font-size: .88rem;
+  color: var(--tinte); background: var(--flaeche);
+  border: 1px solid var(--linie); border-radius: var(--radius);
+}
+.schluessel input:focus-visible { outline: 2px solid var(--akzent); outline-offset: 2px; }
+.schluessel .hinweis { margin: .5rem 0 0; }
+.schluessel a { color: var(--akzent); }
 .beispiele ul { margin: .5rem 0 0; padding-left: 1.2rem; color: var(--tinte-weich); font-size: .92rem; }
 
 /* --- Kästen -------------------------------------------------------- */
