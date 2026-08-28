@@ -1,0 +1,71 @@
+# Kontinuierliche Prüfung.
+#
+# Der eigentliche Zweck dieser Datei steht in ADR-002: Die Validitätszusage
+# des Produkts steht auf zwei Beinen. Die Laufzeitprüfung sieht Einheiten
+# und Codes nicht — nur der Katalogtest gegen HAPI tut das. Fällt dieser
+# Lauf weg, bricht die Zusage unbemerkt.
+#
+# Deshalb setzt dieser Workflow SYNTHFHIR_REQUIRE_HAPI=1. Damit wird ein
+# nicht erreichbarer Server zum Fehlschlag statt zu einem stillen
+# Übersprung, und die Auflage kann nicht versehentlich verfallen.
+
+name: CI
+
+on:
+  push:
+    branches: [master, main]
+  pull_request:
+
+jobs:
+  tests:
+    runs-on: ubuntu-latest
+
+    services:
+      hapi:
+        image: hapiproject/hapi:latest
+        ports:
+          - 8080:8080
+        env:
+          hapi.fhir.fhir_version: R4
+          hapi.fhir.allow_external_references: "true"
+          hapi.fhir.enforce_referential_integrity_on_write: "false"
+
+    env:
+      # Ohne diese Variable würden die HAPI-Tests übersprungen statt zu
+      # scheitern - siehe tests/conftest.py.
+      SYNTHFHIR_REQUIRE_HAPI: "1"
+      SYNTHFHIR_FHIR_BASE_URL: http://localhost:8080/fhir
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+          cache: pip
+
+      - name: Abhängigkeiten installieren
+        run: python -m pip install -e ".[dev]"
+
+      - name: Auf HAPI warten
+        # Der Java-Server braucht nach dem Containerstart noch ein bis drei
+        # Minuten, bis /metadata antwortet.
+        run: |
+          for i in $(seq 1 60); do
+            if curl -sf http://localhost:8080/fhir/metadata > /dev/null; then
+              echo "HAPI bereit nach ca. $((i*5))s"
+              exit 0
+            fi
+            sleep 5
+          done
+          echo "HAPI wurde nicht rechtzeitig bereit"
+          exit 1
+
+      - name: Tests des Produkts
+        run: python -m pytest tests -q
+
+      - name: Tests des eingefrorenen Spikes
+        # Der Spike ist Phase-0-Archiv, bleibt aber lauffähig: ADR-001 nennt
+        # eine erneute Messreihe als Weg, die Architekturentscheidung zu
+        # überprüfen. Ein kaputter Spike wäre als Revisionsweg wertlos.
+        run: python -m pytest spike/tests -q

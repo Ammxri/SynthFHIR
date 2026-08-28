@@ -60,6 +60,30 @@ Aufgeschlüsselt nach Fehlerklasse:
 | Pflichtfeld / Kardinalität | **5 von 5** |
 | Terminologie und Einheiten | **0 von 7** |
 
+**Nachtrag vom 2026-08-28, beim Bau der Laufzeitprüfung gefunden:** Die
+Lücke ist breiter als die Messreihe zeigen konnte. `fhir.resources` erzwingt
+**required bindings gar nicht** — bei `code`-Feldern prüft es nur den
+Datentyp, nicht die gebundene Werteliste. Nachgeprüft an drei Fällen, die
+HAPI jeweils zurückweist:
+
+| Fall | Laufzeitprüfung | HAPI |
+|---|---|---|
+| `Patient.gender = "weiblich"` | valide | Fehler |
+| `Observation.status = "fertig"` | valide | Fehler |
+| `Condition.clinicalStatus` mit erfundenem Code | valide | Fehler |
+
+Die Messreihe konnte das nicht zeigen, weil in ihren Daten nur ein einziger
+Binding-Verstoß vorkam (`verificationStatus`), der dort unter „Terminologie"
+gezählt wurde. Die Schlussfolgerung ändert sich dadurch **nicht**: Auch
+diese drei Felder setzt die Vorlage fest und nie das Modell — `gender`
+normalisiert, `status` konstant `final`, beide Condition-Statusfelder
+konstant. Sie fallen damit in dieselbe Kategorie wie Einheiten und Codes:
+nicht zur Laufzeit prüfbar, dafür durch Konstruktion garantiert und durch
+den HAPI-Katalogtest abgesichert.
+
+Es verschärft aber die Auflage aus Abschnitt 5: Sie deckt nicht nur den
+Katalog, sondern ebenso jede fest gesetzte Konstante in den Vorlagen.
+
 Die sieben übersehenen Befunde im Einzelnen:
 
 | Anzahl | Übersehener Fehler | Wer besitzt dieses Feld in Variante B |
@@ -135,10 +159,12 @@ eingelöst wird.
   des MVP hat die Messung an echten R4-Daten keine Abweichung gezeigt — 0
   falsche Alarme über 339 Ressourcen. Die verbleibende Differenz deckt die
   HAPI-Prüfung in der CI ab, die gegen echtes R4 4.0.1 läuft.
-- **Terminologie wird zur Laufzeit gar nicht geprüft.** Das ist kein
-  Rückschritt: Auch HAPI konnte es im Spike nicht, weil ihm die
-  LOINC-/SNOMED-Pakete fehlten. Der Katalog ist der Ersatz, und das PRD sieht
-  echte Terminologieprüfung ohnehin erst für Phase 2 vor.
+- **Terminologie und required bindings werden zur Laufzeit nicht geprüft.**
+  Bei der Terminologie ist das kein Rückschritt: Auch HAPI konnte sie im
+  Spike nicht prüfen, weil ihm die LOINC-/SNOMED-Pakete fehlten. Bei den
+  required bindings ist es eine echte Einbuße gegenüber HAPI, die durch
+  feste Vorlagenwerte und den Katalogtest aufgefangen wird. Siehe den
+  Nachtrag in Abschnitt 3.
 
 ---
 
