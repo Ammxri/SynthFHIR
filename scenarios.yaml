@@ -1,0 +1,52 @@
+# ---------------------------------------------------------------------------
+# Szenario-Konfiguration (Abschnitt 6.1 der Spec)
+#
+# WICHTIG: Diese Datei darf zwischen Messlaeufen NICHT verändert werden.
+# Variante A und Variante B bekommen exakt dieselbe Beschreibung; nur so sind
+# die Messergebnisse vergleichbar. Änderungen entwerten alle früheren Laeufe.
+#
+# Felder je Szenario:
+#   key                        Kurzname fuer die Kommandozeile
+#   name                       Anzeigename im Bericht
+#   description                natürlichsprachliche Beschreibung -> geht 1:1
+#                              in den Prompt beider Varianten
+#   patients                   Anzahl zu erzeugender Patienten
+#   conditions_per_patient     Anzahl Diagnosen je Patient
+#   observations_per_patient   Anzahl Messwerte je Patient
+# ---------------------------------------------------------------------------
+scenarios:
+  - key: einfach
+    name: "Einfach - ein Patient, eine Diagnose, ein Laborwert"
+    description: >-
+      Ein einzelner erwachsener Patient mittleren Alters mit einer chronischen
+      Stoffwechselerkrankung. Zu der Diagnose gehoert genau ein passender,
+      klinisch plausibler Laborwert aus der aktuellen Verlaufskontrolle.
+    patients: 1
+    conditions_per_patient: 1
+    observations_per_patient: 1
+
+  - key: mittel
+    name: "Mittel - ein Patient, eine Diagnose, Laborwertverlauf"
+    description: >-
+      Ein Patient mit einer chronischen Erkrankung, die regelmäßig
+      laborchemisch kontrolliert wird. Es liegen vier Messwerte desselben
+      oder eng verwandter Laborparameter aus den letzten zwölf Monaten vor,
+      die einen plausiblen zeitlichen Verlauf abbilden. Die Messzeitpunkte
+      liegen erkennbar auseinander und sind aufsteigend datiert.
+    patients: 1
+    conditions_per_patient: 1
+    observations_per_patient: 4
+
+  - key: anspruchsvoll
+    name: "Anspruchsvoll - drei Patienten, unterschiedliche Konstellationen"
+    description: >-
+      Drei deutlich unterschiedliche Patienten: eine jüngere erwachsene
+      Person, eine Person im mittleren Lebensalter und eine hochbetagte
+      Person. Die Patienten unterscheiden sich in Geschlecht und Geburtsjahr.
+      Jeder Patient hat zwei zueinander passende Diagnosen und drei
+      Messwerte, die zu den jeweiligen Diagnosen und zum Lebensalter
+      klinisch plausibel sind. Die Daten der drei Patienten dürfen sich
+      inhaltlich nicht wiederholen.
+    patients: 3
+    conditions_per_patient: 2
+    observations_per_patient: 3

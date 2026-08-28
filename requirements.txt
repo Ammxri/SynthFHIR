@@ -1,0 +1,5 @@
+# Abhaengigkeiten des Phase-0-Spikes. Bewusst minimal gehalten.
+anthropic>=1.0.0      # LLM-Anbindung (Standardanbieter)
+requests>=2.32.0      # HTTP gegen den lokalen HAPI-FHIR-Server
+PyYAML>=6.0.2         # Szenario-Konfiguration
+python-dotenv>=1.0.1  # .env-Datei fuer Umgebungsvariablen (Schluesselverwaltung)

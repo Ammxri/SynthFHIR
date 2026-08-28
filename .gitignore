@@ -1,0 +1,11 @@
+# Geheimnisse: niemals einchecken
+.env
+
+# Python
+.venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+
+# Messartefakte (werden bei jedem Lauf neu erzeugt)
+output/

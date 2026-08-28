@@ -1,0 +1,35 @@
+# HAPI-FHIR-Server als lokaler Validierungsdienst (Abschnitt 3 der Spec).
+#
+# Start:  docker compose up -d
+# Bereit: docker compose logs -f hapi   (warten auf "Started Application")
+# Prüfen: python -m synthfhir check
+# Stopp:  docker compose down
+#
+# Hinweis: Der Server läuft ausschließlich lokal. Es verlassen keine
+# erzeugten Daten die Maschine (Abschnitt 11).
+#
+# Reproduzierbarkeit: `latest` kann sich zwischen Messreihen ändern und damit
+# das Validierungsverhalten verschieben. Sobald eine Version läuft, sollte
+# sie festgenagelt werden (z. B. hapiproject/hapi:v8.4.0). Die vom Server
+# gemeldete FHIR-Version steht in jeder session.json und im Bericht.
+services:
+  hapi:
+    image: hapiproject/hapi:latest
+    container_name: synthfhir-hapi
+    ports:
+      - "8080:8080"
+    environment:
+      # FHIR-Version R4 (Abschnitt 3)
+      - hapi.fhir.fhir_version=R4
+      # Referenzen auf Ressourcen außerhalb des Servers nicht blockieren.
+      # Der Spike schickt Einzelressourcen, deren subject-Referenz
+      # serverseitig gar nicht auflösbar ist – genau darum gibt es die
+      # eigene Referenz-Integritätsprüfung (Abschnitt 6.7).
+      - hapi.fhir.allow_external_references=true
+      - hapi.fhir.enforce_referential_integrity_on_write=false
+      # Bewusst NICHT gesetzt: hapi.fhir.validation.requests_enabled.
+      # Der Validierungs-Interceptor würde eingehende Anfragen vorab prüfen
+      # und absichtlich invalide Ressourcen abweisen, bevor $validate sie
+      # überhaupt sieht. Die Operation $validate selbst ist ohnehin
+      # standardmäßig verfügbar.
+    restart: unless-stopped
