@@ -121,6 +121,12 @@ def katalog_pruefsumme() -> str:
     die falsche Richtung. `asdict` kann kein Feld vergessen, eine
     Aufzählung schon — beim nächsten neuen Katalogfeld wiederholte sich der
     Fehler sonst.
+
+    Eine Nebenwirkung, die man kennen muss: Ändert sich dieses **Verfahren**,
+    passen die Fingerabdrücke älterer Aufzeichnungen nicht mehr, und die
+    Wiedergabe meldet eine Katalogänderung, die keine ist. Die
+    Bundle-Prüfsumme bleibt davon unberührt und behält recht — sie ist das
+    Urteil, der Fingerabdruck nur die Ursachenzuordnung.
     """
     daten = [
         sorted(json.dumps(asdict(c), sort_keys=True) for c in CONDITION_CODES.values()),

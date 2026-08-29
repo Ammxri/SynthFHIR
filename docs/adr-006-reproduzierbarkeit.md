@@ -246,6 +246,13 @@ Prüfsumme belegt Byte-Gleichheit" stimmt so nicht (siehe Abschnitt 2).
 ## 6. Offen
 
 - Aufzeichnungen in der Weboberfläche (zustimmungspflichtig, weil UI).
+- **Der Katalog-Fingerabdruck hat keine eigene Version.** Ändert sich sein
+  Verfahren, passen ältere Aufzeichnungen nicht mehr, und die Wiedergabe
+  meldet eine Katalogänderung, die keine ist. Beim Einbau von `vital_sign`
+  ist genau das eingetreten. Folgenlos, weil die Bundle-Prüfsumme davon
+  unberührt bleibt und recht behält — sie ist das Urteil, der Fingerabdruck
+  nur die Ursachenzuordnung. Bei einem breiter genutzten Format bräuchte er
+  eine eigene Versionsnummer.
 - Ein Weg, aus einer Aufzeichnung heraus *ähnliche* statt gleicher Daten
   zu erzeugen — etwa durch Neuwürfeln der Namen bei gleichen Codes.
 - Die Messung gegen ein lokales Ollama wiederholen. Dort könnte ein Seed
