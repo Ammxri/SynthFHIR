@@ -75,7 +75,7 @@ from dataclasses import asdict, dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
 
-from .domain.codes import KATALOGE, SYSTEME
+from .domain.codes import FESTE_WERTE, KATALOGE, SYSTEME
 from .kohorte import Kohortenergebnis, TeilParameter, baue_aus_aufzeichnung
 
 # Erhöhen, wenn sich das Dateiformat so ändert, dass alte Dateien nicht mehr
@@ -133,6 +133,10 @@ def katalog_pruefsumme() -> str:
     }
     # Die System-URIs gehören dazu: Sie landen ebenso im Bundle wie die Codes.
     daten["systeme"] = sorted(SYSTEME)
+    # Ebenso die festen Statuswerte. `FESTE_WERTE` war eine Weile deklariert
+    # und dokumentiert, aber nirgends benutzt — eine Konstante, die aussieht,
+    # als täte sie etwas.
+    daten["feste_werte"] = sorted(FESTE_WERTE)
     return pruefsumme(daten)
 
 

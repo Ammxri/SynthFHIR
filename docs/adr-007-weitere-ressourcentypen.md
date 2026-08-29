@@ -179,6 +179,73 @@ einzeln gegen HAPI — 4 Begegnungsarten und 19 Wirkstoffe, je ein Test.
 
 ---
 
+## 3b. Nachträglich gefundene Fehler (2026-08-30)
+
+Eine gegnerische Durchsicht fand vier Fehler. Der erste bringt eine ganze
+Kohorte zu Fall.
+
+### Teilübergreifende Kennungskollision
+
+`baue_aus_parametern` ließ **alle** Typzähler beim `index_versatz`
+beginnen. Der Versatz wächst aber nur um die Zahl der **Patienten**. Hat
+ein Patient mehr als eine Ressource eines Typs, überholt der Zähler den
+Versatz — und im nächsten Teil kollidieren die vorläufigen Kennungen.
+
+Nachgestellt mit zwei Teilen zu je drei Patienten mit je zwei Begegnungen:
+
+```
+Doppelte Kennungen: tmp-cond-3..5, tmp-enc-3..5
+Integrität ok: False
+kaputte Verweise: 9
+  Condition/cond-005  encounter.reference -> Encounter/tmp-enc-4
+```
+
+**Der Fehler steckte seit ADR-004 im Code.** Er war folgenlos, solange
+keine erzeugte Ressource auf eine andere erzeugte Nicht-Patient-Ressource
+zeigte — und genau das tut seit dieser Änderung `Condition.encounter`. Der
+200-Patienten-Nachweis aus ADR-004 war davon nicht betroffen: Dort
+verwiesen Diagnosen und Messwerte ausschließlich auf Patienten, und deren
+Nummerierung war korrekt.
+
+Behoben, indem die Typzähler teil-lokal bei null beginnen und der Versatz
+als Teilkenner in die Kennung wandert (`tmp-enc-{versatz}-{n}`). Das
+schließt die Kollision baulich aus, statt sie diesmal zu beheben.
+
+**Der vorhandene Test deckte den Fall nicht ab.** Er benutzte einen
+Patienten mit einer Begegnung — die einzige Konstellation, in der die
+Kollision nicht auftritt. Er war grün und wertlos.
+
+### Die übrigen drei
+
+| Befund | Was passierte | Behebung |
+|---|---|---|
+| **`erfundene_codes` zählte nur zwei Arten** | Eine Aufzählung von Hand; mit Phase 2 kamen zwei Arten hinzu, und die PRD-Metrik meldete 2 von 4 | Präfixprüfung `art.startswith("erfunden")` an allen drei Stellen |
+| **`FESTE_WERTE` war deklariert und unbenutzt** | Eine Konstante, die aussieht, als täte sie etwas | im Fingerabdruck verdrahtet |
+| **Englischer Anzeigetext unter deutscher System-URI** | `display: "metformin"` unter `bfarm/atc` — dort heißt der Eintrag „Metformin" | System auf `http://www.whocc.no/atc` umgestellt, die von HL7 kanonisierte WHO-URI |
+
+Der dritte ist mehr als eine Formalie. `Coding.display` soll die
+Bezeichnung **aus dem genannten System** sein. Geprüft habe ich Code *und*
+englische Bezeichnung bei der WHO — also gehört die WHO-URI dazu. Die
+deutschen Namen stammen aus keiner geprüften Quelle und stehen deshalb in
+`text`, nicht in einem zweiten Coding. Das ist derselbe Grundsatz, den
+ADR-003 für ICD-10-GM festgelegt hat: lieber keine zweite Kodierung als
+eine geratene.
+
+### Nachweis nach den Korrekturen
+
+Fünf Teile, 40 Patienten, je zwei Ressourcen pro Typ — die Form, die brach:
+
+| Prüfung | Ergebnis |
+|---|---|
+| Ressourcen | 40 Patient, je 80 Encounter, Condition, Observation, MedicationStatement |
+| Mengentreue | 100 % |
+| Doppelte Kennungen | keine |
+| Kaputte Verweise | 0 |
+| Verweise auf eine fremde Begegnung | keine |
+| **Gültig gegen HAPI 4.0.1** | **360/360** |
+
+---
+
 ## 4. Konsequenzen
 
 ### Positiv
@@ -212,6 +279,8 @@ einzeln gegen HAPI — 4 Begegnungsarten und 19 Wirkstoffe, je ein Test.
 
 | Alternative | Warum verworfen |
 |---|---|
+| Deutsche ATC-URI (`bfarm/atc`) mit englischem `display` | Stand zuerst da und ist falsch: Der Anzeigetext gehört zum genannten System. |
+| Zweites Coding mit der deutschen ATC-URI und deutschem Namen | Die deutschen Namen sind nicht an der Primärquelle geprüft. ADR-003-Grundsatz: lieber eine geprüfte Kodierung als zwei, von denen eine geraten ist. Offen, sobald sie geprüft sind. |
 | PZN statt ATC | Bezeichnet ein Handelspräparat, wechselt mit dem Markt, und ein einzelner Schlüssel ist nicht so einfach öffentlich zu belegen. |
 | SNOMED CT für Wirkstoffe | Ohne Lizenz mühsamer nachzuschlagen. Für einen Katalog, dessen einzige Prüfung die Handprüfung ist, ist das ausschlaggebend. |
 | `medicationReference` auf eine Medication-Ressource | Verlangte einen sechsten Ressourcentyp, ohne dass die Testdaten etwas gewönnen. |
@@ -223,6 +292,10 @@ einzeln gegen HAPI — 4 Begegnungsarten und 19 Wirkstoffe, je ein Test.
 
 ## 6. Offen
 
+- Ein zweites Coding mit der deutschen ATC-Fassung
+  (`http://fhir.de/CodeSystem/bfarm/atc`), sobald die deutschen
+  Wirkstoffnamen an der amtlichen Quelle geprüft sind. Dann trüge die
+  Medikation zwei Kodierungen desselben Konzepts, genau wie die Diagnose.
 - Wirkstoffe für die fünf Diagnosen ohne Eintrag, falls sie gebraucht
   werden.
 - Strukturierte Dosierung (`doseAndRate`) samt UCUM-Prüfung.

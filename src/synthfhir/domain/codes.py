@@ -76,12 +76,21 @@ UCUM_SYSTEM = "http://unitsofmeasure.org"
 # Kanonischer URL des deutschen ICD-10-GM-CodeSystems, wie ihn die
 # deutschen FHIR-Basisprofile (fhir.de) festlegen.
 ICD10GM_SYSTEM = "http://fhir.de/CodeSystem/bfarm/icd-10-gm"
-# ATC nach denselben Basisprofilen. Der Pfadbestandteil ist `bfarm`, nicht
-# `dimdi`: DIMDI ist 2020 im BfArM aufgegangen, und die Basisprofile haben
-# beide URLs entsprechend umbenannt. Ältere Anleitungen im Netz nennen noch
-# `dimdi` — geprüft an Leitfaden Basis DE 1.3.1, wo beide Systeme `bfarm`
-# tragen.
-ATC_SYSTEM = "http://fhir.de/CodeSystem/bfarm/atc"
+# ATC in der Fassung der WHO. Das ist die von HL7 kanonisierte URI
+# (terminology.hl7.org, CodeSystem v3-WC).
+#
+# Es gäbe auch die deutsche amtliche Fassung unter
+# `http://fhir.de/CodeSystem/bfarm/atc` — und die stand hier zuerst. Sie ist
+# aber falsch, solange der Anzeigetext englisch bleibt: `display` soll die
+# Bezeichnung AUS DEM GENANNTEN SYSTEM sein, und im deutschen Katalog heißt
+# der Eintrag „Metformin", nicht „metformin".
+#
+# Geprüft wurden Code UND englische Bezeichnung am ATC/DDD-Index der WHO.
+# Die deutschen Namen stammen dagegen nicht aus einer geprüften Quelle,
+# deshalb stehen sie in `text` und nicht in einem zweiten Coding. Das ist
+# derselbe Grundsatz wie in ADR-003 bei ICD-10-GM: lieber keine zweite
+# Kodierung als eine geratene.
+ATC_SYSTEM = "http://www.whocc.no/atc"
 # Begegnungsart. Kein deutsches System: `Encounter.class` ist an dieses
 # ValueSet gebunden, und die Bindung ist verpflichtend.
 ACT_CODE_SYSTEM = "http://terminology.hl7.org/CodeSystem/v3-ActCode"
@@ -295,7 +304,13 @@ class MedicationCode:
     WHO — kleingeschrieben und englisch, so wie sie dort steht. Das ist
     Absicht: Eine geglättete Schreibweise ließe sich nicht mehr gegen die
     Quelle abgleichen, und genau dieser Abgleich ist die einzige Prüfung,
-    die es für Codes gibt.
+    die es für Codes gibt. Sie gehört zu `ATC_SYSTEM`, das deshalb auf die
+    WHO-Fassung zeigt und nicht auf die deutsche.
+
+    `display_de` ist der deutsche Name für die Anzeige. Er landet in
+    `CodeableConcept.text`, nicht in einem Coding: Er stammt nicht aus einer
+    geprüften Quelle, und ein ungeprüfter Anzeigetext unter einer
+    Systemangabe wäre eine Behauptung über diesen Katalog.
 
     `indikationen` nennt die SNOMED-Codes der Diagnosen, zu denen der
     Wirkstoff passt. Ohne diese Verknüpfung müsste das Modell entscheiden,

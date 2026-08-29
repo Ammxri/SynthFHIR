@@ -95,7 +95,10 @@ class Ergebnis:
         return sum(
             1
             for b in self.beanstandungen
-            if b.art in ("erfundener_diagnosecode", "erfundener_messwertcode")
+            # Präfix statt Aufzählung: Mit Phase 2 kamen zwei weitere
+            # Arten hinzu, und eine Aufzählung von Hand hätte sie
+            # übersehen — die Metrik meldete dann zwei von vier.
+            if b.art.startswith("erfunden")
         )
 
     @property

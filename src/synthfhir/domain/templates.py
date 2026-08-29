@@ -98,11 +98,14 @@ class Bauergebnis:
 
     @property
     def erfundene_codes(self) -> int:
-        return sum(
-            1
-            for b in self.beanstandungen
-            if b.art in ("erfundener_diagnosecode", "erfundener_messwertcode")
-        )
+        """Zählt jede erfundene Angabe, nicht eine Aufzählung davon.
+
+        Hier standen zwei Arten von Hand aufgezählt. Mit den Katalogen der
+        Phase 2 kamen zwei weitere hinzu — `erfundener_medikamentencode`
+        und `erfundene_begegnungsart` —, und die Metrik aus dem PRD meldete
+        weiter nur zwei von vier. Ein Präfix kann keine neue Art vergessen.
+        """
+        return sum(1 for b in self.beanstandungen if b.art.startswith("erfunden"))
 
 
 # --- Prüfung der Modellparameter -------------------------------------------
@@ -196,7 +199,8 @@ def baue_patient(params: dict, index: int, beanstandungen: list[Beanstandung]) -
 
 
 def baue_condition(
-    params: dict, patient_index: int, index: int, beanstandungen: list[Beanstandung]
+    params: dict, patient_index: int, index: int,
+    beanstandungen: list[Beanstandung], teil: int = 0
 ) -> dict:
     """Condition. `subject` ist 1..1; clinicalStatus und verificationStatus
     werden fest gesetzt, damit die Invarianten con-3 und con-5 unabhängig
@@ -220,7 +224,7 @@ def baue_condition(
 
     return {
         "resourceType": "Condition",
-        "id": f"tmp-cond-{index}",
+        "id": f"tmp-cond-{teil}-{index}",
         "clinicalStatus": {
             "coding": [
                 {"system": CONDITION_CLINICAL_SYSTEM, "code": "active", "display": "Active"}
@@ -238,7 +242,8 @@ def baue_condition(
 
 
 def baue_observation(
-    params: dict, patient_index: int, index: int, beanstandungen: list[Beanstandung]
+    params: dict, patient_index: int, index: int,
+    beanstandungen: list[Beanstandung], teil: int = 0
 ) -> dict:
     """Observation. `status` und `code` sind 1..1; `valueQuantity` braucht
     Wert, Anzeigeeinheit, System und UCUM-Code."""
@@ -248,7 +253,7 @@ def baue_observation(
 
     return {
         "resourceType": "Observation",
-        "id": f"tmp-obs-{index}",
+        "id": f"tmp-obs-{teil}-{index}",
         "status": "final",
         "category": [
             {
@@ -310,7 +315,8 @@ def _begegnungsart(
 
 
 def baue_encounter(
-    params: dict, patient_index: int, index: int, beanstandungen: list[Beanstandung]
+    params: dict, patient_index: int, index: int,
+    beanstandungen: list[Beanstandung], teil: int = 0
 ) -> dict:
     """Encounter. Nur `status` und `class` sind Pflicht (je 1..1).
 
@@ -334,7 +340,7 @@ def baue_encounter(
     datum = _datum(params.get("datum"), "2024-01-01", beanstandungen, "datum")
     return {
         "resourceType": "Encounter",
-        "id": f"tmp-enc-{index}",
+        "id": f"tmp-enc-{teil}-{index}",
         "status": ENCOUNTER_STATUS,
         "class": {"system": art.system, "code": art.code, "display": art.display},
         "subject": {"reference": f"Patient/tmp-pat-{patient_index}"},
@@ -343,7 +349,8 @@ def baue_encounter(
 
 
 def baue_medicationstatement(
-    params: dict, patient_index: int, index: int, beanstandungen: list[Beanstandung]
+    params: dict, patient_index: int, index: int,
+    beanstandungen: list[Beanstandung], teil: int = 0
 ) -> dict:
     """MedicationStatement. Pflicht sind `status`, `medication[x]` und
     `subject`.
@@ -360,7 +367,7 @@ def baue_medicationstatement(
     spec = _medikamentencode(params.get("code"), index, beanstandungen)
     return {
         "resourceType": "MedicationStatement",
-        "id": f"tmp-med-{index}",
+        "id": f"tmp-med-{teil}-{index}",
         "status": MEDICATION_STATUS,
         "medicationCodeableConcept": {
             "coding": [
@@ -412,7 +419,19 @@ def baue_aus_parametern(
             Beanstandung("mengenabweichung", f"{len(patienten)} Patienten geliefert, {soll_p} erwartet")
         )
 
-    cond_index = obs_index = enc_index = med_index = index_versatz
+    # Teil-LOKALE Zähler ab null. Der Versatz wandert stattdessen als
+    # Teilkenner in die vorläufige Kennung (`tmp-enc-{versatz}-{n}`).
+    #
+    # Vorher starteten diese Zähler beim Versatz — und weil der Versatz nur
+    # um die Zahl der PATIENTEN wächst, überholten sie ihn, sobald ein
+    # Patient mehr als eine Ressource eines Typs hatte. Nachgestellt mit
+    # zwei Teilen zu je drei Patienten mit je zwei Begegnungen: sechs
+    # doppelte Kennungen, neun kaputte Verweise, `integritaet.ok = False`.
+    #
+    # Der Fehler steckte seit ADR-004 drin und war folgenlos, solange nichts
+    # auf eine Nicht-Patient-Ressource zeigte. Mit Encounter wurde er scharf.
+    # Diese Form schließt ihn baulich aus statt ihn nur diesmal zu beheben.
+    cond_index = obs_index = enc_index = med_index = 0
     for roh_index, roh in enumerate(patienten):
         p_index = index_versatz + roh_index
         if not isinstance(roh, dict):
@@ -428,10 +447,11 @@ def baue_aus_parametern(
         erste_begegnung: str | None = None
         for eintrag in begegnungen:
             ergebnis.ressourcen.append(
-                baue_encounter(eintrag if isinstance(eintrag, dict) else {}, p_index, enc_index, b)
+                baue_encounter(eintrag if isinstance(eintrag, dict) else {},
+                               p_index, enc_index, b, index_versatz)
             )
             if erste_begegnung is None:
-                erste_begegnung = f"Encounter/tmp-enc-{enc_index}"
+                erste_begegnung = f"Encounter/tmp-enc-{index_versatz}-{enc_index}"
             enc_index += 1
 
         diagnosen = roh.get("diagnosen") if isinstance(roh.get("diagnosen"), list) else []
@@ -445,7 +465,8 @@ def baue_aus_parametern(
             )
         for eintrag in diagnosen:
             cond = baue_condition(
-                eintrag if isinstance(eintrag, dict) else {}, p_index, cond_index, b
+                eintrag if isinstance(eintrag, dict) else {}, p_index, cond_index,
+                b, index_versatz
             )
             # Nur setzen, wenn es die Begegnung wirklich gibt. Ein Verweis
             # ins Leere wäre strukturell einwandfrei und trotzdem falsch —
@@ -467,7 +488,8 @@ def baue_aus_parametern(
             )
         for eintrag in messwerte:
             obs = baue_observation(
-                eintrag if isinstance(eintrag, dict) else {}, p_index, obs_index, b
+                eintrag if isinstance(eintrag, dict) else {}, p_index, obs_index,
+                b, index_versatz
             )
             if erste_begegnung:
                 obs["encounter"] = {"reference": erste_begegnung}
@@ -478,7 +500,8 @@ def baue_aus_parametern(
         for eintrag in medikamente:
             ergebnis.ressourcen.append(
                 baue_medicationstatement(
-                    eintrag if isinstance(eintrag, dict) else {}, p_index, med_index, b
+                    eintrag if isinstance(eintrag, dict) else {}, p_index, med_index,
+                    b, index_versatz
                 )
             )
             med_index += 1

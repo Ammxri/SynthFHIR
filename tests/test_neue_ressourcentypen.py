@@ -229,12 +229,59 @@ def test_integritaet_bleibt_ueber_mehrere_patienten():
 
 
 def test_teilkohorten_versetzen_auch_die_neuen_typen():
-    """ADR-004: Ohne Versatz trügen zwei Teile dieselben Kennungen."""
-    p = patient_mit_allem()
-    erst = baue_aus_parametern(p, index_versatz=0).ressourcen
-    zweit = baue_aus_parametern(p, index_versatz=1).ressourcen
+    """ADR-004: Ohne Versatz trügen zwei Teile dieselben Kennungen.
+
+    Dieser Test stand hier zuerst mit EINEM Patienten und EINER Begegnung —
+    also genau der Form, in der die Kollision nicht auftritt. Er war grün
+    und wertlos. Jetzt mehrere Patienten mit je mehreren Ressourcen eines
+    Typs: das ist der Fall, der wirklich brach.
+    """
+    def viele(start: int) -> dict:
+        einer = patient_mit_allem()["patienten"][0]
+        einer = dict(einer)
+        einer["begegnungen"] = [{"art": "AMB", "datum": "2024-01-01"},
+                                {"art": "IMP", "datum": "2024-02-01"}]
+        einer["diagnosen"] = [{"code": "44054006", "beginn": "2015-01-01"},
+                              {"code": "38341003", "beginn": "2016-01-01"}]
+        return {"patienten": [dict(einer, vorname=f"V{start + i}") for i in range(3)]}
+
+    erst = baue_aus_parametern(viele(0), index_versatz=0).ressourcen
+    zweit = baue_aus_parametern(viele(3), index_versatz=3).ressourcen
     ids = [r["id"] for r in erst + zweit]
     assert len(ids) == len(set(ids)), "kollidierende vorläufige Kennungen"
+
+    norm = assign_ids(erst + zweit)
+    assert norm.duplicate_ids_from_llm == []
+    bericht = check_resources(norm.resources)
+    assert bericht.ok, bericht.broken_references[:3]
+    assert bericht.broken_reference_count == 0
+
+
+def test_verweise_bleiben_beim_eigenen_patienten_ueber_teilgrenzen():
+    """Der eigentliche Schaden der Kollision war nicht die doppelte
+    Kennung, sondern dass eine Diagnose auf die Begegnung eines FREMDEN
+    Patienten zeigte — strukturell einwandfrei, inhaltlich falsch."""
+    def zwei(start: int) -> dict:
+        einer = dict(patient_mit_allem()["patienten"][0])
+        einer["begegnungen"] = [{"art": "AMB", "datum": "2024-01-01"},
+                                {"art": "IMP", "datum": "2024-02-01"}]
+        return {"patienten": [dict(einer, vorname=f"V{start + i}") for i in range(3)]}
+
+    res = assign_ids(
+        baue_aus_parametern(zwei(0), index_versatz=0).ressourcen
+        + baue_aus_parametern(zwei(3), index_versatz=3).ressourcen
+    ).resources
+
+    patient_von_begegnung = {
+        r["id"]: r["subject"]["reference"]
+        for r in res if r["resourceType"] == "Encounter"
+    }
+    for r in res:
+        if r.get("encounter"):
+            begegnung = r["encounter"]["reference"].split("/", 1)[1]
+            assert patient_von_begegnung[begegnung] == r["subject"]["reference"], (
+                f"{r['resourceType']}/{r['id']} zeigt auf eine fremde Begegnung"
+            )
 
 
 # --- Gegen den echten Server -----------------------------------------------
@@ -260,3 +307,54 @@ def test_der_ganze_satz_gegen_hapi(hapi):
     for r in gebaut(patient_mit_allem()):
         fehler = hapi.fehler(r)
         assert not fehler, f"{r['resourceType']}: {fehler}"
+
+
+def test_erfundene_codes_zaehlt_auch_die_neuen_arten():
+    """Die Metrik lief über eine Aufzählung von zwei Arten. Mit Phase 2
+    kamen zwei weitere hinzu — und sie meldete weiter zwei von vier."""
+    bau = baue_aus_parametern({"patienten": [{
+        "vorname": "V", "nachname": "N", "geschlecht": "female",
+        "geburtsdatum": "1960-01-01",
+        "begegnungen": [{"art": "ERFUNDEN", "datum": "2024-01-01"}],
+        "diagnosen": [{"code": "999", "beginn": "2015-01-01"}],
+        "messwerte": [{"code": "888", "wert": 1.0, "datum": "2024-01-01"}],
+        "medikamente": [{"code": "Z99ZZ99", "beginn": "2023-01-01"}],
+    }]})
+    arten = sorted({b.art for b in bau.beanstandungen if b.art.startswith("erfunden")})
+    assert arten == [
+        "erfundene_begegnungsart",
+        "erfundener_diagnosecode",
+        "erfundener_medikamentencode",
+        "erfundener_messwertcode",
+    ]
+    assert bau.erfundene_codes == 4
+
+
+def test_atc_system_passt_zum_anzeigetext():
+    """`display` soll die Bezeichnung AUS DEM GENANNTEN SYSTEM sein. Hier
+    stand die englische WHOCC-Bezeichnung unter der deutschen BfArM-URI —
+    im deutschen Katalog heißt der Eintrag aber „Metformin"."""
+    from synthfhir.domain.codes import ATC_SYSTEM
+
+    assert ATC_SYSTEM == "http://www.whocc.no/atc"
+    med = baue_medicationstatement({"code": "A10BA02"}, 0, 0, [])
+    coding = med["medicationCodeableConcept"]["coding"][0]
+    assert coding["system"] == ATC_SYSTEM
+    assert coding["display"] == "metformin", "englisch, wie bei der WHO"
+    assert med["medicationCodeableConcept"]["text"] == "Metformin"
+
+
+def test_feste_werte_wirken_im_fingerabdruck(monkeypatch):
+    """`FESTE_WERTE` war deklariert, dokumentiert — und nirgends benutzt.
+    Eine Konstante, die aussieht, als täte sie etwas.
+
+    Ersetzt wird der Name in `aufzeichnung`, nicht in `codes`: Der Import
+    holt den Wert, nicht den Verweis, und ein Neubinden in der Quelle bliebe
+    dort wirkungslos. Bei `KATALOGE` fällt das nicht auf, weil dessen Inhalt
+    verändert wird und nicht die Bindung.
+    """
+    from synthfhir import aufzeichnung as aufz
+
+    vorher = aufz.katalog_pruefsumme()
+    monkeypatch.setattr(aufz, "FESTE_WERTE", ("geaendert",))
+    assert aufz.katalog_pruefsumme() != vorher
