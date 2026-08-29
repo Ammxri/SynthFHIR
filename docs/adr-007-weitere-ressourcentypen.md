@@ -66,19 +66,29 @@ nicht von Hand nachschlagen lassen, ist für diesen Katalog untauglich —
 nicht weil es schlechter wäre, sondern weil hier die Handprüfung die
 **einzige** Prüfung ist.
 
-Die System-URI lautet `http://fhir.de/CodeSystem/bfarm/atc`. Der
-Pfadbestandteil ist `bfarm`, nicht `dimdi`: DIMDI ist im BfArM aufgegangen,
-und die Basisprofile haben beide URLs umbenannt. Viele Anleitungen im Netz
-nennen noch `dimdi` — nachgeprüft an Leitfaden Basis DE 1.3.1, wo ATC und
-ICD-10-GM beide `bfarm` tragen. Damit ist zugleich bestätigt, dass die
-bereits verwendete ICD-URI die aktuelle ist.
+Die System-URI lautet `http://www.whocc.no/atc` — die von HL7
+kanonisierte URI der WHO-Fassung. Hier stand zuerst die deutsche amtliche
+Fassung `http://fhir.de/CodeSystem/bfarm/atc`; warum das falsch war, steht
+in Abschnitt 3b.
+
+Nebenbei geprüft und für das Projekt wichtig: Träte die deutsche Fassung
+je hinzu, hieße sie `bfarm/atc` und nicht `dimdi/atc` — DIMDI ist im BfArM
+aufgegangen, und die Basisprofile haben beide URLs umbenannt. Viele
+Anleitungen im Netz nennen noch `dimdi`. Nachgeprüft an Leitfaden Basis DE
+1.3.1, wo ATC und ICD-10-GM beide `bfarm` tragen; damit ist zugleich
+bestätigt, dass die bereits verwendete ICD-URI die aktuelle ist.
 
 ### Warum die englische Kleinschreibung im `display` bleibt
 
 `display` steht wörtlich so da, wie der WHOCC-Index es schreibt:
 `metformin`, `acetylsalicylic acid`, `levothyroxine sodium`. Eine geglättete
 Schreibweise sähe besser aus und ließe sich nicht mehr gegen die Quelle
-abgleichen. Der deutsche Name steht daneben in `text`.
+abgleichen — und dieser Abgleich ist die einzige Prüfung, die es für Codes
+gibt.
+
+Genau deshalb muss die System-URI die der WHO sein: Der Anzeigetext gehört
+zum genannten System. Der deutsche Name steht in `text`, nicht in einem
+zweiten Coding, weil er aus keiner geprüften Quelle stammt.
 
 ### Warum die Wirkstoffe ihre Indikationen kennen
 
