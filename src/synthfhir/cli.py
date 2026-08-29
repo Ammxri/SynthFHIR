@@ -127,6 +127,17 @@ def main(argv: list[str] | None = None) -> int:
             # Konsole.
             print(json.dumps(ergebnis.bundle, ensure_ascii=False, indent=2))
 
+    # Der Bericht wird VOR dem NDJSON-Export geschrieben. Sonst ginge er
+    # bei einem Dateisystemfehler verloren — und mit ihm die Messwerte
+    # eines Laufs, der Minuten gedauert und Kontingent gekostet hat.
+    if args.bericht:
+        args.bericht.write_text(
+            json.dumps(ergebnis.to_dict(), ensure_ascii=False, indent=2) + "\n",
+            encoding="utf-8",
+        )
+        if not args.still:
+            print(f"Bericht: {args.bericht}", file=sys.stderr)
+
     if args.ndjson:
         try:
             export = schreibe_ndjson(
@@ -140,14 +151,6 @@ def main(argv: list[str] | None = None) -> int:
             return 2
         if not args.still:
             print(_export_zeilen(export), file=sys.stderr)
-
-    if args.bericht:
-        args.bericht.write_text(
-            json.dumps(ergebnis.to_dict(), ensure_ascii=False, indent=2) + "\n",
-            encoding="utf-8",
-        )
-        if not args.still:
-            print(f"Bericht: {args.bericht}", file=sys.stderr)
 
     if not ergebnis.ressourcen:
         return 2

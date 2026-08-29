@@ -93,6 +93,7 @@ Protokollzusage.
 from __future__ import annotations
 
 import json
+import re
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
@@ -102,6 +103,12 @@ MIME_TYP = "application/fhir+ndjson"
 
 ENDUNG = ".ndjson"
 MANIFEST_NAME = "manifest.json"
+
+# FHIR-Ressourcentypen bestehen ausschließlich aus Buchstaben. Die Prüfung
+# ist keine Formsache: Der Typ wird zum Dateinamen, und ein `resourceType`
+# von "../woanders" schrieb die Datei nachweislich außerhalb des
+# Zielverzeichnisses.
+TYP_MUSTER = re.compile(r"^[A-Za-z]+$")
 
 
 @dataclass(frozen=True)
@@ -211,17 +218,37 @@ def schreibe_ndjson(
     # Reste, die dieser Lauf NICHT selbst überschreibt, müssen weg — sonst
     # bliebe von einem früheren, größeren Lauf ein Ressourcentyp liegen.
     if vorhanden:
-        behalten = {f"{typ}{ENDUNG}" for typ in nach_typ} | {MANIFEST_NAME}
+        behalten = {f"{typ}{ENDUNG}" for typ in nach_typ}
+        # Das Manifest darf nur stehenbleiben, wenn dieser Lauf es gleich
+        # überschreibt. Sonst bliebe das des Vorlaufs liegen und behauptete
+        # Dateien und Zahlen, die es nicht mehr gibt — nachgestellt: Lauf 1
+        # schrieb Patient und Condition, Lauf 2 nur Patient, und das alte
+        # Manifest wies weiter beide aus.
+        if manifest:
+            behalten.add(MANIFEST_NAME)
         for name in sorted(vorhanden - behalten):
             (ziel / name).unlink()
             ergebnis.entfernt.append(f"{name} (Rest eines früheren Laufs, entfernt)")
 
-    for typ in _ladereihenfolge(nach_typ):
-        pfad = ziel / f"{typ}{ENDUNG}"
-        geschrieben = _schreibe_datei(pfad, nach_typ[typ])
-        ergebnis.dateien.append(
-            Datei(typ=typ, pfad=pfad, anzahl=len(nach_typ[typ]), bytes=geschrieben)
-        )
+    # Bricht eine Datei ab, wird das Angefangene zurückgenommen. Ein halber
+    # Export ohne Manifest sieht aus wie ein ganzer: Der Empfänger sieht
+    # NDJSON-Dateien und lädt sie. Lieber gar nichts als die Hälfte.
+    try:
+        for typ in _ladereihenfolge(nach_typ):
+            pfad = ziel / f"{typ}{ENDUNG}"
+            geschrieben = _schreibe_datei(pfad, nach_typ[typ])
+            ergebnis.dateien.append(
+                Datei(typ=typ, pfad=pfad, anzahl=len(nach_typ[typ]),
+                      bytes=geschrieben)
+            )
+    except (OSError, ValueError, ExportFehler) as exc:
+        for d in ergebnis.dateien:
+            d.pfad.unlink(missing_ok=True)
+        (ziel / f"{typ}{ENDUNG}").unlink(missing_ok=True)
+        raise ExportFehler(
+            f"Export abgebrochen bei {typ}: {exc}. Angefangene Dateien wurden "
+            "entfernt, damit kein halber Export zurückbleibt."
+        ) from exc
 
     if manifest:
         ergebnis.manifest = _schreibe_manifest(ziel, ergebnis, anfrage, zeitpunkt)
@@ -245,6 +272,12 @@ def _gruppiere(ressourcen: list[dict]) -> dict[str, list[dict]]:
         if not isinstance(typ, str) or not typ:
             raise ExportFehler(
                 f"Ressource {i} hat kein resourceType — das ist kein FHIR."
+            )
+        if not TYP_MUSTER.match(typ):
+            raise ExportFehler(
+                f"Ressource {i}: {typ!r} ist kein Ressourcentyp. Der Typ wird "
+                "zum Dateinamen — ohne diese Prüfung schriebe ein Wert wie "
+                "'../woanders' außerhalb des Zielverzeichnisses."
             )
         nach_typ.setdefault(typ, []).append(r)
     return nach_typ
@@ -291,13 +324,20 @@ def _ladereihenfolge(nach_typ: dict[str, list[dict]]) -> list[str]:
 
 
 def _belegt(verzeichnis: Path) -> set[str]:
-    """Namen im Zielverzeichnis, die ein Empfänger mitlesen würde."""
+    """Namen im Zielverzeichnis, die ein Empfänger mitlesen würde.
+
+    Groß- und Kleinschreibung wird ignoriert: Unter Windows ist
+    `Encounter.NDJSON` dieselbe Datei wie `Encounter.ndjson`, und ein
+    Empfänger unterscheidet sie ohnehin nicht. Ohne das rutschte ein Rest
+    mit abweichender Schreibweise durch die Sperre — nachgestellt.
+    """
     if not verzeichnis.is_dir():
         return set()
     return {
         p.name
         for p in verzeichnis.iterdir()
-        if p.is_file() and (p.suffix == ENDUNG or p.name == MANIFEST_NAME)
+        if p.is_file()
+        and (p.suffix.lower() == ENDUNG or p.name.lower() == MANIFEST_NAME)
     }
 
 
@@ -311,10 +351,18 @@ def _schreibe_datei(pfad: Path, ressourcen: list[dict]) -> int:
     """
     with open(pfad, "w", encoding="utf-8", newline="\n") as datei:
         for r in ressourcen:
-            zeile = json.dumps(r, ensure_ascii=False, separators=(",", ":"))
-            # Ein eingebetteter Zeilenumbruch zerrisse den Datensatz in zwei
-            # halbe Zeilen. json.dumps maskiert ihn, aber die Zusage ist zu
-            # wichtig, um sie einer fremden Funktion zu überlassen.
+            # allow_nan=False ist der Punkt: Voreingestellt schriebe
+            # json.dumps für einen Fließkomma-NaN das Wort NaN — das RFC 8259
+            # nicht kennt. Die Zeile sähe aus wie JSON, wäre aber keines, und
+            # der Empfänger stolperte über genau eine Zeile.
+            zeile = json.dumps(
+                r, ensure_ascii=False, separators=(",", ":"), allow_nan=False
+            )
+            # Rückversicherung, kein aktiver Schutz: json.dumps maskiert
+            # Steuerzeichen, dieser Zweig kann also nicht feuern. Er bleibt,
+            # weil die Zusage „eine Ressource je Zeile" an einer fremden
+            # Funktion hängt, die ein Wechsel der Serialisierung
+            # stillschweigend brechen könnte.
             if "\n" in zeile or "\r" in zeile:
                 raise ExportFehler(
                     f"{r.get('resourceType')}/{r.get('id')} enthält einen "
@@ -344,6 +392,15 @@ def _schreibe_manifest(
     trotzdem.
     """
     jetzt = zeitpunkt or datetime.now(timezone.utc)
+    if jetzt.tzinfo is None:
+        # Ohne Zeitzone deutete astimezone den Wert als Ortszeit und
+        # verschöbe ihn still: 12:00 wurde in der Sommerzeit zu 10:00Z.
+        # `transactionTime` ist ein `instant` — ein Zeitpunkt ohne Zone ist
+        # keiner.
+        raise ExportFehler(
+            "zeitpunkt braucht eine Zeitzone (z. B. timezone.utc); "
+            "ohne sie verschöbe sich transactionTime um den lokalen Versatz."
+        )
     inhalt = {
         "transactionTime": jetzt.astimezone(timezone.utc)
         .isoformat(timespec="seconds")

@@ -278,10 +278,18 @@ def test_ueberschreiben_raeumt_typen_weg_die_nicht_mehr_vorkommen(kohorte, tmp_p
 
 
 def test_fremde_dateien_bleiben_unangetastet(kohorte, tmp_path):
-    """Nur was ein Empfänger mitlesen würde, wird angefasst. Eine
-    LIESMICH.md im Zielverzeichnis geht niemanden etwas an."""
-    (tmp_path / "LIESMICH.md").write_text("Hände weg", encoding="utf-8")
+    """Nur was ein Empfänger mitlesen würde, wird angefasst.
+
+    Der Test muss über den Aufräumzweig laufen — also mit
+    `ueberschreiben` und einem Vorlauf. Ohne das prüfte er nur, dass ein
+    Export in ein fast leeres Verzeichnis nichts löscht, und trüge trotzdem
+    diesen Namen.
+    """
     schreibe_ndjson(kohorte, tmp_path)
+    (tmp_path / "LIESMICH.md").write_text("Hände weg", encoding="utf-8")
+
+    ergebnis = schreibe_ndjson([patient(9)], tmp_path, ueberschreiben=True)
+    assert any("Condition" in h for h in ergebnis.entfernt), "Aufräumen lief"
     assert (tmp_path / "LIESMICH.md").read_text(encoding="utf-8") == "Hände weg"
 
 
@@ -455,3 +463,89 @@ def test_rueckgelesene_zeilen_sind_bei_hapi_weiterhin_valide(hapi, tmp_path):
     # Und der Umlaut hat den Weg überstanden.
     patient = next(r for r in zurueck if r["resourceType"] == "Patient")
     assert patient["name"][0]["family"] == "Schäfer-Weiß"
+
+
+# --- Nachgestellte Befunde -------------------------------------------------
+
+
+def test_resourcetype_kommt_nicht_in_den_dateinamen_ohne_pruefung(tmp_path):
+    """Nachgestellt: `resourceType` von "../entwischt" schrieb die Datei
+    AUSSERHALB des Zielverzeichnisses. Der Typ wird zum Dateinamen, also
+    muss er einer sein."""
+    ziel = tmp_path / "ziel"
+    ziel.mkdir()
+    with pytest.raises(ExportFehler, match="kein Ressourcentyp"):
+        schreibe_ndjson([{"resourceType": "../entwischt", "id": "x"}], ziel)
+    assert list(tmp_path.glob("*.ndjson")) == [], "nichts ausserhalb gelandet"
+    assert list(ziel.glob("*")) == [], "und nichts darin"
+
+
+@pytest.mark.parametrize("typ", ["../weg", "a/b", "Patient.ndjson", "", "  ",
+                                 "Pat-ient", "Patient2", r"C:\weg"])
+def test_untaugliche_ressourcentypen_werden_abgewiesen(typ, tmp_path):
+    with pytest.raises(ExportFehler):
+        schreibe_ndjson([{"resourceType": typ, "id": "x"}], tmp_path)
+
+
+def test_nan_wird_nicht_als_json_ausgegeben(tmp_path):
+    """Voreingestellt schriebe json.dumps das Wort NaN — RFC 8259 kennt es
+    nicht. Die Zeile sähe aus wie JSON und wäre keines."""
+    p = patient(1)
+    p["unsinn"] = float("nan")
+    with pytest.raises(ExportFehler, match="abgebrochen"):
+        schreibe_ndjson([p], tmp_path)
+
+
+def test_abbruch_nimmt_angefangene_dateien_zurueck(tmp_path):
+    """Ein halber Export ohne Manifest sieht aus wie ein ganzer: Der
+    Empfänger sieht NDJSON-Dateien und lädt sie."""
+    kaputt = {"resourceType": "Zzz", "id": "x", "wert": float("inf")}
+    with pytest.raises(ExportFehler):
+        schreibe_ndjson([patient(1), kaputt], tmp_path)
+    assert list(tmp_path.iterdir()) == [], "kein halber Export zurückgeblieben"
+
+
+def test_ohne_neues_manifest_bleibt_kein_altes_liegen(kohorte, tmp_path):
+    """Nachgestellt: Lauf 1 schrieb Patient und Condition, Lauf 2 nur
+    Patient — und das Manifest des ersten wies weiter beide aus."""
+    schreibe_ndjson(kohorte, tmp_path)
+    assert (tmp_path / MANIFEST_NAME).exists()
+
+    schreibe_ndjson([patient(9)], tmp_path, manifest=False, ueberschreiben=True)
+    assert not (tmp_path / MANIFEST_NAME).exists(), (
+        "ein Manifest, das nicht mehr stimmt, ist schlimmer als keines"
+    )
+
+
+def test_naiver_zeitpunkt_wird_abgewiesen(kohorte, tmp_path):
+    """Nachgestellt: 12:00 ohne Zeitzone wurde in der Sommerzeit zu 10:00Z.
+    `transactionTime` ist ein `instant` — ein Zeitpunkt ohne Zone ist
+    keiner."""
+    with pytest.raises(ExportFehler, match="Zeitzone"):
+        schreibe_ndjson(kohorte, tmp_path, zeitpunkt=datetime(2026, 8, 29, 12, 0))
+
+
+def test_zeitpunkt_wird_nach_utc_umgerechnet(kohorte, tmp_path):
+    """Eine andere Zone ist in Ordnung — sie wird umgerechnet, nicht
+    abgelehnt."""
+    from datetime import timedelta
+
+    ergebnis = schreibe_ndjson(
+        kohorte, tmp_path,
+        zeitpunkt=datetime(2026, 8, 29, 14, 0, tzinfo=timezone(timedelta(hours=2))),
+    )
+    m = json.loads(ergebnis.manifest.read_text(encoding="utf-8"))
+    assert m["transactionTime"] == "2026-08-29T12:00:00Z"
+
+
+def test_rest_mit_abweichender_schreibweise_wird_erkannt(kohorte, tmp_path):
+    """Nachgestellt: `Encounter.NDJSON` rutschte durch die Sperre und blieb
+    neben dem neuen Export liegen. Unter Windows ist es dieselbe Datei, und
+    ein Empfänger unterscheidet ohnehin nicht."""
+    (tmp_path / "Encounter.NDJSON").write_text("{}", encoding="utf-8")
+    with pytest.raises(ExportFehler, match="enthält bereits"):
+        schreibe_ndjson(kohorte, tmp_path)
+
+    ergebnis = schreibe_ndjson(kohorte, tmp_path, ueberschreiben=True)
+    assert not (tmp_path / "Encounter.NDJSON").exists()
+    assert any("Encounter" in h for h in ergebnis.entfernt)

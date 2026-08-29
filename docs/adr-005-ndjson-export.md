@@ -123,6 +123,28 @@ Beide stehen jetzt unter `extension`, das der Leitfaden dafür vorsieht.
 Ein Test hält die Wurzelebene und die `output`-Einträge gegen die erlaubte
 Feldmenge, damit sich das nicht wiederholt.
 
+### Nachträglich gefundene Fehler (2026-08-29)
+
+Eine gegnerische Durchsicht des fertigen Moduls fand sechs Fehler, alle
+nachgestellt, bevor sie behoben wurden:
+
+| Befund | Was passierte | Behebung |
+|---|---|---|
+| **`resourceType` wurde ungeprüft zum Dateinamen** | `"../entwischt"` schrieb die Datei **außerhalb** des Zielverzeichnisses | Typ muss `^[A-Za-z]+$` erfüllen |
+| **`NaN` ging als JSON durch** | `json.dumps` schreibt voreingestellt das Wort `NaN`, das RFC 8259 nicht kennt — die Zeile sähe aus wie JSON und wäre keines | `allow_nan=False` |
+| **`manifest=False` ließ ein lügendes Manifest stehen** | Lauf 1 schrieb Patient und Condition, Lauf 2 nur Patient — das alte Manifest wies weiter beide aus | Das Manifest überlebt nur, wenn dieser Lauf es überschreibt |
+| **Naive Zeitangabe verschob `transactionTime`** | 12:00 ohne Zone wurde in der Sommerzeit zu 10:00Z | Ohne Zeitzone wird abgewiesen; andere Zonen werden umgerechnet |
+| **Abbruch hinterließ einen halben Export** | Angefangene Dateien blieben liegen, ohne Manifest — für einen Empfänger nicht von einem ganzen zu unterscheiden | Bei Abbruch wird zurückgenommen, was dieser Lauf geschrieben hat |
+| **Die Rest-Sperre übersah abweichende Schreibweise** | `Encounter.NDJSON` rutschte durch und blieb neben dem neuen Export liegen | Vergleich ohne Rücksicht auf Groß- und Kleinschreibung |
+
+Dazu ein Test, der nicht prüfte, was sein Name behauptete:
+`test_fremde_dateien_bleiben_unangetastet` lief gar nicht durch den
+Aufräumzweig. Jetzt tut er es.
+
+Alle sechs eint dasselbe Muster wie die Fehler aus ADR-004: Das Ergebnis
+sieht richtig aus. Keiner davon hätte einen Testlauf rot gemacht oder beim
+Ansehen der Dateien gestört.
+
 ### Warum die Sperre gegen ein belegtes Verzeichnis
 
 Ein zweiter, kleinerer Lauf überschriebe `Patient.ndjson`, ließe aber
@@ -183,6 +205,11 @@ alle.
 - **Kein gzip.** Neu in v3.0.0 und für große Exporte vorgesehen. Nicht
   gebaut, weil es beim Schreiben auf Platte keinen Gewinn bringt, den ein
   nachgelagertes Packen nicht auch hätte.
+- **`request` trägt keine URL.** Der Leitfaden definiert das Feld als die
+  URL der ursprünglichen Kick-off-Anfrage. Die gibt es hier nicht — es gibt
+  keinen Server und keinen Kick-off. Das Feld trägt stattdessen die
+  Kommandozeile, weil eine Herkunftsangabe nützlicher ist als eine erfundene
+  URL. Eine bewusste Abweichung, hier benannt statt verschwiegen.
 - **Die Sortierung im Manifest ist keine Garantie.** Große Import-Werkzeuge
   verarbeiten die Dateien parallel und sichern keine Reihenfolge zu
   (Microsoft Bulk Import: *„this order is not guaranteed by distributed

@@ -229,3 +229,19 @@ def test_still_schweigt_auch_beim_ndjson_export(stub, tmp_path, capsys):
               "--still"])
     ausgabe = capsys.readouterr()
     assert ausgabe.err == "" and ausgabe.out == ""
+
+
+def test_bericht_ueberlebt_einen_gescheiterten_ndjson_export(stub, tmp_path, capsys):
+    """Die Erzeugung hat Minuten gedauert und Kontingent gekostet. Ein
+    Dateisystemfehler beim Export darf ihre Messwerte nicht mitnehmen —
+    vorher stand der Bericht hinter dem Export und ging bei `return 2`
+    verloren."""
+    ziel = tmp_path / "export"
+    bericht = tmp_path / "b.json"
+    cli.main(["30 Diabetikerinnen", "-n", "30", "--ndjson", str(ziel)])
+
+    rc = cli.main(["30 Diabetikerinnen", "-n", "30", "--ndjson", str(ziel),
+                   "--bericht", str(bericht)])
+    assert rc == 2, "der Export ist gescheitert"
+    assert bericht.exists(), "der Bericht ist trotzdem da"
+    assert json.loads(bericht.read_text(encoding="utf-8"))["patienten"] == 30
