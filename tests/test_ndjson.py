@@ -176,11 +176,52 @@ def test_manifest_traegt_die_felder_des_leitfadens(kohorte, tmp_path):
     m = json.loads(ergebnis.manifest.read_text(encoding="utf-8"))
     assert m["transactionTime"] == "2026-08-29T12:00:00Z"
     assert m["requiresAccessToken"] is False
-    assert m["outputFormat"] == MIME_TYP
     assert {e["type"] for e in m["output"]} == {"Patient", "Condition"}
     for eintrag in m["output"]:
-        assert set(eintrag) == {"type", "url", "count", "fileSize"}
         assert eintrag["url"].startswith("file:")
+
+
+def test_manifest_erfindet_keine_felder(kohorte, tmp_path):
+    """Der ernsteste Fehler, den dieses Modul machen könnte.
+
+    Hier standen `outputFormat` auf Wurzelebene und `fileSize` je
+    Ausgabedatei. Beide definiert erst der Continuous Build, die
+    veröffentlichte v3.0.0 kennt sie nicht. Ein erfundenes Feld an
+    normativer Stelle sieht aus wie Norm, stört nirgends — und genau
+    deshalb fällt es niemandem auf.
+    """
+    ergebnis = schreibe_ndjson(kohorte, tmp_path)
+    m = json.loads(ergebnis.manifest.read_text(encoding="utf-8"))
+
+    erlaubt_wurzel = {"transactionTime", "request", "requiresAccessToken",
+                      "output", "error", "extension"}
+    assert set(m) <= erlaubt_wurzel, f"unbekannt: {set(m) - erlaubt_wurzel}"
+
+    erlaubt_output = {"type", "url", "count"}
+    for eintrag in m["output"]:
+        assert set(eintrag) <= erlaubt_output, (
+            f"unbekannt: {set(eintrag) - erlaubt_output}"
+        )
+
+
+def test_eigene_angaben_stehen_unter_extension(kohorte, tmp_path):
+    """Der Leitfaden sieht `extension` genau dafür vor. Verloren geht die
+    Dateigröße dadurch nicht — sie steht nur nicht mehr da, wo sie wie
+    Norm aussähe."""
+    ergebnis = schreibe_ndjson(kohorte, tmp_path)
+    m = json.loads(ergebnis.manifest.read_text(encoding="utf-8"))
+    assert m["extension"]["dateiformat"] == MIME_TYP
+    groessen = m["extension"]["dateigroessen"]
+    for d in ergebnis.dateien:
+        assert groessen[d.pfad.name] == d.pfad.stat().st_size
+
+
+def test_error_ist_pflicht_trotz_des_namens(kohorte, tmp_path):
+    """„If there are no relevant messages, the server SHOULD return an
+    empty array." Ein fehlendes Feld ist etwas anderes als ein leeres."""
+    ergebnis = schreibe_ndjson(kohorte, tmp_path)
+    m = json.loads(ergebnis.manifest.read_text(encoding="utf-8"))
+    assert m["error"] == []
 
 
 def test_manifest_zaehlt_was_wirklich_drinsteht(kohorte, tmp_path):
@@ -190,7 +231,7 @@ def test_manifest_zaehlt_was_wirklich_drinsteht(kohorte, tmp_path):
     for eintrag in m["output"]:
         pfad = tmp_path / f"{eintrag['type']}{ENDUNG}"
         assert eintrag["count"] == len(lies_ndjson(pfad))
-        assert eintrag["fileSize"] == pfad.stat().st_size
+        assert m["extension"]["dateigroessen"][pfad.name] == pfad.stat().st_size
 
 
 def test_manifest_nennt_die_daten_als_testdaten(kohorte, tmp_path):

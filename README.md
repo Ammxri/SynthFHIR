@@ -114,7 +114,7 @@ export/
   Patient.ndjson       200 Ressourcen
   Condition.ndjson     220 Ressourcen
   Observation.ndjson   600 Ressourcen
-  manifest.json        transactionTime, output[] mit type, url, count, fileSize
+  manifest.json        transactionTime, output[] mit type, url, count
 ```
 
 Zwei Dinge, die nicht offensichtlich sind:

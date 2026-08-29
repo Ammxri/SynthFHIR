@@ -113,13 +113,30 @@ class Datei:
     anzahl: int
     bytes: int
 
-    def to_dict(self) -> dict:
-        # Feldnamen nach dem Bulk-Data-Leitfaden: url, type, count, fileSize.
+    def zum_manifest(self) -> dict:
+        """Genau die Felder, die der Leitfaden für ein `output`-Element kennt.
+
+        Getrennt von `to_dict`, weil hier eine **fremde Norm** bedient wird
+        und dort unsere eigene Anzeige. Hier stand einmal `fileSize` —
+        ein Feld, das erst der Continuous Build definiert, die
+        veröffentlichte v3.0.0 aber nicht. Ein erfundenes Feld an
+        normativer Stelle sieht aus wie Norm und stört nirgends; genau
+        deshalb fällt es niemandem auf. Die Größe steht jetzt unter
+        `extension`, wo Eigenes hingehört.
+        """
         return {
             "type": self.typ,
             "url": self.pfad.resolve().as_uri(),
             "count": self.anzahl,
-            "fileSize": self.bytes,
+        }
+
+    def to_dict(self) -> dict:
+        """Für unsere eigene Anzeige — deutsche Schlüssel, keine Fremdnorm."""
+        return {
+            "typ": self.typ,
+            "pfad": str(self.pfad),
+            "anzahl": self.anzahl,
+            "bytes": self.bytes,
         }
 
 
@@ -315,6 +332,13 @@ def _schreibe_manifest(
 ) -> Path:
     """Das Manifest in der Form der Bulk-Data-Abschlussantwort.
 
+    Gebaut wird gegen die **veröffentlichte v3.0.0**, nicht gegen den
+    Continuous Build: Auf Wurzelebene stehen nur `transactionTime`,
+    `request`, `requiresAccessToken`, `output`, `error` und `extension`.
+    (Der Build kennt darüber hinaus `outputFormat`, `outputOrganizedBy`,
+    `link` und benennt `error` in `outcome` um — nichts davon gehört in ein
+    Dokument, das sich auf die veröffentlichte Fassung beruft.)
+
     `requiresAccessToken` ist falsch, weil hier nichts zu autorisieren ist:
     Die Dateien liegen auf derselben Platte. Der Leitfaden verlangt das Feld
     trotzdem.
@@ -326,14 +350,21 @@ def _schreibe_manifest(
         .replace("+00:00", "Z"),
         "request": anfrage or "synthfhir",
         "requiresAccessToken": False,
-        "outputFormat": MIME_TYP,
-        "output": [d.to_dict() for d in ergebnis.dateien],
+        "output": [d.zum_manifest() for d in ergebnis.dateien],
+        # Pflicht trotz des Namens: Gibt es nichts zu melden, gehört ein
+        # leeres Feld hierher, kein fehlendes.
         "error": [],
+        # Alles, was der Leitfaden NICHT kennt, steht hier — nicht auf
+        # Wurzelebene. `outputFormat` und `fileSize` standen einmal dort;
+        # beide definiert erst der Continuous Build, nicht die
+        # veröffentlichte v3.0.0.
         "extension": {
             "hinweis": (
                 "Synthetische Testdaten aus SynthFHIR. Nicht für klinische "
                 "Nutzung, keine echten Patientendaten."
             ),
+            "dateiformat": MIME_TYP,
+            "dateigroessen": {d.pfad.name: d.bytes for d in ergebnis.dateien},
         },
     }
     pfad = ziel / MANIFEST_NAME

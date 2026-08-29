@@ -35,8 +35,10 @@ Fünf Festlegungen im Einzelnen:
    ausdrücklich, dass eine Ausgabedatei Ressourcen nur eines Typs enthält.
 2. **LF als Zeilenende, kein BOM, kompakte Serialisierung**, jede Zeile mit
    Zeilenvorschub abgeschlossen — auch die letzte.
-3. **Ein Manifest** mit `transactionTime`, `requiresAccessToken`,
-   `outputFormat` und `output[]` aus `type`, `url`, `count`, `fileSize`.
+3. **Ein Manifest** mit `transactionTime`, `request`,
+   `requiresAccessToken`, `output[]` aus `type`, `url`, `count`, sowie
+   `error` — genau die Felder der **veröffentlichten v3.0.0**, nichts
+   darüber hinaus.
 4. **Referenzierte Typen zuerst** im Manifest, abgeleitet aus den
    tatsächlichen Verweisen.
 5. **Ein belegtes Zielverzeichnis wird verweigert**, solange nicht
@@ -102,6 +104,24 @@ niemand. Ohne Manifest wäre der Export formal typlos.
 Es ist ausdrücklich **keine Protokollzusage**: Es gibt keine
 `$export`-Operation, keinen Kick-off, kein Polling, keine
 Zugriffsverwaltung. Das Manifest ist ein Beipackzettel in bekannter Form.
+
+### Warum gegen die veröffentlichte v3.0.0 und nicht gegen den Build
+
+Das war zuerst falsch. Der erste Abruf der Spezifikation landete auf dem
+**Continuous Build** — `hl7.org/fhir/uv/bulkdata/export.html` liefert nur
+einen Weiterleitungsrumpf, der Inhalt steht unter `/en/export.html`. Der
+Build ist der veröffentlichten Fassung voraus: Er kennt `fileSize` je
+Ausgabedatei, `outputFormat` und `outputOrganizedBy` auf Wurzelebene, ein
+`link`-Feld, und er benennt `error` in `outcome` um.
+
+Das Manifest trug daraufhin `outputFormat` und `fileSize` an normativer
+Stelle — zwei Felder, die die Fassung, auf die es sich beruft, nicht
+kennt. Aufgefallen wäre das niemandem: Zusätzliche Felder stören keinen
+Leser, und sie sehen aus wie Norm. Genau deshalb ist es ein Fehler.
+
+Beide stehen jetzt unter `extension`, das der Leitfaden dafür vorsieht.
+Ein Test hält die Wurzelebene und die `output`-Einträge gegen die erlaubte
+Feldmenge, damit sich das nicht wiederholt.
 
 ### Warum die Sperre gegen ein belegtes Verzeichnis
 
@@ -178,6 +198,7 @@ alle.
 |---|---|
 | Ein Strom `-o kohorte.ndjson` | Verstößt gegen *„each output file SHALL contain resources of only one type"*. Wäre zeilenweises JSON, kein Bulk-Data-NDJSON — und damit für den Zweck wertlos. |
 | CRLF nach der FHIR-Kernseite | Die Seite ist *Draft, Maturity 2*; der Bulk-Data-Leitfaden ist für diesen Fall einschlägig und veröffentlicht. Parser müssen beides akzeptieren, also entscheidet die gelebte Praxis: LF. |
+| Manifest nach dem Continuous Build | Der Build ist unveröffentlicht und der v3.0.0 voraus. Ein Dokument, das sich auf die veröffentlichte Fassung beruft, darf deren Felder nicht mit künftigen mischen. |
 | Kein Manifest, Typ aus dem Dateinamen | Der Leitfaden schreibt Dateinamen nicht vor und erklärt `type` zum normativen Feld. Ein Empfänger, der den Namen parst, tut etwas, das die Spezifikation ihm untersagt. |
 | Stillschweigend überschreiben | Reste eines früheren Laufs würden mitgeladen, ohne dass es irgendwo steht. |
 | Zielverzeichnis vollständig leeren | Zu übergriffig: Der Export darf löschen, was er selbst erzeugt haben könnte, nicht was sonst dort liegt. |
