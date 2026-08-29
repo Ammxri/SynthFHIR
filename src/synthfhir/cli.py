@@ -90,13 +90,11 @@ def main(argv: list[str] | None = None) -> int:
     args = baue_parser().parse_args(argv)
 
     if args.wiedergeben:
-        ergebnis, rc = _wiedergeben(args)
-        if ergebnis is None:
-            return rc
+        ergebnis, vorbefund = _wiedergeben(args)
     else:
-        ergebnis, rc = _erzeugen(args)
-        if ergebnis is None:
-            return rc
+        ergebnis, vorbefund = _erzeugen(args)
+    if ergebnis is None:
+        return vorbefund
 
     if not args.still:
         print(_zusammenfassung(ergebnis), file=sys.stderr)
@@ -126,6 +124,23 @@ def main(argv: list[str] | None = None) -> int:
         if not args.still:
             print(f"Bericht: {args.bericht}", file=sys.stderr)
 
+    # Aufgezeichnet wird VOR dem NDJSON-Export, aus demselben Grund wie der
+    # Bericht: Ein Dateisystemfehler dort nähme sonst den teuersten Teil des
+    # Laufs mit — den Beitrag des Modells, der Minuten und Kontingent
+    # gekostet hat und ohne den sich nichts wiederholen lässt.
+    if args.aufzeichnen and not args.wiedergeben:
+        try:
+            a = aufz.aus_ergebnis(ergebnis, modell=_modellname())
+            pfad = aufz.schreibe(a, args.aufzeichnen)
+        except aufz.AufzeichnungFehler as exc:
+            print(f"Aufzeichnen fehlgeschlagen: {exc}", file=sys.stderr)
+            return 2
+        if not args.still:
+            print(f"Aufzeichnung: {pfad}  ({len(a.teile)} Teile, "
+                  f"Prüfsumme {a.bundle_pruefsumme[:12]}…)", file=sys.stderr)
+            print(f"  Wiederholen mit:  synthfhir --wiedergeben {pfad}",
+                  file=sys.stderr)
+
     if args.ndjson:
         try:
             export = schreibe_ndjson(
@@ -143,22 +158,14 @@ def main(argv: list[str] | None = None) -> int:
         if not args.still:
             print(_export_zeilen(export), file=sys.stderr)
 
-    if args.aufzeichnen and not args.wiedergeben:
-        try:
-            a = aufz.aus_ergebnis(ergebnis, modell=_modellname())
-            pfad = aufz.schreibe(a, args.aufzeichnen)
-        except aufz.AufzeichnungFehler as exc:
-            print(f"Aufzeichnen fehlgeschlagen: {exc}", file=sys.stderr)
-            return 2
-        if not args.still:
-            print(f"Aufzeichnung: {pfad}  ({len(a.teile)} Teile, "
-                  f"Prüfsumme {a.bundle_pruefsumme[:12]}…)", file=sys.stderr)
-            print(f"  Wiederholen mit:  synthfhir --wiedergeben {pfad}",
-                  file=sys.stderr)
-
     if not ergebnis.ressourcen:
         return 2
-    return 0 if ergebnis.fertig and ergebnis.mengentreue == 1.0 else 1
+    schluss = 0 if ergebnis.fertig and ergebnis.mengentreue == 1.0 else 1
+    # Eine Wiedergabe, die nicht dasselbe ergab, ist kein Erfolg — auch wenn
+    # die Kohorte für sich vollständig und gültig ist. Sonst meldete der
+    # Rückgabewert 0, während auf stderr ABWEICHUNG steht, und eine Prüfkette
+    # liefe darüber hinweg.
+    return max(schluss, vorbefund)
 
 
 def _modellname() -> str:
@@ -230,7 +237,9 @@ def _wiedergeben(args) -> "tuple[Kohortenergebnis | None, int]":
     elif not w.identisch:
         # Auch im stillen Betrieb: Eine Abweichung ist kein Rauschen.
         print(w.befund(), file=sys.stderr)
-    return w.ergebnis, 0
+    # Der Rückgabewert trägt das Urteil mit: Genau dafür gibt es die
+    # Wiedergabe. 1 heisst „geliefert, aber nicht dasselbe".
+    return w.ergebnis, 0 if w.identisch else 1
 
 
 def _export_zeilen(export: Exportergebnis) -> str:

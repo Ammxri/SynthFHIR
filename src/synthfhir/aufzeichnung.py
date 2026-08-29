@@ -71,11 +71,17 @@ from __future__ import annotations
 
 import hashlib
 import json
-from dataclasses import dataclass, field
+from dataclasses import asdict, dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
 
-from .domain.codes import CONDITION_CODES, OBSERVATION_CODES
+from .domain.codes import (
+    CONDITION_CODES,
+    LOINC_SYSTEM,
+    OBSERVATION_CODES,
+    SNOMED_SYSTEM,
+    UCUM_SYSTEM,
+)
 from .kohorte import Kohortenergebnis, TeilParameter, baue_aus_aufzeichnung
 
 # Erhöhen, wenn sich das Dateiformat so ändert, dass alte Dateien nicht mehr
@@ -106,16 +112,22 @@ def katalog_pruefsumme() -> str:
     Nicht über die Datei, sondern über die Codes selbst: Ein geänderter
     Kommentar in `codes.py` ändert nichts am Ergebnis und darf keine
     Abweichung melden. Ein korrigierter ICD-Schlüssel sehr wohl.
+
+    **Über alle Felder, nicht über eine Auswahl.** Hier stand einmal eine
+    Aufzählung von Hand, und sie übersah `vital_sign` — das Feld, das über
+    `Observation.category` entscheidet (`vital-signs` gegen `laboratory`).
+    Nachgestellt: Das Bundle änderte sich, der Fingerabdruck nicht, und der
+    Befund sagte „Der Katalog ist unverändert" und schickte die Suche in
+    die falsche Richtung. `asdict` kann kein Feld vergessen, eine
+    Aufzählung schon — beim nächsten neuen Katalogfeld wiederholte sich der
+    Fehler sonst.
     """
     daten = [
-        sorted(
-            (c.code, c.display, c.display_de, c.icd10gm, c.icd10gm_display)
-            for c in CONDITION_CODES.values()
-        ),
-        sorted(
-            (o.code, o.display, o.display_de, o.unit, o.unit_code, o.low, o.high)
-            for o in OBSERVATION_CODES.values()
-        ),
+        sorted(json.dumps(asdict(c), sort_keys=True) for c in CONDITION_CODES.values()),
+        sorted(json.dumps(asdict(o), sort_keys=True) for o in OBSERVATION_CODES.values()),
+        # Die System-URLs stehen als Modulkonstanten neben den Codes und
+        # landen ebenso im Bundle.
+        [LOINC_SYSTEM, SNOMED_SYSTEM, UCUM_SYSTEM],
     ]
     return pruefsumme(daten)
 
@@ -225,6 +237,13 @@ class Wiedergabe:
             zeilen.append(
                 "  Der Katalog hat sich geändert — das ist die wahrscheinliche "
                 "Ursache."
+            )
+        elif not self.katalog_erwartet:
+            # Die Aufzeichnung trägt keinen Fingerabdruck. „Unverändert" zu
+            # sagen wäre eine Behauptung über etwas, das nie geprüft wurde.
+            zeilen.append(
+                "  Die Aufzeichnung trägt keinen Katalog-Fingerabdruck — ob "
+                "der Katalog die Ursache ist, lässt sich nicht sagen."
             )
         else:
             zeilen.append(

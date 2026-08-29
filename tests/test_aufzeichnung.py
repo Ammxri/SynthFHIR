@@ -294,3 +294,58 @@ def test_teilparameter_ueberlebt_den_umweg_ueber_json():
     tp = TeilParameter(angefragt=15, parameter={"patienten": [{"vorname": "Käthe"}]})
     zurueck = TeilParameter.from_dict(json.loads(json.dumps(tp.to_dict())))
     assert zurueck == tp
+
+
+# --- Nachgestellte Befunde -------------------------------------------------
+
+
+def test_katalogsumme_erfasst_vital_sign(gespeichert):
+    """Nachgestellt: `vital_sign` steuert Observation.category
+    (`vital-signs` gegen `laboratory`) und wirkt damit aufs Bundle. Eine
+    Aufzählung von Hand hatte es übersehen — das Bundle änderte sich, der
+    Fingerabdruck nicht, und der Befund schickte die Suche zu den
+    Vorlagen."""
+    from synthfhir.domain.codes import OBSERVATION_CODES
+
+    code = "4548-4"
+    alt = OBSERVATION_CODES[code]
+    vorher = aufz.katalog_pruefsumme()
+    try:
+        OBSERVATION_CODES[code] = replace(alt, vital_sign=not alt.vital_sign)
+        assert aufz.katalog_pruefsumme() != vorher
+        w = aufz.gib_wieder(aufz.lies(gespeichert))
+    finally:
+        OBSERVATION_CODES[code] = alt
+
+    assert not w.identisch
+    assert w.katalog_geaendert, "sonst zeigt der Befund in die falsche Richtung"
+
+
+@pytest.mark.parametrize("feld,wert", [
+    ("vital_sign", True), ("low", 0.1), ("high", 99.9),
+    ("unit", "andere"), ("unit_code", "xyz"), ("display", "Other"),
+])
+def test_jedes_feld_des_katalogs_zaehlt(feld, wert):
+    """Der Fingerabdruck läuft über alle Felder, nicht über eine Auswahl.
+    Beim nächsten neuen Katalogfeld wiederholte sich der Fehler sonst."""
+    from synthfhir.domain.codes import OBSERVATION_CODES
+
+    code = "4548-4"
+    alt = OBSERVATION_CODES[code]
+    vorher = aufz.katalog_pruefsumme()
+    try:
+        OBSERVATION_CODES[code] = replace(alt, **{feld: wert})
+        assert aufz.katalog_pruefsumme() != vorher, f"{feld} wird übersehen"
+    finally:
+        OBSERVATION_CODES[code] = alt
+
+
+def test_ohne_katalogsumme_wird_nichts_ueber_den_katalog_behauptet(lauf):
+    """Nachgestellt: Der Befund sagte „Der Katalog ist unverändert" —
+    über etwas, das nie geprüft wurde."""
+    ohne = aufz.Aufzeichnung(beschreibung="x", angefragt=30,
+                             teile=list(lauf.parameter),
+                             bundle_pruefsumme="0" * 64)
+    befund = aufz.gib_wieder(ohne).befund()
+    assert "keinen Katalog-Fingerabdruck" in befund
+    assert "Katalog ist unverändert" not in befund

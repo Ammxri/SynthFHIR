@@ -149,8 +149,12 @@ anderes Bundle. Dann sagt sie das:
     Der Katalog hat sich geändert — das ist die wahrscheinliche Ursache.
 ```
 
-Das Ergebnis wird trotzdem geliefert: Eine Abweichung ist ein Befund, kein
-Abbruch. Begründung in [ADR-006](docs/adr-006-reproduzierbarkeit.md).
+Das Ergebnis wird trotzdem geliefert — eine Abweichung ist ein Befund, kein
+Abbruch —, aber der **Rückgabewert ist dann 1**. Wofür die Wiedergabe da
+ist, muss auch der maschinenlesbare Kanal sagen, nicht nur stderr.
+
+Begründung und die Grenzen der Zusage in
+[ADR-006](docs/adr-006-reproduzierbarkeit.md).
 
 ### Bulk-Export als NDJSON
 

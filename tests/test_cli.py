@@ -332,3 +332,46 @@ def test_wiedergabe_kann_ndjson_schreiben(stub, tmp_path):
     assert (ziel / "Patient.ndjson").exists()
     m = json.loads((ziel / "manifest.json").read_text(encoding="utf-8"))
     assert "--wiedergeben" in m["request"], "die Herkunft darf nicht lügen"
+
+
+def test_abweichende_wiedergabe_gibt_eins_zurueck(stub, tmp_path):
+    """Nachgestellt: Die Wiedergabe meldete ABWEICHUNG auf stderr und gab
+    trotzdem 0 zurück. Der Rückgabewert ist der maschinenlesbare Kanal —
+    eine Prüfkette liefe darüber hinweg."""
+    from dataclasses import replace
+
+    from synthfhir.domain.codes import CONDITION_CODES
+
+    datei = tmp_path / "lauf.aufz.json"
+    cli.main(["30 Diabetikerinnen", "-n", "30", "-o", str(tmp_path / "a.json"),
+              "--aufzeichnen", str(datei)])
+
+    alt = CONDITION_CODES["44054006"]
+    try:
+        CONDITION_CODES["44054006"] = replace(alt, display_de="Anders")
+        rc = cli.main(["--wiedergeben", str(datei), "--still",
+                       "-o", str(tmp_path / "b.json")])
+    finally:
+        CONDITION_CODES["44054006"] = alt
+    assert rc == 1, "geliefert, aber nicht dasselbe"
+
+
+def test_identische_wiedergabe_gibt_null_zurueck(stub, tmp_path):
+    datei = tmp_path / "lauf.aufz.json"
+    cli.main(["30 Diabetikerinnen", "-n", "30", "-o", str(tmp_path / "a.json"),
+              "--aufzeichnen", str(datei)])
+    assert cli.main(["--wiedergeben", str(datei), "--still",
+                     "-o", str(tmp_path / "b.json")]) == 0
+
+
+def test_aufzeichnung_ueberlebt_einen_gescheiterten_ndjson_export(stub, tmp_path):
+    """Derselbe Fehler wie beim Bericht, nur teurer: Die Aufzeichnung ist
+    das Einzige, womit sich der Lauf wiederholen lässt."""
+    ziel = tmp_path / "export"
+    datei = tmp_path / "lauf.aufz.json"
+    cli.main(["30 Diabetikerinnen", "-n", "30", "--ndjson", str(ziel)])
+
+    rc = cli.main(["30 Diabetikerinnen", "-n", "30", "--ndjson", str(ziel),
+                   "--aufzeichnen", str(datei)])
+    assert rc == 2, "der Export ist gescheitert"
+    assert datei.exists(), "die Aufzeichnung ist trotzdem da"

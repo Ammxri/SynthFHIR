@@ -65,9 +65,20 @@ synthfhir "200 Patientinnen mit Typ-2-Diabetes" -n 200 --aufzeichnen lauf.aufz.j
 synthfhir --wiedergeben lauf.aufz.json -o kohorte.json
 ```
 
-Die Zusage in einem Satz: **Eine Wiedergabe liefert dasselbe Bundle wie der
-aufgezeichnete Lauf — byteweise —, und sie rechnet das bei jedem Abspielen
-nach.**
+Die Zusage in einem Satz: **Dieselbe Aufzeichnung, derselbe Katalog und
+dieselbe Programmversion ergeben dasselbe Bundle — und die Wiedergabe
+rechnet das bei jedem Abspielen nach.**
+
+Genauer, weil die Unterscheidung zählt: Die Prüfsumme läuft über eine
+kanonische Darstellung (`sort_keys`) und belegt damit **inhaltliche**
+Gleichheit, nicht Byte-Gleichheit der Datei. Dass auch die geschriebenen
+Dateien byteweise übereinstimmen, ist separat gemessen (siehe 3a) und folgt
+daraus, dass die Serialisierung mit festen Parametern deterministisch ist.
+Ohne `sort_keys` hinge die Prüfsumme an der Einfügereihenfolge der
+Schlüssel und meldete grundlos Abweichungen.
+
+Für den Modellaufruf selbst wird ausdrücklich **keine** Wiederholbarkeit
+zugesagt — weder mit noch ohne Seed.
 
 Vier Festlegungen:
 
@@ -166,6 +177,28 @@ Nachgestellte Abweichungen:
 
 ---
 
+## 3b. Nachträglich gefundene Fehler (2026-08-29)
+
+Eine gegnerische Durchsicht fand vier Fehler, alle nachgestellt, bevor sie
+behoben wurden:
+
+| Befund | Was passierte | Behebung |
+|---|---|---|
+| **Abweichende Wiedergabe gab 0 zurück** | Auf stderr stand `ABWEICHUNG`, der Rückgabewert meldete Erfolg. Eine Prüfkette wäre darüber hinweggelaufen — und genau dafür gibt es die Wiedergabe | Rückgabewert 1: „geliefert, aber nicht dasselbe" |
+| **Fingerabdruck übersah `vital_sign`** | Das Feld steuert `Observation.category`. Das Bundle änderte sich, der Fingerabdruck nicht — und der Befund sagte „Der Katalog ist unverändert" und schickte die Suche zu den Vorlagen | Fingerabdruck über **alle** Felder (`asdict`) statt über eine Aufzählung |
+| **Leerer Fingerabdruck wurde als „unverändert" gemeldet** | Eine Behauptung über etwas, das nie geprüft wurde | Sagt jetzt, dass sich nichts sagen lässt |
+| **Aufzeichnung ging bei NDJSON-Fehler verloren** | Derselbe Fehler wie zuvor beim Bericht, nur teurer: Die Aufzeichnung ist das Einzige, womit sich der Lauf wiederholen lässt | Aufgezeichnet wird vor dem Export |
+
+Der zweite ist der lehrreichste. Eine Aufzählung von Hand kann ein Feld
+übersehen; `asdict` kann es nicht. Beim nächsten neuen Katalogfeld hätte
+sich der Fehler sonst wiederholt — und er wäre besonders tückisch gewesen,
+weil die Abweichung *erkannt*, die Ursache aber falsch benannt wurde.
+
+Ein fünfter Punkt betraf keine Funktion, sondern eine Formulierung: „die
+Prüfsumme belegt Byte-Gleichheit" stimmt so nicht (siehe Abschnitt 2).
+
+---
+
 ## 4. Konsequenzen
 
 ### Positiv
@@ -205,6 +238,7 @@ Nachgestellte Abweichungen:
 | `system_fingerprint` als Signal für Backend-Wechsel | Wechselte bei fast jedem Aufruf. Ein Signal, das immer anschlägt, ist keines. |
 | Das fertige Bundle speichern statt der Parameter | Wäre kein Aufzeichnen, sondern Kopieren. Änderungen am Katalog oder an den Vorlagen blieben unsichtbar, statt aufzufallen. |
 | Prüfsumme weglassen | Dann wäre die Zusage eine Behauptung. Der Selbsttest ist der Grund, warum man ihr trauen kann. |
+| Eine Versionsnummer des Werkzeugs mitführen | Klingt richtig, trägt hier aber nichts: Die Projektversion steht seit Beginn auf `0.1.0` und wird nicht gepflegt. Ein Feld, das sich nie ändert, beantwortet keine Frage. Die Bundle-Prüfsumme merkt eine Codeänderung ohnehin — sie kann sie nur nicht benennen. |
 | Aufzeichnung erzwingen, wenn die Prüfsumme abweicht | Ein Befund ist kein Fehler. Das Ergebnis ist gültiges FHIR; wer damit arbeiten will, soll es können — er muss es nur wissen. |
 
 ---
