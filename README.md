@@ -40,6 +40,7 @@ src/      das Produkt (Phase 1)
     prompts.py    Freitext → Parameter
     generation.py die Kette bis zum Bundle
     kohorte.py    große Kohorten in Teilen (Phase 2)
+    ndjson.py     Bulk-Export nach FHIR Bulk Data (Phase 2)
     cli.py        Kommandozeile
     web/          Oberfläche (FastAPI, serverseitig gerendert)
 tests/    Tests des Produkts
@@ -83,6 +84,8 @@ saubere Datei.
 | `--teilgroesse` | Patienten je LLM-Aufruf (Standard 15) |
 | `--versuche` | Versuche je Teil, bevor er als ausgefallen gilt (Standard 2) |
 | `--pause` | Wartezeit zwischen den Teilen, in Sekunden |
+| `--ndjson` | zusätzlich als NDJSON in ein Verzeichnis schreiben |
+| `--ueberschreiben` | vorhandene NDJSON-Dateien dort ersetzen |
 | `--bericht` | Messwerte des Laufs als JSON |
 | `--still` | kein Fortschritt auf stderr |
 
@@ -93,6 +96,42 @@ Kontingent von 8000 Token je Minute also etwa ein Teil pro Minute. Ein
 ungetakteter Lauf über 200 Patienten lieferte am 2026-08-29 genau vier
 Teile, dann stand die Ratengrenze. Mit `--pause 60` läuft derselbe Auftrag
 durch, dauert aber entsprechend lange.
+
+### Bulk-Export als NDJSON
+
+Ein Bundle ist zum Ansehen gut und zum Laden schlecht. Wer eine Kohorte in
+ein System bringen will, braucht das Format, das Import-Werkzeuge erwarten:
+
+```bash
+synthfhir "200 Patientinnen mit Typ-2-Diabetes" -n 200 --pause 60 --ndjson ./export
+```
+
+Das ergibt eine Datei je Ressourcentyp plus ein `manifest.json` in der Form
+der Bulk-Data-Abschlussantwort:
+
+```
+export/
+  Patient.ndjson       200 Ressourcen
+  Condition.ndjson     220 Ressourcen
+  Observation.ndjson   600 Ressourcen
+  manifest.json        transactionTime, output[] mit type, url, count, fileSize
+```
+
+Zwei Dinge, die nicht offensichtlich sind:
+
+**Das Manifest nennt die referenzierten Typen zuerst.** Wer die Dateien
+alphabetisch abarbeitet, lädt `Condition.ndjson` vor `Patient.ndjson` —
+also Diagnosen, deren Patienten es noch nicht gibt. HAPI nimmt das hin
+(nachgeprüft), Server mit `enforceReferentialIntegrityOnWrite` nicht.
+
+Verlassen darf man sich darauf allerdings nicht: Große Import-Werkzeuge
+verarbeiten die Dateien parallel und sichern gar keine Reihenfolge zu. Die
+Sortierung hilft dem, der sequentiell lädt, und kostet sonst nichts — eine
+Garantie ist sie nicht.
+
+**Ein belegtes Zielverzeichnis wird verweigert.** Läge dort noch ein
+`Encounter.ndjson` eines früheren Laufs, lüde der Empfänger es mit.
+`--ueberschreiben` hebt die Sperre auf und räumt dabei die Reste weg.
 
 Der Spike ist **nicht** das Produkt. Er hat eine Frage beantwortet und bleibt
 nur als Nachweis und als Messkette für eine mögliche Neuprüfung erhalten.
@@ -111,6 +150,7 @@ in dieser Reihenfolge:
 | [ADR-002](docs/adr-002-validierungsarchitektur.md) | Wo und womit die Validitätsgarantie eingelöst wird |
 | [ADR-003](docs/adr-003-lokalisierung.md) | Wie weit die deutsche Lokalisierung geht |
 | [ADR-004](docs/adr-004-grosse-kohorten.md) | Wie große Kohorten in Teilen entstehen, ohne zu zerbrechen |
+| [ADR-005](docs/adr-005-ndjson-export.md) | Warum der Bulk-Export ein Verzeichnis ist und kein Strom |
 | [Konzepte](docs/konzepte.md) | Die FHIR-Grundlagen dahinter, ausführlich erklärt |
 
 ### Die tragenden Entscheidungen in drei Sätzen

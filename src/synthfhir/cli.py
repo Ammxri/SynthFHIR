@@ -25,6 +25,7 @@ from dotenv import load_dotenv
 
 from .kohorte import TEILGROESSE, Kohortenergebnis, generiere_kohorte
 from .llm import LLMFehler, client_aus_umgebung
+from .ndjson import MIME_TYP, Exportergebnis, ExportFehler, schreibe_ndjson
 
 HINWEIS = (
     "Synthetische Testdaten. Nicht für klinische Nutzung, "
@@ -41,6 +42,7 @@ def baue_parser() -> argparse.ArgumentParser:
             "Beispiele:\n"
             '  synthfhir "40 Patientinnen mit Asthma" -n 40 -o asthma.json\n'
             '  synthfhir "200 Diabetiker über 60" -n 200 --teilgroesse 20 --bericht b.json\n'
+            '  synthfhir "50 Patienten mit COPD" -n 50 --ndjson ./export --pause 60\n'
         ),
     )
     p.add_argument("beschreibung", help="Was erzeugt werden soll, in Alltagssprache.")
@@ -57,6 +59,14 @@ def baue_parser() -> argparse.ArgumentParser:
                         "Kontingent: Anbieter rechnen max_tokens in die "
                         "Anfragegröße ein, bei 8000 Token/Minute trägt das "
                         "etwa einen Teil pro Minute (--pause 60).")
+    p.add_argument("--ndjson", type=Path, metavar="VERZEICHNIS",
+                   help="Zusätzlich als NDJSON nach FHIR Bulk Data ausgeben: "
+                        "eine Datei je Ressourcentyp plus manifest.json. Das "
+                        "Format, das Import-Werkzeuge erwarten.")
+    p.add_argument("--ueberschreiben", action="store_true",
+                   help="Vorhandene NDJSON-Dateien im Zielverzeichnis ersetzen. "
+                        "Ohne diesen Schalter bricht der Export ab, damit Reste "
+                        "eines früheren Laufs nicht mitgeladen werden.")
     p.add_argument("--bericht", type=Path,
                    help="Zieldatei für die Messwerte des Laufs als JSON.")
     p.add_argument("--still", action="store_true",
@@ -104,13 +114,32 @@ def main(argv: list[str] | None = None) -> int:
         print(_zusammenfassung(ergebnis), file=sys.stderr)
 
     if ergebnis.bundle is not None:
-        text = json.dumps(ergebnis.bundle, ensure_ascii=False, indent=2)
         if args.ausgabe:
-            args.ausgabe.write_text(text + "\n", encoding="utf-8")
+            args.ausgabe.write_text(
+                json.dumps(ergebnis.bundle, ensure_ascii=False, indent=2) + "\n",
+                encoding="utf-8",
+            )
             if not args.still:
                 print(f"\nBundle: {args.ausgabe}", file=sys.stderr)
-        else:
-            print(text)
+        elif not args.ndjson:
+            # Nur wenn gar kein Ziel genannt ist, geht das Bundle auf stdout.
+            # Sonst schriebe `--ndjson ./export` nebenbei ein Megabyte in die
+            # Konsole.
+            print(json.dumps(ergebnis.bundle, ensure_ascii=False, indent=2))
+
+    if args.ndjson:
+        try:
+            export = schreibe_ndjson(
+                ergebnis.ressourcen,
+                args.ndjson,
+                ueberschreiben=args.ueberschreiben,
+                anfrage=f"synthfhir {args.beschreibung!r} -n {args.anzahl}",
+            )
+        except ExportFehler as exc:
+            print(f"NDJSON-Export fehlgeschlagen: {exc}", file=sys.stderr)
+            return 2
+        if not args.still:
+            print(_export_zeilen(export), file=sys.stderr)
 
     if args.bericht:
         args.bericht.write_text(
@@ -123,6 +152,19 @@ def main(argv: list[str] | None = None) -> int:
     if not ergebnis.ressourcen:
         return 2
     return 0 if ergebnis.fertig and ergebnis.mengentreue == 1.0 else 1
+
+
+def _export_zeilen(export: Exportergebnis) -> str:
+    zeilen = [f"\nNDJSON: {export.verzeichnis}"]
+    for d in export.dateien:
+        zeilen.append(
+            f"  {d.pfad.name:<22} {d.anzahl:>6} Ressourcen  {d.bytes:>10,} Bytes"
+        )
+    if export.manifest:
+        zeilen.append(f"  {export.manifest.name:<22} {MIME_TYP}")
+    for hinweis in export.entfernt:
+        zeilen.append(f"  entfernt: {hinweis}")
+    return "\n".join(zeilen)
 
 
 def _zusammenfassung(e: Kohortenergebnis) -> str:

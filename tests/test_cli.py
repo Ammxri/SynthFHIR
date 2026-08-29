@@ -145,3 +145,87 @@ def test_pause_wird_durchgereicht(stub, tmp_path, keine_wartezeit):
     cli.main(["60 Diabetikerinnen", "-n", "60", "-o", str(tmp_path / "k.json"),
               "--pause", "60"])
     assert keine_wartezeit == [60, 60, 60]
+
+
+# --- NDJSON-Export ---------------------------------------------------------
+
+
+def test_ndjson_schreibt_eine_datei_je_typ(stub, tmp_path, capsys):
+    ziel = tmp_path / "export"
+    rc = cli.main(["30 Diabetikerinnen", "-n", "30", "--ndjson", str(ziel)])
+    assert rc == 0
+    assert {p.name for p in ziel.glob("*.ndjson")} == {
+        "Patient.ndjson", "Condition.ndjson", "Observation.ndjson"
+    }
+    assert (ziel / "manifest.json").exists()
+    assert "NDJSON:" in capsys.readouterr().err
+
+
+def test_ndjson_unterdrueckt_die_bundle_ausgabe_auf_stdout(stub, tmp_path, capsys):
+    """Ohne das schriebe `--ndjson ./export` nebenbei ein Megabyte in die
+    Konsole — die man dann auch noch versehentlich umleiten könnte."""
+    cli.main(["30 Diabetikerinnen", "-n", "30", "--ndjson", str(tmp_path / "e")])
+    assert capsys.readouterr().out == ""
+
+
+def test_ndjson_und_bundle_zugleich(stub, tmp_path, capsys):
+    ziel = tmp_path / "export"
+    bundle = tmp_path / "k.json"
+    cli.main(["30 Diabetikerinnen", "-n", "30", "-o", str(bundle),
+              "--ndjson", str(ziel)])
+    assert bundle.exists() and (ziel / "Patient.ndjson").exists()
+    assert capsys.readouterr().out == ""
+
+
+def test_ndjson_enthaelt_alle_ressourcen_des_bundles(stub, tmp_path):
+    """Die beiden Ausgabewege müssen dasselbe enthalten."""
+    import json as _json
+
+    from synthfhir.ndjson import lies_ndjson
+
+    ziel = tmp_path / "export"
+    bundle = tmp_path / "k.json"
+    cli.main(["30 Diabetikerinnen", "-n", "30", "-o", str(bundle),
+              "--ndjson", str(ziel)])
+    aus_bundle = [e["resource"] for e in
+                  _json.loads(bundle.read_text(encoding="utf-8"))["entry"]]
+    aus_ndjson = [r for p in ziel.glob("*.ndjson") for r in lies_ndjson(p)]
+    schluessel = lambda rs: sorted(_json.dumps(r, sort_keys=True) for r in rs)
+    assert schluessel(aus_ndjson) == schluessel(aus_bundle)
+
+
+def test_ndjson_verweigert_belegtes_verzeichnis_mit_rueckgabewert_zwei(
+    stub, tmp_path, capsys
+):
+    ziel = tmp_path / "export"
+    cli.main(["30 Diabetikerinnen", "-n", "30", "--ndjson", str(ziel)])
+    rc = cli.main(["30 Diabetikerinnen", "-n", "30", "--ndjson", str(ziel)])
+    assert rc == 2
+    assert "NDJSON-Export fehlgeschlagen" in capsys.readouterr().err
+
+
+def test_ueberschreiben_hebt_die_sperre_auf(stub, tmp_path):
+    ziel = tmp_path / "export"
+    cli.main(["30 Diabetikerinnen", "-n", "30", "--ndjson", str(ziel)])
+    rc = cli.main(["30 Diabetikerinnen", "-n", "30", "--ndjson", str(ziel),
+                   "--ueberschreiben"])
+    assert rc == 0
+
+
+def test_ndjson_traegt_auch_eine_unvollstaendige_kohorte(monkeypatch, tmp_path):
+    """Was geliefert wurde, wird exportiert — die Lücke steht in der
+    Zusammenfassung, nicht in einer verweigerten Datei."""
+    monkeypatch.setattr(cli, "client_aus_umgebung", lambda: TeilClient(faellt_aus={2}))
+    monkeypatch.setattr(cli, "load_dotenv", lambda *a, **k: None)
+    ziel = tmp_path / "export"
+    rc = cli.main(["45 Diabetikerinnen", "-n", "45", "--ndjson", str(ziel)])
+    assert rc == 1, "Lücke bleibt sichtbar"
+    from synthfhir.ndjson import lies_ndjson
+    assert len(lies_ndjson(ziel / "Patient.ndjson")) == 30
+
+
+def test_still_schweigt_auch_beim_ndjson_export(stub, tmp_path, capsys):
+    cli.main(["20 Diabetikerinnen", "-n", "20", "--ndjson", str(tmp_path / "e"),
+              "--still"])
+    ausgabe = capsys.readouterr()
+    assert ausgabe.err == "" and ausgabe.out == ""
