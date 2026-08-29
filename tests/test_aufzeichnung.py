@@ -349,3 +349,39 @@ def test_ohne_katalogsumme_wird_nichts_ueber_den_katalog_behauptet(lauf):
     befund = aufz.gib_wieder(ohne).befund()
     assert "keinen Katalog-Fingerabdruck" in befund
     assert "Katalog ist unverändert" not in befund
+
+
+def test_kein_katalog_fehlt_im_verzeichnis():
+    """Der Fingerabdruck läuft über `KATALOGE`. Käme eine Sammlung hinzu
+    und stünde sie nicht dort, bliebe ihre Änderung unbemerkt — derselbe
+    Fehler wie beim übersehenen `vital_sign`, nur eine Ebene höher.
+
+    Deshalb sucht dieser Test die Sammlungen selbst und vergleicht.
+    """
+    from synthfhir.domain import codes as k
+
+    gefunden = {
+        name for name, wert in vars(k).items()
+        if name.isupper() and isinstance(wert, dict) and wert
+        and all(hasattr(e, "code") for e in wert.values())
+    }
+    verzeichnet = {id(v) for v in k.KATALOGE.values()}
+    fehlend = {n for n in gefunden if id(getattr(k, n)) not in verzeichnet}
+    assert not fehlend, f"nicht in KATALOGE: {sorted(fehlend)}"
+
+
+def test_jeder_katalog_faellt_im_fingerabdruck_auf():
+    """Nicht nur verzeichnet, sondern auch wirksam."""
+    from dataclasses import replace
+
+    from synthfhir.domain import codes as k
+
+    for name, katalog in k.KATALOGE.items():
+        schluessel = next(iter(katalog))
+        alt = katalog[schluessel]
+        vorher = aufz.katalog_pruefsumme()
+        try:
+            katalog[schluessel] = replace(alt, display="Geändert für den Test")
+            assert aufz.katalog_pruefsumme() != vorher, f"{name} wird übersehen"
+        finally:
+            katalog[schluessel] = alt

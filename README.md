@@ -23,7 +23,7 @@ Produkt.
 |---|---|---|
 | **0 — Spike** | Architekturentscheidung mit Messdaten | ✅ abgeschlossen 2026-08-28 |
 | **1 — MVP** | Eingabe, Generierung, Validierung, Lokalisierung, Export, Veröffentlichung | ✅ veröffentlicht 2026-08-29 |
-| **2 — v1.x** | Weitere Ressourcentypen, Bulk-Export, Seed, größere Kohorten | ⏳ Gate erfüllt 2026-08-29 (200 Patienten, 1020/1020 gültig gegen HAPI) |
+| **2 — v1.x** | Weitere Ressourcentypen, Bulk-Export, Seed, größere Kohorten | ⏳ 4 von 5 — Gate erfüllt 2026-08-29 (200 Patienten, 1020/1020 gültig gegen HAPI); seit 2026-08-30 fünf Ressourcentypen |
 | 3 — Vision | Deutsche Profile (KBV/ISiK), API, weitere Standards | langfristig |
 
 ---
@@ -211,6 +211,7 @@ in dieser Reihenfolge:
 | [ADR-004](docs/adr-004-grosse-kohorten.md) | Wie große Kohorten in Teilen entstehen, ohne zu zerbrechen |
 | [ADR-005](docs/adr-005-ndjson-export.md) | Warum der Bulk-Export ein Verzeichnis ist und kein Strom |
 | [ADR-006](docs/adr-006-reproduzierbarkeit.md) | Warum es kein `--seed` gibt, sondern Aufzeichnungen |
+| [ADR-007](docs/adr-007-weitere-ressourcentypen.md) | Encounter und MedicationStatement — und was sie an Token kosten |
 | [Konzepte](docs/konzepte.md) | Die FHIR-Grundlagen dahinter, ausführlich erklärt |
 
 ### Die tragenden Entscheidungen in drei Sätzen

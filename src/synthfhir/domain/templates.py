@@ -19,6 +19,19 @@ Kurzfassung als Erinnerung beim Lesen des Codes:
                Teile, darunter `unit` (Anzeige) und `code` (UCUM) — die
                sind nicht dasselbe.
 
+Dazu die beiden Typen der Phase 2 (ADR-007):
+
+  Encounter    `status` und `class` sind 1..1. **`class` ist ein `Coding`,
+               kein CodeableConcept** — der Unterschied ist im JSON fast
+               unsichtbar und von HAPI nachgeprüft.
+  Medication-  `status`, `medication[x]` und `subject` sind Pflicht.
+  Statement    `medication[x]` ist ein choice type; hier immer die
+               CodeableConcept-Ausprägung.
+
+Bei beiden neuen Typen setzt der Code den `status`. Gemessen: Ein
+erfundener Wert kommt durch die Laufzeitprüfung und wird erst von HAPI
+abgewiesen — `fhir.resources` erzwingt required bindings nicht (ADR-002).
+
 Neu gegenüber der Phase 0 (ADR-003): `Condition.code` trägt SNOMED CT und
 ICD-10-GM nebeneinander, und die Anzeigetexte sind deutsch.
 """
@@ -30,12 +43,18 @@ from dataclasses import dataclass, field
 
 from .codes import (
     CONDITION_CODES,
+    ENCOUNTER_CLASSES,
+    ENCOUNTER_STATUS,
     ICD10GM_SYSTEM,
     LOINC_SYSTEM,
+    MEDICATION_CODES,
+    MEDICATION_STATUS,
     OBSERVATION_CODES,
     SNOMED_SYSTEM,
     UCUM_SYSTEM,
     ConditionCode,
+    EncounterClass,
+    MedicationCode,
     ObservationCode,
 )
 
@@ -257,6 +276,106 @@ def baue_observation(
     }
 
 
+def _medikamentencode(
+    wert: object, index: int, beanstandungen: list[Beanstandung]
+) -> MedicationCode:
+    code = str(wert).strip() if wert is not None else ""
+    if code in MEDICATION_CODES:
+        return MEDICATION_CODES[code]
+    ersatz = list(MEDICATION_CODES.values())[index % len(MEDICATION_CODES)]
+    beanstandungen.append(
+        Beanstandung(
+            "erfundener_medikamentencode",
+            f"Wirkstoffcode {code!r} nicht im Katalog -> ersetzt durch {ersatz.code}",
+        )
+    )
+    return ersatz
+
+
+def _begegnungsart(
+    wert: object, beanstandungen: list[Beanstandung]
+) -> EncounterClass:
+    code = str(wert).strip().upper() if wert is not None else ""
+    if code in ENCOUNTER_CLASSES:
+        return ENCOUNTER_CLASSES[code]
+    ersatz = ENCOUNTER_CLASSES["AMB"]
+    if code:
+        beanstandungen.append(
+            Beanstandung(
+                "erfundene_begegnungsart",
+                f"Begegnungsart {code!r} nicht im Katalog -> ersetzt durch {ersatz.code}",
+            )
+        )
+    return ersatz
+
+
+def baue_encounter(
+    params: dict, patient_index: int, index: int, beanstandungen: list[Beanstandung]
+) -> dict:
+    """Encounter. Nur `status` und `class` sind Pflicht (je 1..1).
+
+    Beide setzt der Code, nicht das Modell, und das ist keine Vorsicht,
+    sondern gemessen: Ein `status` von „abgeschlossen" kommt durch die
+    Laufzeitprüfung und wird erst von HAPI abgewiesen — die Bindung ist
+    verpflichtend, aber `fhir.resources` erzwingt required bindings nicht
+    (ADR-002).
+
+    **`class` ist ein `Coding`, kein `CodeableConcept`.** Nachgeprüft:
+    HAPI antwortet auf ein `{"coding": [...]}` mit „Unrecognized property
+    'coding'". Der Unterschied ist im JSON unsichtbar und im Editor
+    unauffällig.
+
+    `type` bleibt leer. Es wäre schmückend, verlangte aber SNOMED-Codes für
+    Begegnungsarten — und jeder davon müsste einzeln an der Primärquelle
+    geprüft werden. Ein ungeprüfter Code ist teurer als ein fehlendes
+    optionales Feld.
+    """
+    art = _begegnungsart(params.get("art"), beanstandungen)
+    datum = _datum(params.get("datum"), "2024-01-01", beanstandungen, "datum")
+    return {
+        "resourceType": "Encounter",
+        "id": f"tmp-enc-{index}",
+        "status": ENCOUNTER_STATUS,
+        "class": {"system": art.system, "code": art.code, "display": art.display},
+        "subject": {"reference": f"Patient/tmp-pat-{patient_index}"},
+        "period": {"start": datum, "end": datum},
+    }
+
+
+def baue_medicationstatement(
+    params: dict, patient_index: int, index: int, beanstandungen: list[Beanstandung]
+) -> dict:
+    """MedicationStatement. Pflicht sind `status`, `medication[x]` und
+    `subject`.
+
+    `medication[x]` ist ein choice type: Entweder ein CodeableConcept oder
+    ein Verweis auf eine Medication-Ressource. Hier das CodeableConcept —
+    ein Verweis verlangte einen sechsten Ressourcentyp, ohne dass die
+    Testdaten dadurch etwas gewönnen.
+
+    Der ATC-Code kommt aus dem Katalog, nie vom Modell. Weder die
+    Laufzeitprüfung noch HAPI merken einen falschen: HAPI meldet
+    ausdrücklich `CodeSystem is unknown and can't be validated`.
+    """
+    spec = _medikamentencode(params.get("code"), index, beanstandungen)
+    return {
+        "resourceType": "MedicationStatement",
+        "id": f"tmp-med-{index}",
+        "status": MEDICATION_STATUS,
+        "medicationCodeableConcept": {
+            "coding": [
+                {"system": spec.system, "code": spec.code, "display": spec.display}
+            ],
+            "text": spec.display_de,
+        },
+        "subject": {"reference": f"Patient/tmp-pat-{patient_index}"},
+        "effectiveDateTime": _datum(
+            params.get("beginn"), "2023-01-01", beanstandungen, "beginn"
+        ),
+        "dosage": [{"text": spec.dosierung}],
+    }
+
+
 def baue_aus_parametern(
     parameter: dict,
     erwartet: dict[str, int] | None = None,
@@ -293,7 +412,7 @@ def baue_aus_parametern(
             Beanstandung("mengenabweichung", f"{len(patienten)} Patienten geliefert, {soll_p} erwartet")
         )
 
-    cond_index = obs_index = index_versatz
+    cond_index = obs_index = enc_index = med_index = index_versatz
     for roh_index, roh in enumerate(patienten):
         p_index = index_versatz + roh_index
         if not isinstance(roh, dict):
@@ -301,6 +420,19 @@ def baue_aus_parametern(
             continue
 
         ergebnis.ressourcen.append(baue_patient(roh, p_index, b))
+
+        # Begegnungen zuerst: Diagnosen und Messwerte dürfen auf sie
+        # verweisen, und ein Verweis nach vorn ist leichter zu prüfen als
+        # einer nach hinten — auch wenn `assign_ids` beide auflöst.
+        begegnungen = roh.get("begegnungen") if isinstance(roh.get("begegnungen"), list) else []
+        erste_begegnung: str | None = None
+        for eintrag in begegnungen:
+            ergebnis.ressourcen.append(
+                baue_encounter(eintrag if isinstance(eintrag, dict) else {}, p_index, enc_index, b)
+            )
+            if erste_begegnung is None:
+                erste_begegnung = f"Encounter/tmp-enc-{enc_index}"
+            enc_index += 1
 
         diagnosen = roh.get("diagnosen") if isinstance(roh.get("diagnosen"), list) else []
         soll_d = erwartet.get("diagnosen_je_patient")
@@ -312,9 +444,16 @@ def baue_aus_parametern(
                 )
             )
         for eintrag in diagnosen:
-            ergebnis.ressourcen.append(
-                baue_condition(eintrag if isinstance(eintrag, dict) else {}, p_index, cond_index, b)
+            cond = baue_condition(
+                eintrag if isinstance(eintrag, dict) else {}, p_index, cond_index, b
             )
+            # Nur setzen, wenn es die Begegnung wirklich gibt. Ein Verweis
+            # ins Leere wäre strukturell einwandfrei und trotzdem falsch —
+            # genau die Fehlerklasse, gegen die die Integritätsprüfung
+            # existiert.
+            if erste_begegnung:
+                cond["encounter"] = {"reference": erste_begegnung}
+            ergebnis.ressourcen.append(cond)
             cond_index += 1
 
         messwerte = roh.get("messwerte") if isinstance(roh.get("messwerte"), list) else []
@@ -327,10 +466,22 @@ def baue_aus_parametern(
                 )
             )
         for eintrag in messwerte:
-            ergebnis.ressourcen.append(
-                baue_observation(eintrag if isinstance(eintrag, dict) else {}, p_index, obs_index, b)
+            obs = baue_observation(
+                eintrag if isinstance(eintrag, dict) else {}, p_index, obs_index, b
             )
+            if erste_begegnung:
+                obs["encounter"] = {"reference": erste_begegnung}
+            ergebnis.ressourcen.append(obs)
             obs_index += 1
+
+        medikamente = roh.get("medikamente") if isinstance(roh.get("medikamente"), list) else []
+        for eintrag in medikamente:
+            ergebnis.ressourcen.append(
+                baue_medicationstatement(
+                    eintrag if isinstance(eintrag, dict) else {}, p_index, med_index, b
+                )
+            )
+            med_index += 1
 
     return ergebnis
 

@@ -47,10 +47,23 @@ from .parsing import JsonExtractionError, extract_json
 from .prompts import baue_teil_prompt
 from .validation import Pruefergebnis, pruefe_alle
 
-# Voreinstellung je Teil. Bewusst unter den gemessenen 25: Dort lagen wir
-# bei 84,9 % der Token-Obergrenze, und bei mehr als zwei Messwerten je
-# Patient reißt es. 15 lässt Luft für Patienten mit mehreren Diagnosen.
-TEILGROESSE = 15
+# Voreinstellung je Teil, hergeleitet statt geraten. Gemessen am 2026-08-30,
+# nachdem Encounter und MedicationStatement hinzukamen:
+#
+#   Ausgabe je Patient          504 Token   (vorher rund 276 mit drei Typen)
+#   max_tokens im Gratistarif  4800         (8000/Minute minus 3016 Prompt)
+#   ergibt rechnerisch            9,5 Patienten
+#   gewählt mit Reserve           8         — Patienten mit mehreren
+#                                             Diagnosen kosten mehr
+#
+# Der Wert stand vorher auf 15 und trug drei Ressourcentypen. Genau diese
+# Abhängigkeit hatte ADR-004 als offenen Punkt vermerkt: „Ob die Teilgröße
+# von 15 auch bei Ressourcentypen jenseits der heutigen drei trägt." Sie
+# trug nicht — der erste Lauf nach der Erweiterung scheiterte an HTTP 413.
+#
+# Wer ein größeres Kontingent hat, setzt `teilgroesse` höher: Die Grenze ist
+# der Tarif, nicht das Modell.
+TEILGROESSE = 8
 
 # Wartezeit zwischen zwei Versuchen desselben Teils. Ohne sie ist der zweite
 # Versuch bei den beiden häufigsten Ursachen sinnlos: Eine Ratengrenze steht

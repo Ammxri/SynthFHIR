@@ -54,7 +54,16 @@ from dataclasses import dataclass, field
 from typing import Any
 
 # Ressourcen, die laut Scope zwingend auf einen Patienten verweisen müssen.
-PATIENT_LINKED_TYPES = ("Condition", "Observation")
+# Typen, die ohne Patientenbezug sinnlos sind. Encounter und
+# MedicationStatement gehören dazu: Eine Begegnung ohne Patient ist keine,
+# und eine Medikationsangabe ohne Patient sagt nicht, wer das Mittel nimmt.
+# In FHIR R4 ist `subject` bei beiden ohnehin Pflicht (1..1).
+PATIENT_LINKED_TYPES = (
+    "Condition",
+    "Observation",
+    "Encounter",
+    "MedicationStatement",
+)
 
 _TYPE_ID_RE = re.compile(r"^([A-Z][A-Za-z]+)/([A-Za-z0-9\-.]{1,64})$")
 _URL_TAIL_RE = re.compile(r"(?:^|/)([A-Z][A-Za-z]+)/([A-Za-z0-9\-.]{1,64})$")

@@ -41,7 +41,7 @@ def stub(monkeypatch):
 
 
 def test_rueckgabewert_null_bei_vollstaendiger_kohorte(stub, tmp_path, capsys):
-    rc = cli.main(["30 Diabetikerinnen", "-n", "30", "-o", str(tmp_path / "k.json")])
+    rc = cli.main(["30 Diabetikerinnen", "-n", "30", "--teilgroesse", "15", "-o", str(tmp_path / "k.json")])
     assert rc == 0
 
 
@@ -49,7 +49,7 @@ def test_rueckgabewert_eins_wenn_patienten_fehlen(monkeypatch, tmp_path):
     """Eine Lücke ist kein Erfolg — auch wenn das Gelieferte valide ist."""
     monkeypatch.setattr(cli, "client_aus_umgebung", lambda: TeilClient(faellt_aus={2}))
     monkeypatch.setattr(cli, "load_dotenv", lambda *a, **k: None)
-    rc = cli.main(["45 Diabetikerinnen", "-n", "45", "-o", str(tmp_path / "k.json")])
+    rc = cli.main(["45 Diabetikerinnen", "-n", "45", "--teilgroesse", "15", "-o", str(tmp_path / "k.json")])
     assert rc == 1
 
 
@@ -57,7 +57,7 @@ def test_rueckgabewert_zwei_wenn_nichts_entsteht(monkeypatch, tmp_path):
     monkeypatch.setattr(cli, "client_aus_umgebung",
                         lambda: TeilClient(faellt_aus={1, 2, 3}))
     monkeypatch.setattr(cli, "load_dotenv", lambda *a, **k: None)
-    rc = cli.main(["45 Diabetikerinnen", "-n", "45", "-o", str(tmp_path / "k.json")])
+    rc = cli.main(["45 Diabetikerinnen", "-n", "45", "--teilgroesse", "15", "-o", str(tmp_path / "k.json")])
     assert rc == 2
 
 
@@ -87,7 +87,7 @@ def test_datei_statt_stdout(stub, tmp_path, capsys):
 
 def test_bericht_enthaelt_die_messwerte(stub, tmp_path):
     bericht = tmp_path / "b.json"
-    cli.main(["30 Diabetikerinnen", "-n", "30", "-o", str(tmp_path / "k.json"),
+    cli.main(["30 Diabetikerinnen", "-n", "30", "--teilgroesse", "15", "-o", str(tmp_path / "k.json"),
               "--bericht", str(bericht)])
     daten = json.loads(bericht.read_text(encoding="utf-8"))
     assert daten["patienten"] == 30
@@ -101,7 +101,7 @@ def test_zusammenfassung_benennt_den_ausgefallenen_teil(monkeypatch, tmp_path, c
     """Wer nur auf die Ausgabe schaut, muss die Lücke sehen."""
     monkeypatch.setattr(cli, "client_aus_umgebung", lambda: TeilClient(faellt_aus={2}))
     monkeypatch.setattr(cli, "load_dotenv", lambda *a, **k: None)
-    cli.main(["45 Diabetikerinnen", "-n", "45", "-o", str(tmp_path / "k.json")])
+    cli.main(["45 Diabetikerinnen", "-n", "45", "--teilgroesse", "15", "-o", str(tmp_path / "k.json")])
     err = capsys.readouterr().err
     assert "30 von 45" in err
     assert "66.7%" in err
@@ -142,7 +142,7 @@ def test_fehlender_schluessel_bricht_sauber_ab(monkeypatch, capsys):
 
 
 def test_pause_wird_durchgereicht(stub, tmp_path, keine_wartezeit):
-    cli.main(["60 Diabetikerinnen", "-n", "60", "-o", str(tmp_path / "k.json"),
+    cli.main(["60 Diabetikerinnen", "-n", "60", "--teilgroesse", "15", "-o", str(tmp_path / "k.json"),
               "--pause", "60"])
     assert keine_wartezeit == [60, 60, 60]
 
@@ -152,7 +152,7 @@ def test_pause_wird_durchgereicht(stub, tmp_path, keine_wartezeit):
 
 def test_ndjson_schreibt_eine_datei_je_typ(stub, tmp_path, capsys):
     ziel = tmp_path / "export"
-    rc = cli.main(["30 Diabetikerinnen", "-n", "30", "--ndjson", str(ziel)])
+    rc = cli.main(["30 Diabetikerinnen", "-n", "30", "--teilgroesse", "15", "--ndjson", str(ziel)])
     assert rc == 0
     assert {p.name for p in ziel.glob("*.ndjson")} == {
         "Patient.ndjson", "Condition.ndjson", "Observation.ndjson"
@@ -164,14 +164,14 @@ def test_ndjson_schreibt_eine_datei_je_typ(stub, tmp_path, capsys):
 def test_ndjson_unterdrueckt_die_bundle_ausgabe_auf_stdout(stub, tmp_path, capsys):
     """Ohne das schriebe `--ndjson ./export` nebenbei ein Megabyte in die
     Konsole — die man dann auch noch versehentlich umleiten könnte."""
-    cli.main(["30 Diabetikerinnen", "-n", "30", "--ndjson", str(tmp_path / "e")])
+    cli.main(["30 Diabetikerinnen", "-n", "30", "--teilgroesse", "15", "--ndjson", str(tmp_path / "e")])
     assert capsys.readouterr().out == ""
 
 
 def test_ndjson_und_bundle_zugleich(stub, tmp_path, capsys):
     ziel = tmp_path / "export"
     bundle = tmp_path / "k.json"
-    cli.main(["30 Diabetikerinnen", "-n", "30", "-o", str(bundle),
+    cli.main(["30 Diabetikerinnen", "-n", "30", "--teilgroesse", "15", "-o", str(bundle),
               "--ndjson", str(ziel)])
     assert bundle.exists() and (ziel / "Patient.ndjson").exists()
     assert capsys.readouterr().out == ""
@@ -185,7 +185,7 @@ def test_ndjson_enthaelt_alle_ressourcen_des_bundles(stub, tmp_path):
 
     ziel = tmp_path / "export"
     bundle = tmp_path / "k.json"
-    cli.main(["30 Diabetikerinnen", "-n", "30", "-o", str(bundle),
+    cli.main(["30 Diabetikerinnen", "-n", "30", "--teilgroesse", "15", "-o", str(bundle),
               "--ndjson", str(ziel)])
     aus_bundle = [e["resource"] for e in
                   _json.loads(bundle.read_text(encoding="utf-8"))["entry"]]
@@ -198,16 +198,16 @@ def test_ndjson_verweigert_belegtes_verzeichnis_mit_rueckgabewert_zwei(
     stub, tmp_path, capsys
 ):
     ziel = tmp_path / "export"
-    cli.main(["30 Diabetikerinnen", "-n", "30", "--ndjson", str(ziel)])
-    rc = cli.main(["30 Diabetikerinnen", "-n", "30", "--ndjson", str(ziel)])
+    cli.main(["30 Diabetikerinnen", "-n", "30", "--teilgroesse", "15", "--ndjson", str(ziel)])
+    rc = cli.main(["30 Diabetikerinnen", "-n", "30", "--teilgroesse", "15", "--ndjson", str(ziel)])
     assert rc == 2
     assert "NDJSON-Export fehlgeschlagen" in capsys.readouterr().err
 
 
 def test_ueberschreiben_hebt_die_sperre_auf(stub, tmp_path):
     ziel = tmp_path / "export"
-    cli.main(["30 Diabetikerinnen", "-n", "30", "--ndjson", str(ziel)])
-    rc = cli.main(["30 Diabetikerinnen", "-n", "30", "--ndjson", str(ziel),
+    cli.main(["30 Diabetikerinnen", "-n", "30", "--teilgroesse", "15", "--ndjson", str(ziel)])
+    rc = cli.main(["30 Diabetikerinnen", "-n", "30", "--teilgroesse", "15", "--ndjson", str(ziel),
                    "--ueberschreiben"])
     assert rc == 0
 
@@ -218,7 +218,7 @@ def test_ndjson_traegt_auch_eine_unvollstaendige_kohorte(monkeypatch, tmp_path):
     monkeypatch.setattr(cli, "client_aus_umgebung", lambda: TeilClient(faellt_aus={2}))
     monkeypatch.setattr(cli, "load_dotenv", lambda *a, **k: None)
     ziel = tmp_path / "export"
-    rc = cli.main(["45 Diabetikerinnen", "-n", "45", "--ndjson", str(ziel)])
+    rc = cli.main(["45 Diabetikerinnen", "-n", "45", "--teilgroesse", "15", "--ndjson", str(ziel)])
     assert rc == 1, "Lücke bleibt sichtbar"
     from synthfhir.ndjson import lies_ndjson
     assert len(lies_ndjson(ziel / "Patient.ndjson")) == 30
@@ -238,9 +238,9 @@ def test_bericht_ueberlebt_einen_gescheiterten_ndjson_export(stub, tmp_path, cap
     verloren."""
     ziel = tmp_path / "export"
     bericht = tmp_path / "b.json"
-    cli.main(["30 Diabetikerinnen", "-n", "30", "--ndjson", str(ziel)])
+    cli.main(["30 Diabetikerinnen", "-n", "30", "--teilgroesse", "15", "--ndjson", str(ziel)])
 
-    rc = cli.main(["30 Diabetikerinnen", "-n", "30", "--ndjson", str(ziel),
+    rc = cli.main(["30 Diabetikerinnen", "-n", "30", "--teilgroesse", "15", "--ndjson", str(ziel),
                    "--bericht", str(bericht)])
     assert rc == 2, "der Export ist gescheitert"
     assert bericht.exists(), "der Bericht ist trotzdem da"
@@ -257,7 +257,7 @@ def test_aufzeichnen_und_wiedergeben_ergeben_dasselbe(stub, tmp_path, capsys):
     erst = tmp_path / "erst.json"
     dann = tmp_path / "dann.json"
 
-    assert cli.main(["30 Diabetikerinnen", "-n", "30", "-o", str(erst),
+    assert cli.main(["30 Diabetikerinnen", "-n", "30", "--teilgroesse", "15", "-o", str(erst),
                      "--aufzeichnen", str(aufz_datei)]) == 0
     aufrufe_nach_erzeugung = stub.aufruf
 
@@ -271,7 +271,7 @@ def test_wiedergeben_braucht_weder_beschreibung_noch_anzahl(stub, tmp_path):
     eine Fehlerquelle: Wer sie abweichend angibt, bekäme trotzdem die
     aufgezeichnete Kohorte."""
     aufz_datei = tmp_path / "lauf.aufz.json"
-    cli.main(["30 Diabetikerinnen", "-n", "30", "-o", str(tmp_path / "a.json"),
+    cli.main(["30 Diabetikerinnen", "-n", "30", "--teilgroesse", "15", "-o", str(tmp_path / "a.json"),
               "--aufzeichnen", str(aufz_datei)])
     assert cli.main(["--wiedergeben", str(aufz_datei),
                      "-o", str(tmp_path / "b.json")]) == 0
@@ -279,7 +279,7 @@ def test_wiedergeben_braucht_weder_beschreibung_noch_anzahl(stub, tmp_path):
 
 def test_wiedergabe_meldet_den_befund_auf_stderr(stub, tmp_path, capsys):
     aufz_datei = tmp_path / "lauf.aufz.json"
-    cli.main(["30 Diabetikerinnen", "-n", "30", "-o", str(tmp_path / "a.json"),
+    cli.main(["30 Diabetikerinnen", "-n", "30", "--teilgroesse", "15", "-o", str(tmp_path / "a.json"),
               "--aufzeichnen", str(aufz_datei)])
     capsys.readouterr()
     cli.main(["--wiedergeben", str(aufz_datei), "-o", str(tmp_path / "b.json")])
@@ -296,7 +296,7 @@ def test_abweichung_wird_auch_im_stillen_betrieb_gemeldet(stub, tmp_path, capsys
     from synthfhir.domain.codes import CONDITION_CODES
 
     aufz_datei = tmp_path / "lauf.aufz.json"
-    cli.main(["30 Diabetikerinnen", "-n", "30", "-o", str(tmp_path / "a.json"),
+    cli.main(["30 Diabetikerinnen", "-n", "30", "--teilgroesse", "15", "-o", str(tmp_path / "a.json"),
               "--aufzeichnen", str(aufz_datei)])
     capsys.readouterr()
 
@@ -325,7 +325,7 @@ def test_wiedergabe_kann_ndjson_schreiben(stub, tmp_path):
     """Die Wiedergabe ist ein vollwertiger Lauf — alle Ausgabewege stehen
     offen."""
     aufz_datei = tmp_path / "lauf.aufz.json"
-    cli.main(["30 Diabetikerinnen", "-n", "30", "-o", str(tmp_path / "a.json"),
+    cli.main(["30 Diabetikerinnen", "-n", "30", "--teilgroesse", "15", "-o", str(tmp_path / "a.json"),
               "--aufzeichnen", str(aufz_datei)])
     ziel = tmp_path / "export"
     assert cli.main(["--wiedergeben", str(aufz_datei), "--ndjson", str(ziel)]) == 0
@@ -343,7 +343,7 @@ def test_abweichende_wiedergabe_gibt_eins_zurueck(stub, tmp_path):
     from synthfhir.domain.codes import CONDITION_CODES
 
     datei = tmp_path / "lauf.aufz.json"
-    cli.main(["30 Diabetikerinnen", "-n", "30", "-o", str(tmp_path / "a.json"),
+    cli.main(["30 Diabetikerinnen", "-n", "30", "--teilgroesse", "15", "-o", str(tmp_path / "a.json"),
               "--aufzeichnen", str(datei)])
 
     alt = CONDITION_CODES["44054006"]
@@ -358,7 +358,7 @@ def test_abweichende_wiedergabe_gibt_eins_zurueck(stub, tmp_path):
 
 def test_identische_wiedergabe_gibt_null_zurueck(stub, tmp_path):
     datei = tmp_path / "lauf.aufz.json"
-    cli.main(["30 Diabetikerinnen", "-n", "30", "-o", str(tmp_path / "a.json"),
+    cli.main(["30 Diabetikerinnen", "-n", "30", "--teilgroesse", "15", "-o", str(tmp_path / "a.json"),
               "--aufzeichnen", str(datei)])
     assert cli.main(["--wiedergeben", str(datei), "--still",
                      "-o", str(tmp_path / "b.json")]) == 0
@@ -369,9 +369,9 @@ def test_aufzeichnung_ueberlebt_einen_gescheiterten_ndjson_export(stub, tmp_path
     das Einzige, womit sich der Lauf wiederholen lässt."""
     ziel = tmp_path / "export"
     datei = tmp_path / "lauf.aufz.json"
-    cli.main(["30 Diabetikerinnen", "-n", "30", "--ndjson", str(ziel)])
+    cli.main(["30 Diabetikerinnen", "-n", "30", "--teilgroesse", "15", "--ndjson", str(ziel)])
 
-    rc = cli.main(["30 Diabetikerinnen", "-n", "30", "--ndjson", str(ziel),
+    rc = cli.main(["30 Diabetikerinnen", "-n", "30", "--teilgroesse", "15", "--ndjson", str(ziel),
                    "--aufzeichnen", str(datei)])
     assert rc == 2, "der Export ist gescheitert"
     assert datei.exists(), "die Aufzeichnung ist trotzdem da"

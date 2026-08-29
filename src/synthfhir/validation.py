@@ -42,6 +42,12 @@ Zielversion des Projekts. Für die drei Ressourcentypen des MVP hat die
 Messung an echten R4-Daten keine Abweichung gezeigt (0 falsche Alarme über
 339 Ressourcen). Die verbleibende Differenz deckt die HAPI-Prüfung in der
 CI ab, die gegen echtes R4 4.0.1 läuft.
+
+Für die beiden Typen der Phase 2 wurde dasselbe nachgeprüft (2026-08-30):
+Encounter und MedicationStatement verhalten sich in R4B wie in R4, bis auf
+die bekannte Lücke — ein `Encounter.status` von „abgeschlossen" kommt hier
+durch und wird erst von HAPI abgewiesen. Deshalb setzt die Vorlage den
+Wert, statt ihn vom Modell zu übernehmen (ADR-007).
 """
 
 from __future__ import annotations
@@ -50,6 +56,8 @@ from dataclasses import dataclass, field
 from typing import Any
 
 from fhir.resources.R4B.condition import Condition
+from fhir.resources.R4B.encounter import Encounter
+from fhir.resources.R4B.medicationstatement import MedicationStatement
 from fhir.resources.R4B.observation import Observation
 from fhir.resources.R4B.patient import Patient
 
@@ -57,6 +65,8 @@ MODELLE: dict[str, Any] = {
     "Patient": Patient,
     "Condition": Condition,
     "Observation": Observation,
+    "Encounter": Encounter,
+    "MedicationStatement": MedicationStatement,
 }
 
 # Ressourcentypen, die der MVP erzeugt. Alles andere ist ein Fehler und kein

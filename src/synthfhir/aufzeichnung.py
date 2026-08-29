@@ -75,13 +75,7 @@ from dataclasses import asdict, dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
 
-from .domain.codes import (
-    CONDITION_CODES,
-    LOINC_SYSTEM,
-    OBSERVATION_CODES,
-    SNOMED_SYSTEM,
-    UCUM_SYSTEM,
-)
+from .domain.codes import KATALOGE, SYSTEME
 from .kohorte import Kohortenergebnis, TeilParameter, baue_aus_aufzeichnung
 
 # Erhöhen, wenn sich das Dateiformat so ändert, dass alte Dateien nicht mehr
@@ -122,19 +116,23 @@ def katalog_pruefsumme() -> str:
     Aufzählung schon — beim nächsten neuen Katalogfeld wiederholte sich der
     Fehler sonst.
 
+    Aus demselben Grund kommen die Sammlungen aus `KATALOGE` und nicht aus
+    einer Aufzählung hier: Käme ein Katalog hinzu und stünde er nicht in
+    dieser Datei, bliebe seine Änderung unbemerkt — derselbe Fehler eine
+    Ebene höher.
+
     Eine Nebenwirkung, die man kennen muss: Ändert sich dieses **Verfahren**,
     passen die Fingerabdrücke älterer Aufzeichnungen nicht mehr, und die
     Wiedergabe meldet eine Katalogänderung, die keine ist. Die
     Bundle-Prüfsumme bleibt davon unberührt und behält recht — sie ist das
     Urteil, der Fingerabdruck nur die Ursachenzuordnung.
     """
-    daten = [
-        sorted(json.dumps(asdict(c), sort_keys=True) for c in CONDITION_CODES.values()),
-        sorted(json.dumps(asdict(o), sort_keys=True) for o in OBSERVATION_CODES.values()),
-        # Die System-URLs stehen als Modulkonstanten neben den Codes und
-        # landen ebenso im Bundle.
-        [LOINC_SYSTEM, SNOMED_SYSTEM, UCUM_SYSTEM],
-    ]
+    daten = {
+        name: sorted(json.dumps(asdict(e), sort_keys=True) for e in katalog.values())
+        for name, katalog in KATALOGE.items()
+    }
+    # Die System-URIs gehören dazu: Sie landen ebenso im Bundle wie die Codes.
+    daten["systeme"] = sorted(SYSTEME)
     return pruefsumme(daten)
 
 

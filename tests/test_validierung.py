@@ -102,11 +102,24 @@ def test_fehlender_ressourcentyp_wird_erkannt():
 
 
 def test_nicht_unterstuetzter_typ_wird_abgelehnt():
-    """PRD Block 9: keine weiteren Ressourcentypen im MVP. Ein Encounter
-    darf nicht stillschweigend durchgereicht werden."""
-    ergebnis = pruefe_ressource({"resourceType": "Encounter", "id": "enc-1", "status": "finished"})
+    """Die Positivliste ist die Grenze des Zugesagten.
+
+    Sie umfasste im MVP drei Typen und seit Phase 2 fünf. Alles darüber
+    hinaus darf nicht stillschweigend durchgereicht werden — für einen Typ
+    ohne Modell könnte die Prüfung gar nichts sagen und täte es lautlos.
+    """
+    ergebnis = pruefe_ressource({"resourceType": "Procedure", "id": "proc-1",
+                                 "status": "completed"})
     assert not ergebnis.valide
-    assert "Encounter" in ergebnis.befunde[0].meldung
+    assert "Procedure" in ergebnis.befunde[0].meldung
+
+
+def test_die_neuen_typen_der_phase_2_sind_zugelassen():
+    from synthfhir.validation import UNTERSTUETZTE_TYPEN
+
+    assert set(UNTERSTUETZTE_TYPEN) == {
+        "Patient", "Condition", "Observation", "Encounter", "MedicationStatement",
+    }
 
 
 # --- Was die Prüfung bewusst NICHT sieht -----------------------------------

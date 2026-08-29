@@ -76,6 +76,15 @@ UCUM_SYSTEM = "http://unitsofmeasure.org"
 # Kanonischer URL des deutschen ICD-10-GM-CodeSystems, wie ihn die
 # deutschen FHIR-Basisprofile (fhir.de) festlegen.
 ICD10GM_SYSTEM = "http://fhir.de/CodeSystem/bfarm/icd-10-gm"
+# ATC nach denselben Basisprofilen. Der Pfadbestandteil ist `bfarm`, nicht
+# `dimdi`: DIMDI ist 2020 im BfArM aufgegangen, und die Basisprofile haben
+# beide URLs entsprechend umbenannt. Ältere Anleitungen im Netz nennen noch
+# `dimdi` — geprüft an Leitfaden Basis DE 1.3.1, wo beide Systeme `bfarm`
+# tragen.
+ATC_SYSTEM = "http://fhir.de/CodeSystem/bfarm/atc"
+# Begegnungsart. Kein deutsches System: `Encounter.class` ist an dieses
+# ValueSet gebunden, und die Bindung ist verpflichtend.
+ACT_CODE_SYSTEM = "http://terminology.hl7.org/CodeSystem/v3-ActCode"
 
 
 @dataclass(frozen=True)
@@ -271,3 +280,215 @@ def icd_abdeckung() -> tuple[int, int]:
     """
     mit = sum(1 for c in CONDITION_CODES.values() if c.hat_icd)
     return mit, len(CONDITION_CODES)
+
+
+# ---------------------------------------------------------------------------
+# Medikamente (Phase 2)
+# ---------------------------------------------------------------------------
+
+
+@dataclass(frozen=True)
+class MedicationCode:
+    """Ein zulässiger Wirkstoff.
+
+    `display` ist die Bezeichnung **wörtlich** aus dem ATC/DDD-Index der
+    WHO — kleingeschrieben und englisch, so wie sie dort steht. Das ist
+    Absicht: Eine geglättete Schreibweise ließe sich nicht mehr gegen die
+    Quelle abgleichen, und genau dieser Abgleich ist die einzige Prüfung,
+    die es für Codes gibt.
+
+    `indikationen` nennt die SNOMED-Codes der Diagnosen, zu denen der
+    Wirkstoff passt. Ohne diese Verknüpfung müsste das Modell entscheiden,
+    welches Mittel zu welcher Krankheit gehört — und damit läge eine
+    fachliche Aussage beim Modell statt im Katalog, entgegen ADR-001.
+    """
+
+    code: str                       # ATC
+    display: str                    # wörtlich aus dem WHOCC-Index
+    display_de: str                 # deutscher Wirkstoffname
+    indikationen: tuple[str, ...]   # SNOMED-Codes aus CONDITION_CODES
+    dosierung: str                  # Freitext für Dosage.text
+
+    @property
+    def system(self) -> str:
+        return ATC_SYSTEM
+
+
+# Alle Codes am 2026-08-30 einzeln gegen den ATC/DDD-Index des WHO
+# Collaborating Centre for Drug Statistics Methodology geprüft
+# (<https://atcddd.fhi.no/atc_ddd_index/>), Abfrage je Code über
+# `?code=<ATC>`. Die englische Bezeichnung ist von dort übernommen.
+#
+# Wer hier etwas ergänzt: derselbe Weg, Code für Code. Weder die
+# Laufzeitprüfung noch HAPI merken einen falschen ATC-Code — HAPI meldet
+# ausdrücklich `CodeSystem is unknown and can't be validated`.
+MEDICATION_CODES: dict[str, MedicationCode] = {
+    m.code: m
+    for m in [
+        MedicationCode("A10BA02", "metformin", "Metformin",
+                       ("44054006",), "1000 mg, 2-mal täglich"),
+        MedicationCode("A10AB01", "insulin (human)", "Humaninsulin",
+                       ("46635009",), "nach Blutzucker, subkutan"),
+        MedicationCode("C09AA05", "ramipril", "Ramipril",
+                       ("38341003", "84114007", "709044004"),
+                       "5 mg, 1-mal täglich"),
+        MedicationCode("C08CA01", "amlodipine", "Amlodipin",
+                       ("38341003",), "5 mg, 1-mal täglich"),
+        MedicationCode("C07AB07", "bisoprolol", "Bisoprolol",
+                       ("38341003", "84114007", "49436004", "53741008"),
+                       "5 mg, 1-mal täglich"),
+        MedicationCode("C03CA01", "furosemide", "Furosemid",
+                       ("84114007",), "40 mg, 1-mal täglich"),
+        MedicationCode("C10AA01", "simvastatin", "Simvastatin",
+                       ("13644009", "53741008", "22298006"),
+                       "20 mg, abends"),
+        MedicationCode("B01AC06", "acetylsalicylic acid", "Acetylsalicylsäure",
+                       ("53741008", "22298006", "230690007"),
+                       "100 mg, 1-mal täglich"),
+        MedicationCode("B01AF01", "rivaroxaban", "Rivaroxaban",
+                       ("49436004",), "20 mg, 1-mal täglich"),
+        MedicationCode("R03AC02", "salbutamol", "Salbutamol",
+                       ("195967001", "13645005"),
+                       "100 µg, bei Bedarf inhalativ"),
+        MedicationCode("R03BB04", "tiotropium bromide", "Tiotropiumbromid",
+                       ("13645005",), "18 µg, 1-mal täglich inhalativ"),
+        MedicationCode("M05BA04", "alendronic acid", "Alendronsäure",
+                       ("64859006",), "70 mg, 1-mal wöchentlich"),
+        MedicationCode("M01AE01", "ibuprofen", "Ibuprofen",
+                       ("396275006", "69896004"), "400 mg, bei Bedarf"),
+        MedicationCode("L04AX03", "methotrexate", "Methotrexat",
+                       ("69896004",), "15 mg, 1-mal wöchentlich"),
+        MedicationCode("N06AB06", "sertraline", "Sertralin",
+                       ("35489007", "197480006"), "50 mg, 1-mal täglich"),
+        MedicationCode("N06AB10", "escitalopram", "Escitalopram",
+                       ("35489007", "197480006"), "10 mg, 1-mal täglich"),
+        MedicationCode("A02BC01", "omeprazole", "Omeprazol",
+                       ("235595009",), "20 mg, 1-mal täglich"),
+        MedicationCode("H03AA01", "levothyroxine sodium", "Levothyroxin-Natrium",
+                       ("40930008",), "75 µg, morgens nüchtern"),
+        MedicationCode("H03BB02", "thiamazole", "Thiamazol",
+                       ("34486009",), "10 mg, 1-mal täglich"),
+    ]
+}
+
+
+# ---------------------------------------------------------------------------
+# Begegnungsarten (Phase 2)
+# ---------------------------------------------------------------------------
+
+
+@dataclass(frozen=True)
+class EncounterClass:
+    """Eine zulässige Begegnungsart.
+
+    `Encounter.class` ist in FHIR R4 ein **Coding**, kein
+    CodeableConcept — nachgeprüft: HAPI weist ein `{"coding": [...]}` mit
+    „Unrecognized property 'coding'" ab. Die Bindung an dieses ValueSet ist
+    verpflichtend, ein erfundener Code also kein Kavaliersdelikt.
+
+    `display` ist wörtlich aus dem ValueSet v3-ActEncounterCode übernommen.
+    """
+
+    code: str
+    display: str        # wörtlich aus dem ValueSet
+    display_de: str
+
+    @property
+    def system(self) -> str:
+        return ACT_CODE_SYSTEM
+
+
+# Geprüft am 2026-08-30 gegen
+# <https://terminology.hl7.org/6.0.2/ValueSet-v3-ActEncounterCode.html>.
+# Bewusst nur die vier Arten, die in Testdaten tatsächlich vorkommen — ein
+# ValueSet vollständig abzuschreiben, ohne dass die Einträge gebraucht
+# werden, vergrößert nur die Fläche, die von Hand zu pflegen ist.
+ENCOUNTER_CLASSES: dict[str, EncounterClass] = {
+    e.code: e
+    for e in [
+        EncounterClass("AMB", "ambulatory", "ambulant"),
+        EncounterClass("IMP", "inpatient encounter", "stationär"),
+        EncounterClass("EMER", "emergency", "Notfall"),
+        EncounterClass("VR", "virtual", "Videosprechstunde"),
+    ]
+}
+
+# Pflichtfeld mit verpflichtender Bindung (EncounterStatus). Die
+# Laufzeitprüfung sieht das NICHT — nachgemessen: `status: "abgeschlossen"`
+# kommt dort durch und wird erst von HAPI abgewiesen. Deshalb setzt die
+# Vorlage den Wert, statt ihn vom Modell zu übernehmen.
+ENCOUNTER_STATUS = "finished"
+
+# Dasselbe für MedicationStatement (MedicationStatementStatusCodes).
+MEDICATION_STATUS = "active"
+
+
+# ---------------------------------------------------------------------------
+# Verzeichnis aller Kataloge
+# ---------------------------------------------------------------------------
+
+# Wer den Katalog als Ganzes braucht — etwa für den Fingerabdruck in
+# `aufzeichnung.py` —, holt ihn hier und nicht über eine eigene Aufzählung.
+#
+# Der Grund ist ein bereits gemachter Fehler: Der Fingerabdruck lief über
+# eine Aufzählung von Hand und übersah ein Feld. Eine Ebene höher wiederholte
+# sich das mit einer ganzen Sammlung — käme ein Katalog hinzu und stünde er
+# nicht in jeder Aufzählung, bliebe seine Änderung unbemerkt. Ein Verzeichnis
+# an einer Stelle kann man vergessen zu erweitern; drei verstreute
+# Aufzählungen vergisst man sicher.
+KATALOGE: dict[str, dict] = {
+    "observations": OBSERVATION_CODES,
+    "conditions": CONDITION_CODES,
+    "medications": MEDICATION_CODES,
+    "encounter_classes": ENCOUNTER_CLASSES,
+}
+
+# Die System-URIs gehören zum Katalog: Sie landen ebenso im Bundle wie die
+# Codes selbst.
+SYSTEME: tuple[str, ...] = (
+    LOINC_SYSTEM,
+    SNOMED_SYSTEM,
+    UCUM_SYSTEM,
+    ICD10GM_SYSTEM,
+    ATC_SYSTEM,
+    ACT_CODE_SYSTEM,
+)
+
+# Auch die festen Statuswerte gehören zum Fingerabdruck: Sie stehen im
+# Bundle und ändern sich, wenn jemand sie hier ändert.
+FESTE_WERTE: tuple[str, ...] = (ENCOUNTER_STATUS, MEDICATION_STATUS)
+
+
+def medication_catalog_text() -> str:
+    """Kompakte Katalogdarstellung für den Prompt.
+
+    Die Indikationen stehen dabei, damit das Modell ein passendes Mittel
+    wählen kann, ohne selbst über die Zuordnung zu entscheiden — die wäre
+    eine fachliche Aussage und gehört nach ADR-001 in den Katalog.
+    """
+    zeilen = []
+    for m in MEDICATION_CODES.values():
+        bei = ", ".join(CONDITION_CODES[i].display_de for i in m.indikationen
+                        if i in CONDITION_CODES)
+        zeilen.append(f"  {m.code} | {m.display_de} | bei: {bei}")
+    return "\n".join(zeilen)
+
+
+def encounter_catalog_text() -> str:
+    """Kompakte Katalogdarstellung für den Prompt."""
+    return "\n".join(
+        f"  {e.code} | {e.display_de} ({e.display})"
+        for e in ENCOUNTER_CLASSES.values()
+    )
+
+
+def medikamente_fuer(diagnose_code: str) -> list[MedicationCode]:
+    """Die Wirkstoffe, die zu einer Diagnose passen — womöglich keiner.
+
+    Fünf Diagnosen im Katalog haben bewusst keinen Wirkstoff, etwa
+    Adipositas und Schlafapnoe. Die Vorlage muss das vertragen, statt
+    ersatzweise irgendetwas zu wählen: Ein unpassendes Medikament wäre ein
+    fachlicher Fehler, den keine Prüfschicht bemerkt — weder die
+    Laufzeitprüfung noch HAPI wissen, wogegen Metformin hilft.
+    """
+    return [m for m in MEDICATION_CODES.values() if diagnose_code in m.indikationen]

@@ -318,3 +318,23 @@ def test_pause_null_haelt_nicht_auf(keine_wartezeit):
     """Der Normalfall: ohne Kontingentsorgen läuft nichts auf Wartezeit."""
     generiere_kohorte(TeilClient(), "60 Patientinnen", 60, teilgroesse=15)
     assert keine_wartezeit == []
+
+
+def test_teilgroesse_traegt_die_gemessene_ausgabe():
+    """Die Voreinstellung ist hergeleitet, nicht geraten — und sie hat
+    schon einmal nicht getragen.
+
+    Gemessen am 2026-08-30, nach Encounter und MedicationStatement: 504
+    Ausgabe-Token je Patient, 4800 als max_tokens im Gratistarif. Wächst
+    die Ausgabe je Patient weiter, ohne dass dieser Wert sinkt, laufen die
+    Teile in die Abschneidung — der erste Lauf nach der Erweiterung
+    scheiterte an genau dieser Rechnung.
+    """
+    from synthfhir.kohorte import TEILGROESSE
+
+    ausgabe_je_patient = 504
+    max_tokens = 4800
+    assert TEILGROESSE * ausgabe_je_patient <= max_tokens, (
+        f"{TEILGROESSE} Patienten brauchen rund "
+        f"{TEILGROESSE * ausgabe_je_patient} Token, erlaubt sind {max_tokens}"
+    )

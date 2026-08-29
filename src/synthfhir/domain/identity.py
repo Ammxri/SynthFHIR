@@ -26,9 +26,15 @@ from dataclasses import dataclass, field
 from typing import Any
 
 # Kurzpräfixe für die neuen IDs.
-ID_PREFIXES = {"Patient": "pat", "Condition": "cond", "Observation": "obs"}
+ID_PREFIXES = {
+    "Patient": "pat",
+    "Condition": "cond",
+    "Observation": "obs",
+    "Encounter": "enc",
+    "MedicationStatement": "med",
+}
 
-EXPECTED_TYPES = ("Patient", "Condition", "Observation")
+EXPECTED_TYPES = tuple(ID_PREFIXES)
 
 _URL_TAIL_RE = re.compile(r"(?:^|/)([A-Z][A-Za-z]+)/([A-Za-z0-9\-.]{1,64})$")
 

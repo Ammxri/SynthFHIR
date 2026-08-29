@@ -28,7 +28,12 @@ Anzeigetexte.
 
 from __future__ import annotations
 
-from .domain.codes import condition_catalog_text, observation_catalog_text
+from .domain.codes import (
+    condition_catalog_text,
+    encounter_catalog_text,
+    medication_catalog_text,
+    observation_catalog_text,
+)
 
 # Obergrenze laut PRD Block 4: kleine Kohorten von 1 bis 25 Patienten.
 MAX_PATIENTEN = 25
@@ -80,10 +85,24 @@ REQUIRED JSON SHAPE (exactly these keys, no extras):
         {{ "code": "<code from the measurement catalogue>",
            "wert": <number>,
            "datum": "YYYY-MM-DD" }}
+      ],
+      "begegnungen": [
+        {{ "art": "<code from the encounter catalogue>", "datum": "YYYY-MM-DD" }}
+      ],
+      "medikamente": [
+        {{ "code": "<ATC code from the medication catalogue>",
+           "beginn": "YYYY-MM-DD" }}
       ]
     }}
   ]
 }}
+
+"begegnungen" and "medikamente" are optional: include them when the request
+asks for encounters or medication, or when they make the record plausible.
+Zero, one or a few per patient are all fine. Only pick a medication whose
+listed indication matches one of that patient's diagnoses — the catalogue
+says which drug goes with which condition, and that judgement is not yours
+to make.
 
 "verstanden" is your read-back of the request: how many patients you took
 from it, and the key criteria you recognised, each as a short phrase in the
@@ -105,6 +124,14 @@ DIAGNOSIS CATALOGUE (SNOMED CT) — choose only from this list:
 MEASUREMENT CATALOGUE (LOINC) — choose only from this list:
 {messwert_katalog}
 
+MEDICATION CATALOGUE (ATC) — choose only from this list. The indication
+after "bei:" tells you which diagnoses the drug fits; do not pair a drug
+with a diagnosis that is not listed for it:
+{medikament_katalog}
+
+ENCOUNTER CATALOGUE — choose only from this list:
+{begegnung_katalog}
+
 Do not send units or display names: the downstream program takes them from
 the catalogue. Send only the code, the numeric value and the date.
 Values must sit inside the plausible range shown for the chosen code and
@@ -120,6 +147,8 @@ def baue_prompt(beschreibung: str, max_patienten: int = MAX_PATIENTEN) -> tuple[
         max_patienten=max_patienten,
         diagnose_katalog=condition_catalog_text(),
         messwert_katalog=observation_catalog_text(),
+        medikament_katalog=medication_catalog_text(),
+        begegnung_katalog=encounter_catalog_text(),
     )
 
 
