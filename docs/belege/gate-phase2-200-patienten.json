@@ -1,0 +1,150 @@
+{
+  "beschreibung": "Patientinnen und Patienten mit Typ-2-Diabetes, 45 bis 80 Jahre, mit HbA1c-Werten und Blutdruckmessungen",
+  "fertig": true,
+  "angefragt": 200,
+  "patienten": 200,
+  "mengentreue": 1.0,
+  "namensvielfalt": 0.94,
+  "ressourcen": {
+    "Patient": 200,
+    "Condition": 220,
+    "Observation": 600
+  },
+  "erfundene_codes": 0,
+  "nicht_abbildbar": [],
+  "teile": [
+    {
+      "nummer": 1,
+      "angefragt": 15,
+      "geliefert": 15,
+      "erfolgreich": true,
+      "fehler": null,
+      "dauer_s": 7.43
+    },
+    {
+      "nummer": 2,
+      "angefragt": 15,
+      "geliefert": 15,
+      "erfolgreich": true,
+      "fehler": null,
+      "dauer_s": 8.51
+    },
+    {
+      "nummer": 3,
+      "angefragt": 15,
+      "geliefert": 15,
+      "erfolgreich": true,
+      "fehler": null,
+      "dauer_s": 7.3
+    },
+    {
+      "nummer": 4,
+      "angefragt": 15,
+      "geliefert": 15,
+      "erfolgreich": true,
+      "fehler": null,
+      "dauer_s": 8.76
+    },
+    {
+      "nummer": 5,
+      "angefragt": 15,
+      "geliefert": 15,
+      "erfolgreich": true,
+      "fehler": null,
+      "dauer_s": 8.1
+    },
+    {
+      "nummer": 6,
+      "angefragt": 15,
+      "geliefert": 15,
+      "erfolgreich": true,
+      "fehler": null,
+      "dauer_s": 7.59
+    },
+    {
+      "nummer": 7,
+      "angefragt": 15,
+      "geliefert": 15,
+      "erfolgreich": true,
+      "fehler": null,
+      "dauer_s": 8.31
+    },
+    {
+      "nummer": 8,
+      "angefragt": 15,
+      "geliefert": 15,
+      "erfolgreich": true,
+      "fehler": null,
+      "dauer_s": 6.91
+    },
+    {
+      "nummer": 9,
+      "angefragt": 15,
+      "geliefert": 15,
+      "erfolgreich": true,
+      "fehler": null,
+      "dauer_s": 10.44
+    },
+    {
+      "nummer": 10,
+      "angefragt": 15,
+      "geliefert": 15,
+      "erfolgreich": true,
+      "fehler": null,
+      "dauer_s": 9.35
+    },
+    {
+      "nummer": 11,
+      "angefragt": 15,
+      "geliefert": 15,
+      "erfolgreich": true,
+      "fehler": null,
+      "dauer_s": 8.71
+    },
+    {
+      "nummer": 12,
+      "angefragt": 15,
+      "geliefert": 15,
+      "erfolgreich": true,
+      "fehler": null,
+      "dauer_s": 9.89
+    },
+    {
+      "nummer": 13,
+      "angefragt": 20,
+      "geliefert": 20,
+      "erfolgreich": true,
+      "fehler": null,
+      "dauer_s": 59.77
+    }
+  ],
+  "integritaet": {
+    "ok": true,
+    "resources_checked": 1020,
+    "total_references": 820,
+    "broken_reference_count": 0,
+    "broken_references": [],
+    "duplicate_ids": [],
+    "missing_patient_link": []
+  },
+  "eingabe_token": 32998,
+  "ausgabe_token": 55206,
+  "hapi_pruefung": {
+    "server": "HAPI FHIR 4.0.1 (Docker, lokal)",
+    "geprueft": 1020,
+    "gueltig": 1020,
+    "blockierende_befunde": 0,
+    "dauer_s": 71,
+    "warnungen_nicht_blockierend": {
+      "dom-6 (Narrative fehlt)": 1020,
+      "Observation ohne performer (Empfehlung)": 600,
+      "CodeSystem unbekannt: icd-10-gm": 220,
+      "CodeSystem unbekannt: loinc": 600
+    },
+    "anmerkung": "HAPI kann LOINC und ICD-10-GM nicht prüfen — es kennt die Terminologien nicht. Codes bleiben nur durch die Prüfung von Hand gegen die Primärquelle abgesichert (ADR-003)."
+  },
+  "auftrag": "Patientinnen und Patienten mit Typ-2-Diabetes, 45 bis 80 Jahre, mit HbA1c-Werten und Blutdruckmessungen",
+  "aufruf": "synthfhir <auftrag> -n 200 --pause 60",
+  "modell": "openai/gpt-oss-120b über Groq, kostenloses Kontingent",
+  "datum": "2026-08-29"
+}

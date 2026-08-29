@@ -23,7 +23,7 @@ Produkt.
 |---|---|---|
 | **0 — Spike** | Architekturentscheidung mit Messdaten | ✅ abgeschlossen 2026-08-28 |
 | **1 — MVP** | Eingabe, Generierung, Validierung, Lokalisierung, Export, Veröffentlichung | ✅ veröffentlicht 2026-08-29 |
-| 2 — v1.x | Weitere Ressourcentypen, Bulk-Export, Seed, größere Kohorten | geplant |
+| **2 — v1.x** | Weitere Ressourcentypen, Bulk-Export, Seed, größere Kohorten | ⏳ Gate erfüllt 2026-08-29 (200 Patienten, 1020/1020 gültig gegen HAPI) |
 | 3 — Vision | Deutsche Profile (KBV/ISiK), API, weitere Standards | langfristig |
 
 ---
@@ -110,6 +110,7 @@ in dieser Reihenfolge:
 | [ADR-001](docs/architekturentscheidung.md) | Wer die FHIR-Struktur baut — Modell oder Code? |
 | [ADR-002](docs/adr-002-validierungsarchitektur.md) | Wo und womit die Validitätsgarantie eingelöst wird |
 | [ADR-003](docs/adr-003-lokalisierung.md) | Wie weit die deutsche Lokalisierung geht |
+| [ADR-004](docs/adr-004-grosse-kohorten.md) | Wie große Kohorten in Teilen entstehen, ohne zu zerbrechen |
 | [Konzepte](docs/konzepte.md) | Die FHIR-Grundlagen dahinter, ausführlich erklärt |
 
 ### Die tragenden Entscheidungen in drei Sätzen
