@@ -41,6 +41,7 @@ src/      das Produkt (Phase 1)
     generation.py die Kette bis zum Bundle
     kohorte.py    große Kohorten in Teilen (Phase 2)
     ndjson.py     Bulk-Export nach FHIR Bulk Data (Phase 2)
+    aufzeichnung.py  Läufe aufzeichnen und wiedergeben (Phase 2)
     cli.py        Kommandozeile
     web/          Oberfläche (FastAPI, serverseitig gerendert)
 tests/    Tests des Produkts
@@ -84,6 +85,8 @@ saubere Datei.
 | `--teilgroesse` | Patienten je LLM-Aufruf (Standard 15) |
 | `--versuche` | Versuche je Teil, bevor er als ausgefallen gilt (Standard 2) |
 | `--pause` | Wartezeit zwischen den Teilen, in Sekunden |
+| `--aufzeichnen` | den Beitrag des Modells mitschreiben |
+| `--wiedergeben` | eine Aufzeichnung abspielen statt das Modell zu fragen |
 | `--ndjson` | zusätzlich als NDJSON in ein Verzeichnis schreiben |
 | `--ueberschreiben` | vorhandene NDJSON-Dateien dort ersetzen |
 | `--bericht` | Messwerte des Laufs als JSON |
@@ -96,6 +99,58 @@ Kontingent von 8000 Token je Minute also etwa ein Teil pro Minute. Ein
 ungetakteter Lauf über 200 Patienten lieferte am 2026-08-29 genau vier
 Teile, dann stand die Ratengrenze. Mit `--pause 60` läuft derselbe Auftrag
 durch, dauert aber entsprechend lange.
+
+### Denselben Lauf wiederholen
+
+**Es gibt kein `--seed`, und das hat einen gemessenen Grund.** Je drei
+identische Anfragen an das Modell ergaben:
+
+| Einstellung | verschiedene Antworten |
+|---|---|
+| `temperature 0.8` (Voreinstellung) | 3 von 3 |
+| `temperature 0` | 2 von 3 |
+| `temperature 0` **mit Seed** | 2 von 3 |
+
+Der Seed verbessert nichts. Ein Schalter, der Wiederholbarkeit verspricht
+und sie nicht liefert, wäre genau die Zusage ohne Deckung, wegen der
+[ADR-001](docs/architekturentscheidung.md) Variante A verworfen hat.
+
+Was stattdessen geht: Der Weg **nach** dem Modellaufruf ist byteweise
+stabil — derselbe Parametersatz ergab über 20 Läufe und über vier Prozesse
+mit verschiedenem `PYTHONHASHSEED` denselben SHA-256. Es genügt also, den
+Beitrag des Modells aufzuzeichnen.
+
+```bash
+synthfhir "200 Patientinnen mit Typ-2-Diabetes" -n 200 --aufzeichnen lauf.aufz.json
+synthfhir --wiedergeben lauf.aufz.json -o kohorte.json
+```
+
+Die Wiedergabe braucht **kein Netz und kein Kontingent** — bei einem
+getakteten 200er-Lauf über dreizehn Minuten ist das der praktische Gewinn.
+Die Aufzeichnung ist klein, weil sie die Parameter enthält und nicht das
+Ergebnis: gemessen 5,4 KB gegenüber 27 KB Bundle.
+
+**Die Aufzeichnung prüft sich selbst.** Sie führt die Prüfsumme des
+ursprünglich erzeugten Bundles mit und rechnet sie bei jedem Abspielen
+nach:
+
+```
+  identisch zum aufgezeichneten Lauf (Prüfsumme stimmt)
+```
+
+Ändert sich der Katalog in `codes.py` — ein korrigierter ICD-Schlüssel etwa,
+und das ist hier schon vorgekommen —, liefert dieselbe Aufzeichnung ein
+anderes Bundle. Dann sagt sie das:
+
+```
+  ABWEICHUNG: Das Ergebnis ist nicht dasselbe wie beim aufgezeichneten Lauf.
+    aufgezeichnet: f7851380d151d127…
+    jetzt:         2a598c336f01d233…
+    Der Katalog hat sich geändert — das ist die wahrscheinliche Ursache.
+```
+
+Das Ergebnis wird trotzdem geliefert: Eine Abweichung ist ein Befund, kein
+Abbruch. Begründung in [ADR-006](docs/adr-006-reproduzierbarkeit.md).
 
 ### Bulk-Export als NDJSON
 
@@ -151,6 +206,7 @@ in dieser Reihenfolge:
 | [ADR-003](docs/adr-003-lokalisierung.md) | Wie weit die deutsche Lokalisierung geht |
 | [ADR-004](docs/adr-004-grosse-kohorten.md) | Wie große Kohorten in Teilen entstehen, ohne zu zerbrechen |
 | [ADR-005](docs/adr-005-ndjson-export.md) | Warum der Bulk-Export ein Verzeichnis ist und kein Strom |
+| [ADR-006](docs/adr-006-reproduzierbarkeit.md) | Warum es kein `--seed` gibt, sondern Aufzeichnungen |
 | [Konzepte](docs/konzepte.md) | Die FHIR-Grundlagen dahinter, ausführlich erklärt |
 
 ### Die tragenden Entscheidungen in drei Sätzen

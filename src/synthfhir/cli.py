@@ -24,6 +24,7 @@ from pathlib import Path
 from dotenv import load_dotenv
 
 from .kohorte import TEILGROESSE, Kohortenergebnis, generiere_kohorte
+from . import aufzeichnung as aufz
 from .llm import LLMFehler, client_aus_umgebung
 from .ndjson import MIME_TYP, Exportergebnis, ExportFehler, schreibe_ndjson
 
@@ -45,9 +46,12 @@ def baue_parser() -> argparse.ArgumentParser:
             '  synthfhir "50 Patienten mit COPD" -n 50 --ndjson ./export --pause 60\n'
         ),
     )
-    p.add_argument("beschreibung", help="Was erzeugt werden soll, in Alltagssprache.")
-    p.add_argument("-n", "--anzahl", type=int, required=True,
-                   help="Anzahl der Patienten.")
+    p.add_argument("beschreibung", nargs="?", default="",
+                   help="Was erzeugt werden soll, in Alltagssprache. "
+                        "Bei --wiedergeben nicht nötig.")
+    p.add_argument("-n", "--anzahl", type=int,
+                   help="Anzahl der Patienten. Bei --wiedergeben nicht nötig: "
+                        "Die Menge steht in der Aufzeichnung.")
     p.add_argument("-o", "--ausgabe", type=Path,
                    help="Zieldatei für das Bundle (Standard: Ausgabe auf stdout).")
     p.add_argument("--teilgroesse", type=int, default=TEILGROESSE,
@@ -59,6 +63,13 @@ def baue_parser() -> argparse.ArgumentParser:
                         "Kontingent: Anbieter rechnen max_tokens in die "
                         "Anfragegröße ein, bei 8000 Token/Minute trägt das "
                         "etwa einen Teil pro Minute (--pause 60).")
+    p.add_argument("--aufzeichnen", type=Path, metavar="DATEI",
+                   help="Den Beitrag des Modells mitschreiben, damit sich der "
+                        "Lauf später exakt wiederholen lässt.")
+    p.add_argument("--wiedergeben", type=Path, metavar="DATEI",
+                   help="Eine Aufzeichnung abspielen statt das Modell zu "
+                        "fragen. Ohne Netz, ohne Kontingent, exakt "
+                        "reproduzierbar — und die Prüfsumme wird nachgerechnet.")
     p.add_argument("--ndjson", type=Path, metavar="VERZEICHNIS",
                    help="Zusätzlich als NDJSON nach FHIR Bulk Data ausgeben: "
                         "eine Datei je Ressourcentyp plus manifest.json. Das "
@@ -78,37 +89,14 @@ def main(argv: list[str] | None = None) -> int:
     load_dotenv()
     args = baue_parser().parse_args(argv)
 
-    if args.anzahl < 1:
-        print("Fehler: --anzahl muss mindestens 1 sein.", file=sys.stderr)
-        return 2
-
-    try:
-        client = client_aus_umgebung()
-    except LLMFehler as exc:
-        print(f"Fehler: {exc}", file=sys.stderr)
-        return 2
-
-    # Der Fortschritt geht auf stderr, damit `synthfhir ... > datei.json`
-    # weiterhin eine saubere JSON-Datei ergibt.
-    def melde(nummer: int, gesamt: int, stand: str) -> None:
-        print(f"  Teil {nummer}/{gesamt}: {stand}", file=sys.stderr, flush=True)
-
-    if not args.still:
-        print(f"Erzeuge {args.anzahl} Patienten …", file=sys.stderr)
-
-    try:
-        ergebnis = generiere_kohorte(
-            client,
-            args.beschreibung,
-            args.anzahl,
-            teilgroesse=args.teilgroesse,
-            versuche_je_teil=args.versuche,
-            pause_s=args.pause,
-            fortschritt=None if args.still else melde,
-        )
-    except KeyboardInterrupt:
-        print("\nAbgebrochen.", file=sys.stderr)
-        return 2
+    if args.wiedergeben:
+        ergebnis, rc = _wiedergeben(args)
+        if ergebnis is None:
+            return rc
+    else:
+        ergebnis, rc = _erzeugen(args)
+        if ergebnis is None:
+            return rc
 
     if not args.still:
         print(_zusammenfassung(ergebnis), file=sys.stderr)
@@ -144,7 +132,10 @@ def main(argv: list[str] | None = None) -> int:
                 ergebnis.ressourcen,
                 args.ndjson,
                 ueberschreiben=args.ueberschreiben,
-                anfrage=f"synthfhir {args.beschreibung!r} -n {args.anzahl}",
+                anfrage=(f"synthfhir --wiedergeben {args.wiedergeben}"
+                         if args.wiedergeben
+                         else f"synthfhir {ergebnis.beschreibung!r} "
+                              f"-n {ergebnis.angefragt}"),
             )
         except ExportFehler as exc:
             print(f"NDJSON-Export fehlgeschlagen: {exc}", file=sys.stderr)
@@ -152,9 +143,94 @@ def main(argv: list[str] | None = None) -> int:
         if not args.still:
             print(_export_zeilen(export), file=sys.stderr)
 
+    if args.aufzeichnen and not args.wiedergeben:
+        try:
+            a = aufz.aus_ergebnis(ergebnis, modell=_modellname())
+            pfad = aufz.schreibe(a, args.aufzeichnen)
+        except aufz.AufzeichnungFehler as exc:
+            print(f"Aufzeichnen fehlgeschlagen: {exc}", file=sys.stderr)
+            return 2
+        if not args.still:
+            print(f"Aufzeichnung: {pfad}  ({len(a.teile)} Teile, "
+                  f"Prüfsumme {a.bundle_pruefsumme[:12]}…)", file=sys.stderr)
+            print(f"  Wiederholen mit:  synthfhir --wiedergeben {pfad}",
+                  file=sys.stderr)
+
     if not ergebnis.ressourcen:
         return 2
     return 0 if ergebnis.fertig and ergebnis.mengentreue == 1.0 else 1
+
+
+def _modellname() -> str:
+    return os.environ.get("SYNTHFHIR_LLM_MODEL", "unbekannt").strip() or "unbekannt"
+
+
+def _erzeugen(args) -> "tuple[Kohortenergebnis | None, int]":
+    """Der übliche Weg: das Modell fragen."""
+    if not args.beschreibung:
+        print("Fehler: Ohne --wiedergeben braucht es eine Beschreibung.",
+              file=sys.stderr)
+        return None, 2
+    if args.anzahl is None or args.anzahl < 1:
+        print("Fehler: --anzahl muss mindestens 1 sein.", file=sys.stderr)
+        return None, 2
+
+    try:
+        client = client_aus_umgebung()
+    except LLMFehler as exc:
+        print(f"Fehler: {exc}", file=sys.stderr)
+        return None, 2
+
+    # Der Fortschritt geht auf stderr, damit `synthfhir ... > datei.json`
+    # weiterhin eine saubere JSON-Datei ergibt.
+    def melde(nummer: int, gesamt: int, stand: str) -> None:
+        print(f"  Teil {nummer}/{gesamt}: {stand}", file=sys.stderr, flush=True)
+
+    if not args.still:
+        print(f"Erzeuge {args.anzahl} Patienten …", file=sys.stderr)
+
+    try:
+        return generiere_kohorte(
+            client,
+            args.beschreibung,
+            args.anzahl,
+            teilgroesse=args.teilgroesse,
+            versuche_je_teil=args.versuche,
+            pause_s=args.pause,
+            fortschritt=None if args.still else melde,
+        ), 0
+    except KeyboardInterrupt:
+        print(chr(10) + "Abgebrochen.", file=sys.stderr)
+        return None, 2
+
+
+def _wiedergeben(args) -> "tuple[Kohortenergebnis | None, int]":
+    """Abspielen statt fragen — ohne Netz, ohne Kontingent.
+
+    Der Befund über die Übereinstimmung geht auf stderr, und zwar immer:
+    Eine Wiedergabe, die stillschweigend etwas anderes liefert als der
+    aufgezeichnete Lauf, wäre schlimmer als gar keine.
+    """
+    try:
+        a = aufz.lies(args.wiedergeben)
+    except aufz.AufzeichnungFehler as exc:
+        print(f"Fehler: {exc}", file=sys.stderr)
+        return None, 2
+
+    if not args.still:
+        print(f"Gebe wieder: {args.wiedergeben}", file=sys.stderr)
+        print(f"  aufgezeichnet {a.erzeugt or 'ohne Datum'} mit {a.modell}",
+              file=sys.stderr)
+        print(f"  {len(a.teile)} Teile, {a.patienten} Patienten, "
+              "kein Modellaufruf", file=sys.stderr)
+
+    w = aufz.gib_wieder(a)
+    if not args.still:
+        print(f"  {w.befund()}", file=sys.stderr)
+    elif not w.identisch:
+        # Auch im stillen Betrieb: Eine Abweichung ist kein Rauschen.
+        print(w.befund(), file=sys.stderr)
+    return w.ergebnis, 0
 
 
 def _export_zeilen(export: Exportergebnis) -> str:

@@ -245,3 +245,90 @@ def test_bericht_ueberlebt_einen_gescheiterten_ndjson_export(stub, tmp_path, cap
     assert rc == 2, "der Export ist gescheitert"
     assert bericht.exists(), "der Bericht ist trotzdem da"
     assert json.loads(bericht.read_text(encoding="utf-8"))["patienten"] == 30
+
+
+# --- Aufzeichnen und Wiedergeben -------------------------------------------
+
+
+def test_aufzeichnen_und_wiedergeben_ergeben_dasselbe(stub, tmp_path, capsys):
+    """Die Zusage in einem Test: derselbe Auftrag, dasselbe Bundle — ohne
+    dass das Modell noch einmal gefragt wird."""
+    aufz_datei = tmp_path / "lauf.aufz.json"
+    erst = tmp_path / "erst.json"
+    dann = tmp_path / "dann.json"
+
+    assert cli.main(["30 Diabetikerinnen", "-n", "30", "-o", str(erst),
+                     "--aufzeichnen", str(aufz_datei)]) == 0
+    aufrufe_nach_erzeugung = stub.aufruf
+
+    assert cli.main(["--wiedergeben", str(aufz_datei), "-o", str(dann)]) == 0
+    assert stub.aufruf == aufrufe_nach_erzeugung, "kein weiterer Modellaufruf"
+    assert erst.read_bytes() == dann.read_bytes()
+
+
+def test_wiedergeben_braucht_weder_beschreibung_noch_anzahl(stub, tmp_path):
+    """Beides steht in der Aufzeichnung. Sie noch einmal zu verlangen wäre
+    eine Fehlerquelle: Wer sie abweichend angibt, bekäme trotzdem die
+    aufgezeichnete Kohorte."""
+    aufz_datei = tmp_path / "lauf.aufz.json"
+    cli.main(["30 Diabetikerinnen", "-n", "30", "-o", str(tmp_path / "a.json"),
+              "--aufzeichnen", str(aufz_datei)])
+    assert cli.main(["--wiedergeben", str(aufz_datei),
+                     "-o", str(tmp_path / "b.json")]) == 0
+
+
+def test_wiedergabe_meldet_den_befund_auf_stderr(stub, tmp_path, capsys):
+    aufz_datei = tmp_path / "lauf.aufz.json"
+    cli.main(["30 Diabetikerinnen", "-n", "30", "-o", str(tmp_path / "a.json"),
+              "--aufzeichnen", str(aufz_datei)])
+    capsys.readouterr()
+    cli.main(["--wiedergeben", str(aufz_datei), "-o", str(tmp_path / "b.json")])
+    err = capsys.readouterr().err
+    assert "kein Modellaufruf" in err
+    assert "Prüfsumme stimmt" in err
+
+
+def test_abweichung_wird_auch_im_stillen_betrieb_gemeldet(stub, tmp_path, capsys):
+    """`--still` unterdrückt Fortschritt, nicht Befunde. Eine Wiedergabe,
+    die stillschweigend etwas anderes liefert, wäre schlimmer als keine."""
+    from dataclasses import replace
+
+    from synthfhir.domain.codes import CONDITION_CODES
+
+    aufz_datei = tmp_path / "lauf.aufz.json"
+    cli.main(["30 Diabetikerinnen", "-n", "30", "-o", str(tmp_path / "a.json"),
+              "--aufzeichnen", str(aufz_datei)])
+    capsys.readouterr()
+
+    schluessel = "44054006"
+    alt = CONDITION_CODES[schluessel]
+    try:
+        CONDITION_CODES[schluessel] = replace(alt, display_de="Anders")
+        cli.main(["--wiedergeben", str(aufz_datei), "--still",
+                  "-o", str(tmp_path / "b.json")])
+    finally:
+        CONDITION_CODES[schluessel] = alt
+    assert "ABWEICHUNG" in capsys.readouterr().err
+
+
+def test_fehlende_aufzeichnung_gibt_zwei(stub, tmp_path, capsys):
+    assert cli.main(["--wiedergeben", str(tmp_path / "nichts.json")]) == 2
+    assert "gibt es nicht" in capsys.readouterr().err
+
+
+def test_ohne_beschreibung_und_ohne_wiedergeben_gibt_zwei(stub, capsys):
+    assert cli.main(["-n", "5"]) == 2
+    assert "braucht es eine Beschreibung" in capsys.readouterr().err
+
+
+def test_wiedergabe_kann_ndjson_schreiben(stub, tmp_path):
+    """Die Wiedergabe ist ein vollwertiger Lauf — alle Ausgabewege stehen
+    offen."""
+    aufz_datei = tmp_path / "lauf.aufz.json"
+    cli.main(["30 Diabetikerinnen", "-n", "30", "-o", str(tmp_path / "a.json"),
+              "--aufzeichnen", str(aufz_datei)])
+    ziel = tmp_path / "export"
+    assert cli.main(["--wiedergeben", str(aufz_datei), "--ndjson", str(ziel)]) == 0
+    assert (ziel / "Patient.ndjson").exists()
+    m = json.loads((ziel / "manifest.json").read_text(encoding="utf-8"))
+    assert "--wiedergeben" in m["request"], "die Herkunft darf nicht lügen"

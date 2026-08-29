@@ -71,6 +71,26 @@ def _warte(sekunden: float) -> None:
         time.sleep(sekunden)
 
 
+@dataclass(frozen=True)
+class TeilParameter:
+    """Was ein Teil dem Bau beigesteuert hat.
+
+    `angefragt` gehört dazu: `baue_aus_parametern` bekommt es als
+    Sollmenge, und ohne sie liefe eine Wiedergabe mit einer anderen
+    Erwartung als der ursprüngliche Lauf.
+    """
+
+    angefragt: int
+    parameter: dict
+
+    def to_dict(self) -> dict:
+        return {"angefragt": self.angefragt, "parameter": self.parameter}
+
+    @classmethod
+    def from_dict(cls, d: dict) -> "TeilParameter":
+        return cls(angefragt=int(d["angefragt"]), parameter=d["parameter"])
+
+
 @dataclass
 class Teilergebnis:
     """Was ein einzelner Teil geliefert hat."""
@@ -110,6 +130,11 @@ class Kohortenergebnis:
     integritaet: IntegrityReport | None = None
     nicht_abbildbar: list[str] = field(default_factory=list)
     llm_antworten: list[LLMAntwort] = field(default_factory=list)
+    # Die Parameterobjekte, aus denen tatsächlich gebaut wurde — je Teil,
+    # in Reihenfolge. Nicht dasselbe wie `llm_antworten`: dort stehen auch
+    # verworfene Versuche. Dies hier ist der Beitrag des Modells zum
+    # Ergebnis, und damit alles, was eine Aufzeichnung braucht.
+    parameter: list[TeilParameter] = field(default_factory=list)
 
     # -- die Zusage, unverändert aus Phase 1 --------------------------------
     @property
@@ -237,24 +262,10 @@ def generiere_kohorte(
         parameter = _hole_teil(client, beschreibung, menge, nummer, gesamt,
                                versuche_je_teil, teil, ergebnis)
         if parameter is not None:
-            verstanden = _lies_verstanden(parameter)
-            for luecke in verstanden.nicht_abbildbar:
-                if luecke not in ergebnis.nicht_abbildbar:
-                    ergebnis.nicht_abbildbar.append(luecke)
-
-            bau = baue_aus_parametern(
-                parameter, {"patienten": menge}, index_versatz=versatz
+            versatz = _verarbeite_teil(
+                TeilParameter(angefragt=menge, parameter=parameter),
+                versatz, teil, ergebnis, gebaute,
             )
-            ergebnis.beanstandungen.extend(bau.beanstandungen)
-            gebaute.extend(bau.ressourcen)
-            teil.geliefert = sum(
-                1 for r in bau.ressourcen if r.get("resourceType") == "Patient"
-            )
-            # Der Versatz wächst um das, was tatsächlich kam — nicht um das,
-            # was angefragt war. Sonst entstünden Lücken in den vorläufigen
-            # Kennungen, was zwar nicht schadet, aber die Artefakte
-            # unnötig schwer lesbar macht.
-            versatz += max(teil.geliefert, 1)
 
         teil.dauer_s = time.perf_counter() - beginn
         ergebnis.teile.append(teil)
@@ -262,16 +273,77 @@ def generiere_kohorte(
             stand = teil.fehler or f"{teil.geliefert}/{menge} Patienten"
             fortschritt(nummer, gesamt, stand)
 
+    return _schliesse_ab(ergebnis, gebaute)
+
+
+# --- Der Bauweg, einmal für Erzeugung und Wiedergabe ------------------------
+#
+# Beide Wege müssen durch dieselben Funktionen laufen. Zwei getrennte
+# Bauwege liefen mit der Zeit auseinander, und die Wiedergabe lieferte
+# stillschweigend etwas anderes als der aufgezeichnete Lauf — ohne dass
+# irgendein Test das bemerkte.
+
+
+def _verarbeite_teil(
+    teilparameter: TeilParameter,
+    versatz: int,
+    teil: Teilergebnis,
+    ergebnis: Kohortenergebnis,
+    gebaute: list[dict],
+) -> int:
+    """Baut einen Teil ein und gibt den neuen Versatz zurück."""
+    verstanden = _lies_verstanden(teilparameter.parameter)
+    for luecke in verstanden.nicht_abbildbar:
+        if luecke not in ergebnis.nicht_abbildbar:
+            ergebnis.nicht_abbildbar.append(luecke)
+
+    bau = baue_aus_parametern(
+        teilparameter.parameter,
+        {"patienten": teilparameter.angefragt},
+        index_versatz=versatz,
+    )
+    ergebnis.beanstandungen.extend(bau.beanstandungen)
+    gebaute.extend(bau.ressourcen)
+    ergebnis.parameter.append(teilparameter)
+    teil.geliefert = sum(
+        1 for r in bau.ressourcen if r.get("resourceType") == "Patient"
+    )
+    # Der Versatz wächst um das, was tatsächlich kam — nicht um das, was
+    # angefragt war. Sonst entstünden Lücken in den vorläufigen Kennungen,
+    # was zwar nicht schadet, aber die Artefakte unnötig schwer lesbar macht.
+    return versatz + max(teil.geliefert, 1)
+
+
+def _schliesse_ab(ergebnis: Kohortenergebnis, gebaute: list[dict]) -> Kohortenergebnis:
+    """Normalisiert, prüft und bündelt — einmal über die GESAMTE Kohorte."""
     if not gebaute:
         return ergebnis
-
-    # Einmal über die GESAMTE Kohorte, nicht je Teil.
     normalisiert = assign_ids(gebaute)
     ergebnis.ressourcen = normalisiert.resources
     ergebnis.validierung = pruefe_alle(ergebnis.ressourcen)
     ergebnis.integritaet = check_resources(ergebnis.ressourcen)
     ergebnis.bundle = baue_bundle(ergebnis.ressourcen)
     return ergebnis
+
+
+def baue_aus_aufzeichnung(
+    beschreibung: str,
+    angefragt: int,
+    teile: list[TeilParameter],
+) -> Kohortenergebnis:
+    """Baut eine Kohorte ohne Modellaufruf, allein aus Parameterobjekten.
+
+    Genau derselbe Weg wie bei der Erzeugung — nur ohne den einzigen
+    Schritt, der nicht deterministisch ist.
+    """
+    ergebnis = Kohortenergebnis(beschreibung=beschreibung, angefragt=angefragt)
+    gebaute: list[dict] = []
+    versatz = 0
+    for nummer, tp in enumerate(teile, start=1):
+        teil = Teilergebnis(nummer=nummer, angefragt=tp.angefragt)
+        versatz = _verarbeite_teil(tp, versatz, teil, ergebnis, gebaute)
+        ergebnis.teile.append(teil)
+    return _schliesse_ab(ergebnis, gebaute)
 
 
 # --- Teilschritte ----------------------------------------------------------
