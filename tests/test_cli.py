@@ -15,6 +15,22 @@ from synthfhir import cli
 from tests.test_kohorte import TeilClient
 
 
+@pytest.fixture(autouse=True)
+def keine_wartezeit(monkeypatch):
+    """Tests warten nicht wirklich — sie halten nur fest, wie lange.
+
+    Nullwerte fallen heraus, genau wie in `_warte` selbst: Ein `pause_s=0`
+    zwischen zwei Teilen ist keine Wartezeit, sondern deren Abwesenheit.
+    """
+    gewartet: list[float] = []
+
+    def merken(sekunden: float) -> None:
+        if sekunden > 0:
+            gewartet.append(sekunden)
+
+    monkeypatch.setattr("synthfhir.kohorte._warte", merken)
+    return gewartet
+
 @pytest.fixture
 def stub(monkeypatch):
     """Ersetzt den echten Anbieter. Kein Test hier kostet Kontingent."""
@@ -123,3 +139,9 @@ def test_fehlender_schluessel_bricht_sauber_ab(monkeypatch, capsys):
     monkeypatch.setattr(cli, "load_dotenv", lambda *a, **k: None)
     assert cli.main(["egal", "-n", "10"]) == 2
     assert "SYNTHFHIR_LLM_MODEL" in capsys.readouterr().err
+
+
+def test_pause_wird_durchgereicht(stub, tmp_path, keine_wartezeit):
+    cli.main(["60 Diabetikerinnen", "-n", "60", "-o", str(tmp_path / "k.json"),
+              "--pause", "60"])
+    assert keine_wartezeit == [60, 60, 60]

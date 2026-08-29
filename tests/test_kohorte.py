@@ -68,6 +68,23 @@ class TeilClient(LLMClient):
                           ausgabe_token=len(text) // 4, dauer_s=0.0, abbruchgrund="end_turn")
 
 
+@pytest.fixture(autouse=True)
+def keine_wartezeit(monkeypatch):
+    """Tests warten nicht wirklich — sie halten nur fest, wie lange.
+
+    Nullwerte fallen heraus, genau wie in `_warte` selbst: Ein `pause_s=0`
+    zwischen zwei Teilen ist keine Wartezeit, sondern deren Abwesenheit.
+    """
+    gewartet: list[float] = []
+
+    def merken(sekunden: float) -> None:
+        if sekunden > 0:
+            gewartet.append(sekunden)
+
+    monkeypatch.setattr("synthfhir.kohorte._warte", merken)
+    return gewartet
+
+
 # --- Aufteilung ------------------------------------------------------------
 
 
@@ -186,6 +203,31 @@ def test_ohne_wiederholung_bleibt_der_ausfall_stehen():
     assert e.patienten == 30
 
 
+def test_ausgefallene_teile_hinterlassen_keine_luecken_in_den_kennungen():
+    """Am 2026-08-29 brachen in einem echten Lauf über 200 Patienten die
+    Teile 5 bis 13 weg (Ratengrenze, dann Namensauflösung). Der Versatz
+    darf für einen ausgefallenen Teil nicht mitwachsen — sonst klaffte in
+    der Nummerierung eine Lücke, wo nie ein Patient war."""
+    e = generiere_kohorte(TeilClient(faellt_aus={2, 3}), "75 Patientinnen", 75,
+                          teilgroesse=15)
+    pat = [r["id"] for r in e.ressourcen if r["resourceType"] == "Patient"]
+    assert pat == [f"pat-{i:03d}" for i in range(1, 46)], "45 lückenlos ab pat-001"
+    assert e.integritaet.ok
+    assert e.integritaet.broken_reference_count == 0
+
+
+def test_verweise_bleiben_nach_einem_ausfall_korrekt():
+    """Der gefährliche Fall: Teil 3 verweist nach dem Ausfall von Teil 2
+    auf Patienten, die es gar nicht gibt."""
+    e = generiere_kohorte(TeilClient(faellt_aus={2}), "45 Patientinnen", 45,
+                          teilgroesse=15)
+    pids = {f"Patient/{r['id']}" for r in e.ressourcen
+            if r["resourceType"] == "Patient"}
+    verweise = {r["subject"]["reference"] for r in e.ressourcen
+                if r["resourceType"] != "Patient"}
+    assert verweise == pids, "jeder vorhandene Patient genau einmal, keiner darüber"
+
+
 def test_abgeschnittener_teil_nennt_die_teilgroesse():
     """Die Ursache liegt in der Konfiguration, nicht beim Modell — das muss
     die Meldung sagen, sonst sucht man an der falschen Stelle."""
@@ -243,3 +285,36 @@ def test_fortschritt_wird_je_teil_gemeldet():
     assert [m[0] for m in meldungen] == [1, 2, 3]
     assert all(m[1] == 3 for m in meldungen)
     assert "15/15" in meldungen[0][2]
+
+
+# --- Takt und Wartezeit ----------------------------------------------------
+
+
+def test_wiederholung_wartet_erst(keine_wartezeit):
+    """Bei den beiden häufigsten Ursachen — Ratengrenze und
+    Namensauflösungsfehler — kommt der Fehler sofort zurück. Ein sofortiger
+    zweiter Versuch scheitert dann garantiert genauso."""
+    from synthfhir.kohorte import WARTEZEIT_NACH_FEHLSCHLAG_S
+
+    generiere_kohorte(TeilClient(faellt_aus={2}), "45 Patientinnen", 45,
+                      teilgroesse=15, versuche_je_teil=2)
+    assert keine_wartezeit == [WARTEZEIT_NACH_FEHLSCHLAG_S], (
+        "genau eine Wartezeit: vor dem zweiten Versuch von Teil 2"
+    )
+
+
+def test_ohne_fehlschlag_wird_nicht_gewartet(keine_wartezeit):
+    generiere_kohorte(TeilClient(), "45 Patientinnen", 45, teilgroesse=15)
+    assert keine_wartezeit == []
+
+
+def test_pause_taktet_die_teile(keine_wartezeit):
+    """Vier Teile, drei Pausen — vor dem ersten Teil ist nichts zu takten."""
+    generiere_kohorte(TeilClient(), "60 Patientinnen", 60, teilgroesse=15, pause_s=60)
+    assert keine_wartezeit == [60, 60, 60]
+
+
+def test_pause_null_haelt_nicht_auf(keine_wartezeit):
+    """Der Normalfall: ohne Kontingentsorgen läuft nichts auf Wartezeit."""
+    generiere_kohorte(TeilClient(), "60 Patientinnen", 60, teilgroesse=15)
+    assert keine_wartezeit == []

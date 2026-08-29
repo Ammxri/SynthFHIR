@@ -82,8 +82,17 @@ saubere Datei.
 | `-o`, `--ausgabe` | Zieldatei statt stdout |
 | `--teilgroesse` | Patienten je LLM-Aufruf (Standard 15) |
 | `--versuche` | Versuche je Teil, bevor er als ausgefallen gilt (Standard 2) |
+| `--pause` | Wartezeit zwischen den Teilen, in Sekunden |
 | `--bericht` | Messwerte des Laufs als JSON |
 | `--still` | kein Fortschritt auf stderr |
+
+**`--pause` ist bei knappem Kontingent nötig.** Anbieter rechnen
+`max_tokens` in die Anfragegröße ein: Bei 5600 reservierten Ausgabe-Token
+und rund 2400 Token Prompt zählt ein Teil fast 8000 Token — bei einem
+Kontingent von 8000 Token je Minute also etwa ein Teil pro Minute. Ein
+ungetakteter Lauf über 200 Patienten lieferte am 2026-08-29 genau vier
+Teile, dann stand die Ratengrenze. Mit `--pause 60` läuft derselbe Auftrag
+durch, dauert aber entsprechend lange.
 
 Der Spike ist **nicht** das Produkt. Er hat eine Frage beantwortet und bleibt
 nur als Nachweis und als Messkette für eine mögliche Neuprüfung erhalten.

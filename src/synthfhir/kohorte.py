@@ -52,7 +52,23 @@ from .validation import Pruefergebnis, pruefe_alle
 # Patient reißt es. 15 lässt Luft für Patienten mit mehreren Diagnosen.
 TEILGROESSE = 15
 
+# Wartezeit zwischen zwei Versuchen desselben Teils. Ohne sie ist der zweite
+# Versuch bei den beiden häufigsten Ursachen sinnlos: Eine Ratengrenze steht
+# noch, und ein Namensauflösungsfehler kommt sofort zurück — gemessen am
+# 2026-08-29 verbrannte ein Teil so beide Versuche in unter einer Sekunde.
+WARTEZEIT_NACH_FEHLSCHLAG_S = 15.0
+
 Fortschritt = Callable[[int, int, str], None]
+
+
+def _warte(sekunden: float) -> None:
+    """Eigene Funktion, damit Tests sie ersetzen können.
+
+    Ein durchgereichter Parameter hätte die Signatur aufgebläht, und
+    `time.sleep` global zu verbiegen träfe auch alles andere.
+    """
+    if sekunden > 0:
+        time.sleep(sekunden)
 
 
 @dataclass
@@ -186,6 +202,7 @@ def generiere_kohorte(
     *,
     teilgroesse: int = TEILGROESSE,
     versuche_je_teil: int = 2,
+    pause_s: float = 0.0,
     fortschritt: Fortschritt | None = None,
 ) -> Kohortenergebnis:
     """Erzeugt eine Kohorte beliebiger Größe in Teilen.
@@ -193,6 +210,13 @@ def generiere_kohorte(
     `fortschritt` wird nach jedem Teil mit (Teilnummer, Gesamtzahl, Text)
     aufgerufen — für eine Kommandozeilenanzeige, damit ein Lauf über zehn
     Minuten nicht stumm dasteht.
+
+    `pause_s` taktet die Teile. Anbieter rechnen `max_tokens` in die
+    Anfragegröße ein; bei einem Kontingent von 8000 Token je Minute trägt
+    ein Teil mit 5600 reservierten Ausgabe-Token knapp einen Aufruf pro
+    Minute. Am 2026-08-29 lieferte ein ungetakteter Lauf über 200 Patienten
+    genau vier Teile, dann stand die Ratengrenze. Ohne Kontingentsorgen
+    bleibt der Wert bei 0.
     """
     ergebnis = Kohortenergebnis(beschreibung=beschreibung, angefragt=anzahl)
     if anzahl < 1:
@@ -204,6 +228,9 @@ def generiere_kohorte(
     versatz = 0
 
     for nummer, menge in enumerate(aufteilung, start=1):
+        if nummer > 1:
+            _warte(pause_s)
+
         teil = Teilergebnis(nummer=nummer, angefragt=menge)
         beginn = time.perf_counter()
 
@@ -284,7 +311,9 @@ def _hole_teil(
     system, benutzer = baue_teil_prompt(beschreibung, menge, nummer, gesamt)
     letzter_fehler = "unbekannt"
 
-    for _ in range(max(1, versuche)):
+    for versuch in range(max(1, versuche)):
+        if versuch > 0:
+            _warte(WARTEZEIT_NACH_FEHLSCHLAG_S)
         try:
             antwort = client.frage(system=system, benutzer=benutzer)
         except LLMFehler as exc:

@@ -52,6 +52,11 @@ def baue_parser() -> argparse.ArgumentParser:
                    help=f"Patienten je LLM-Aufruf (Standard: {TEILGROESSE}).")
     p.add_argument("--versuche", type=int, default=2,
                    help="Versuche je Teil, bevor er als ausgefallen gilt (Standard: 2).")
+    p.add_argument("--pause", type=float, default=0.0, metavar="SEKUNDEN",
+                   help="Wartezeit zwischen den Teilen. Nötig bei knappem "
+                        "Kontingent: Anbieter rechnen max_tokens in die "
+                        "Anfragegröße ein, bei 8000 Token/Minute trägt das "
+                        "etwa einen Teil pro Minute (--pause 60).")
     p.add_argument("--bericht", type=Path,
                    help="Zieldatei für die Messwerte des Laufs als JSON.")
     p.add_argument("--still", action="store_true",
@@ -88,6 +93,7 @@ def main(argv: list[str] | None = None) -> int:
             args.anzahl,
             teilgroesse=args.teilgroesse,
             versuche_je_teil=args.versuche,
+            pause_s=args.pause,
             fortschritt=None if args.still else melde,
         )
     except KeyboardInterrupt:
