@@ -27,6 +27,7 @@ from .kohorte import TEILGROESSE, Kohortenergebnis, generiere_kohorte
 from . import aufzeichnung as aufz
 from .llm import LLMFehler, client_aus_umgebung
 from .ndjson import MIME_TYP, Exportergebnis, ExportFehler, schreibe_ndjson
+from .push import TOKEN_VARIABLE, pushe
 
 HINWEIS = (
     "Synthetische Testdaten. Nicht für klinische Nutzung, "
@@ -78,6 +79,17 @@ def baue_parser() -> argparse.ArgumentParser:
                    help="Vorhandene NDJSON-Dateien im Zielverzeichnis ersetzen. "
                         "Ohne diesen Schalter bricht der Export ab, damit Reste "
                         "eines früheren Laufs nicht mitgeladen werden.")
+    p.add_argument("--push", metavar="FHIR-BASIS-URL",
+                   help="Die Kohorte in einen FHIR-Server laden. Schreibt "
+                        "NICHTS, solange nicht zusätzlich --push-ausfuehren "
+                        "gesetzt ist: Ein Tippfehler in der URL soll sichtbar "
+                        "werden, bevor er wirkt.")
+    p.add_argument("--push-ausfuehren", action="store_true",
+                   help="Den Push wirklich ausführen statt nur zu berichten.")
+    p.add_argument("--fremde-daten-ok", action="store_true",
+                   help="Auch dann pushen, wenn auf dem Ziel Daten ohne "
+                        "Testkennzeichen liegen. Wer das setzt, sagt: Ich "
+                        "weiß, was dort liegt.")
     p.add_argument("--bericht", type=Path,
                    help="Zieldatei für die Messwerte des Laufs als JSON.")
     p.add_argument("--still", action="store_true",
@@ -107,10 +119,10 @@ def main(argv: list[str] | None = None) -> int:
             )
             if not args.still:
                 print(f"\nBundle: {args.ausgabe}", file=sys.stderr)
-        elif not args.ndjson:
+        elif not args.ndjson and not args.push:
             # Nur wenn gar kein Ziel genannt ist, geht das Bundle auf stdout.
-            # Sonst schriebe `--ndjson ./export` nebenbei ein Megabyte in die
-            # Konsole.
+            # Sonst schriebe `--ndjson ./export` oder `--push <url>` nebenbei
+            # ein Megabyte in die Konsole.
             print(json.dumps(ergebnis.bundle, ensure_ascii=False, indent=2))
 
     # Der Bericht wird VOR dem NDJSON-Export geschrieben. Sonst ginge er
@@ -157,6 +169,11 @@ def main(argv: list[str] | None = None) -> int:
             return 2
         if not args.still:
             print(_export_zeilen(export), file=sys.stderr)
+
+    if args.push:
+        push_rc = _pushen(args, ergebnis)
+        if push_rc:
+            return push_rc
 
     if not ergebnis.ressourcen:
         return 2
@@ -240,6 +257,69 @@ def _wiedergeben(args) -> "tuple[Kohortenergebnis | None, int]":
     # Der Rückgabewert trägt das Urteil mit: Genau dafür gibt es die
     # Wiedergabe. 1 heisst „geliefert, aber nicht dasselbe".
     return w.ergebnis, 0 if w.identisch else 1
+
+
+def _pushen(args, ergebnis) -> int:
+    """Führt den Push aus und meldet, was geschah. 0 heißt: kein Abbruch.
+
+    Der Push kommt NACH Bundle, Bericht, Aufzeichnung und NDJSON. Wenn er
+    scheitert, sind die lokalen Artefakte längst geschrieben — sie sind das
+    Teure am Lauf, der Push ist wiederholbar.
+    """
+    if not ergebnis.fertig:
+        print("Push abgebrochen: Die Kohorte ist nicht vollständig gültig. "
+              "In ein fremdes System gehört nur, was die Prüfung besteht.",
+              file=sys.stderr)
+        return 2
+
+    # Eine Lücke ist kein Grund, den Push zu verweigern: Was geliefert wurde,
+    # ist gültig und in sich geschlossen, und 190 von 200 Patienten sind
+    # brauchbar. Sie muss aber genau hier stehen, wo geschrieben wird — nicht
+    # nur weiter oben in der Zusammenfassung.
+    if ergebnis.mengentreue < 1.0 and not args.still:
+        print(
+            f"\nACHTUNG: Die Kohorte ist unvollständig — {ergebnis.patienten} "
+            f"von {ergebnis.angefragt} Patienten ({ergebnis.mengentreue:.0%}). "
+            "Was gepusht wird, ist gültig, aber es ist nicht alles.",
+            file=sys.stderr,
+        )
+
+    e = pushe(
+        ergebnis.ressourcen,
+        args.push,
+        ausfuehren=args.push_ausfuehren,
+        fremde_daten_ok=args.fremde_daten_ok,
+    )
+    if not args.still:
+        print(_push_zeilen(e, args), file=sys.stderr)
+    return 2 if e.fehler else 0
+
+
+def _push_zeilen(e, args) -> str:
+    zeilen = [f"\nPush: {e.ziel}"]
+    b = e.befund
+    if b and b.erreichbar:
+        zeilen.append(f"  Server:       FHIR {b.fhir_version}")
+        zeilen.append(
+            f"  Bestand dort: {b.ressourcen_gesamt} Patienten, davon "
+            f"{b.ressourcen_mit_testlabel} als Testdaten gekennzeichnet"
+        )
+    for f in e.fehler:
+        zeilen.append(f"  ABGEBROCHEN:  {f}")
+    if not e.fehler:
+        zeilen.append(f"  Reihenfolge:  {' -> '.join(e.reihenfolge)}")
+        if e.trockenlauf:
+            zeilen.append(
+                f"  TROCKENLAUF:  {e.pakete} Transaktionen würden geschrieben. "
+                "Es wurde nichts verändert."
+            )
+            zeilen.append("  Wirklich ausführen mit:  --push-ausfuehren")
+        else:
+            zeilen.append(
+                f"  Geschrieben:  {e.geschrieben} Ressourcen in {e.pakete} "
+                "Transaktionen"
+            )
+    return "\n".join(zeilen)
 
 
 def _export_zeilen(export: Exportergebnis) -> str:

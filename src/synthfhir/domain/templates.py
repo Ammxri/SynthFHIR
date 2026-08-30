@@ -51,6 +51,7 @@ from .codes import (
     MEDICATION_STATUS,
     OBSERVATION_CODES,
     SNOMED_SYSTEM,
+    TESTDATEN_LABEL,
     UCUM_SYSTEM,
     ConditionCode,
     EncounterClass,
@@ -506,7 +507,45 @@ def baue_aus_parametern(
             )
             med_index += 1
 
+    for r in ergebnis.ressourcen:
+        kennzeichne_als_testdaten(r)
     return ergebnis
+
+
+def kennzeichne_als_testdaten(ressource: dict) -> dict:
+    """Setzt `meta.security` auf HTEST — auf jede erzeugte Ressource.
+
+    Das Projekt verspricht an vielen Stellen, ausschließlich synthetische
+    Daten zu erzeugen. Bisher stand dieses Versprechen im README, im
+    Manifest und in der Konsolenausgabe — also überall dort, wo ein Mensch
+    hinsieht, und nirgends dort, wo eine Maschine hinsieht.
+
+    `HTEST` macht daraus eine prüfbare Aussage. Ein Empfänger kann danach
+    suchen (`_security=HTEST` — an HAPI nachgeprüft), und ein Server kann
+    solche Daten von echten trennen. Die Definition des Codes trifft
+    diesen Fall wörtlich: *„simulated or synthetic health data used for
+    testing system capabilities outside of a production or operational
+    system environment."*
+
+    Das Label sitzt bewusst an **jeder** Ressource und nicht erst am
+    Server-Push. Eine Datei, die heute exportiert wird, kann morgen jemand
+    anderes irgendwohin laden — dann ist die Kennzeichnung schon drin.
+
+    Angewandt wird es an genau einer Stelle, am Ende von
+    `baue_aus_parametern`. Jede erzeugte Ressource läuft dort hindurch; ein
+    neuer Ressourcentyp bekommt es also, ohne dass jemand daran denken
+    muss.
+    """
+    meta = ressource.setdefault("meta", {})
+    vorhanden = meta.setdefault("security", [])
+    if not any(
+        s.get("system") == TESTDATEN_LABEL["system"]
+        and s.get("code") == TESTDATEN_LABEL["code"]
+        for s in vorhanden
+        if isinstance(s, dict)
+    ):
+        vorhanden.append(dict(TESTDATEN_LABEL))
+    return ressource
 
 
 def baue_bundle(ressourcen: list[dict], basis_url: str = "http://synthfhir.local/fhir") -> dict:

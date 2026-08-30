@@ -396,7 +396,7 @@ def test_manifest_nennt_patient_vor_condition(kohorte, tmp_path):
 def test_reihenfolge_kommt_aus_den_daten_nicht_aus_einer_liste(tmp_path):
     """Fest verdrahtet stimmte sie beim nächsten Ressourcentyp nicht mehr.
     Observation zeigt hier auf Encounter, Encounter auf Patient."""
-    from synthfhir.ndjson import _ladereihenfolge
+    from synthfhir.domain.integrity import ladereihenfolge
 
     daten = {
         "Observation": [{"subject": {"reference": "Patient/p"},
@@ -405,15 +405,15 @@ def test_reihenfolge_kommt_aus_den_daten_nicht_aus_einer_liste(tmp_path):
         "Encounter": [{"subject": {"reference": "Patient/p"}}],
         "Patient": [{"id": "p"}],
     }
-    assert _ladereihenfolge(daten) == ["Patient", "Condition", "Encounter", "Observation"]
+    assert ladereihenfolge(daten) == ["Patient", "Condition", "Encounter", "Observation"]
 
 
 def test_ring_wird_alphabetisch_aufgeloest(tmp_path):
     """Zeigen zwei Typen aufeinander, gibt es keine richtige Reihenfolge —
     dann wenigstens eine vorhersagbare."""
-    from synthfhir.ndjson import _ladereihenfolge
+    from synthfhir.domain.integrity import ladereihenfolge
 
-    assert _ladereihenfolge({
+    assert ladereihenfolge({
         "B": [{"x": {"reference": "A/1"}}],
         "A": [{"y": {"reference": "B/1"}}],
     }) == ["A", "B"]
@@ -422,9 +422,9 @@ def test_ring_wird_alphabetisch_aufgeloest(tmp_path):
 def test_verweise_auf_typen_ausserhalb_des_exports_stoeren_nicht(tmp_path):
     """Ein Verweis auf Organization, die gar nicht exportiert wird, darf
     die Reihenfolge nicht blockieren."""
-    from synthfhir.ndjson import _ladereihenfolge
+    from synthfhir.domain.integrity import ladereihenfolge
 
-    assert _ladereihenfolge({
+    assert ladereihenfolge({
         "Patient": [{"managingOrganization": {"reference": "Organization/o1"}}],
     }) == ["Patient"]
 

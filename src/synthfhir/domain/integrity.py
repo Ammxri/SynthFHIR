@@ -226,3 +226,45 @@ def _classify_reference(reference: str, known: set[str]) -> str | None:
     if target not in known:
         return f"Ziel {target} existiert nicht im selben Bundle"
     return None
+
+
+# --- Ladereihenfolge (ADR-005, seit Phase 2 auch für den Server-Push) ------
+
+def _verweis_ziele(wert, ziele: set[str]) -> None:
+    """Sammelt die Ressourcentypen, auf die irgendwo verwiesen wird."""
+    if isinstance(wert, dict):
+        verweis = wert.get("reference")
+        if isinstance(verweis, str) and "/" in verweis:
+            ziele.add(verweis.split("/", 1)[0])
+        for v in wert.values():
+            _verweis_ziele(v, ziele)
+    elif isinstance(wert, list):
+        for v in wert:
+            _verweis_ziele(v, ziele)
+
+
+def ladereihenfolge(nach_typ: dict[str, list[dict]]) -> list[str]:
+    """Referenzierte Typen zuerst, danach alphabetisch.
+
+    Abgeleitet aus den Verweisen in den Daten: Wer auf niemanden zeigt,
+    kann zuerst geladen werden. Bei einem Ring — zwei Typen, die
+    aufeinander zeigen — greift die alphabetische Reihenfolge, denn eine
+    richtige Reihenfolge gibt es dann nicht.
+    """
+    kanten: dict[str, set[str]] = {}
+    for typ, ressourcen in nach_typ.items():
+        ziele: set[str] = set()
+        for r in ressourcen:
+            _verweis_ziele(r, ziele)
+        # Nur Verweise auf Typen, die in diesem Export auch vorkommen.
+        kanten[typ] = (ziele & set(nach_typ)) - {typ}
+
+    reihenfolge: list[str] = []
+    offen = set(nach_typ)
+    while offen:
+        frei = sorted(t for t in offen if not (kanten[t] - set(reihenfolge)))
+        if not frei:                       # Ring: alphabetisch auflösen
+            frei = [min(offen)]
+        reihenfolge.extend(frei)
+        offen -= set(frei)
+    return reihenfolge

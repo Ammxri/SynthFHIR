@@ -98,6 +98,11 @@ from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
 
+# Die Ladereihenfolge wohnt seit Phase 2 in der Domänenschicht: Sie wird
+# aus den Verweisen abgeleitet und dient jetzt zwei Ausgabewegen — dem
+# NDJSON-Manifest und dem Server-Push. Zwei Abschriften liefen auseinander.
+from .domain.integrity import ladereihenfolge
+
 # Der Leitfaden schreibt diesen MIME-Typ für die Dateien vor.
 MIME_TYP = "application/fhir+ndjson"
 
@@ -234,7 +239,7 @@ def schreibe_ndjson(
     # Export ohne Manifest sieht aus wie ein ganzer: Der Empfänger sieht
     # NDJSON-Dateien und lädt sie. Lieber gar nichts als die Hälfte.
     try:
-        for typ in _ladereihenfolge(nach_typ):
+        for typ in ladereihenfolge(nach_typ):
             pfad = ziel / f"{typ}{ENDUNG}"
             geschrieben = _schreibe_datei(pfad, nach_typ[typ])
             ergebnis.dateien.append(
@@ -281,46 +286,6 @@ def _gruppiere(ressourcen: list[dict]) -> dict[str, list[dict]]:
             )
         nach_typ.setdefault(typ, []).append(r)
     return nach_typ
-
-
-def _verweis_ziele(wert, ziele: set[str]) -> None:
-    """Sammelt die Ressourcentypen, auf die irgendwo verwiesen wird."""
-    if isinstance(wert, dict):
-        verweis = wert.get("reference")
-        if isinstance(verweis, str) and "/" in verweis:
-            ziele.add(verweis.split("/", 1)[0])
-        for v in wert.values():
-            _verweis_ziele(v, ziele)
-    elif isinstance(wert, list):
-        for v in wert:
-            _verweis_ziele(v, ziele)
-
-
-def _ladereihenfolge(nach_typ: dict[str, list[dict]]) -> list[str]:
-    """Referenzierte Typen zuerst, danach alphabetisch.
-
-    Abgeleitet aus den Verweisen in den Daten: Wer auf niemanden zeigt,
-    kann zuerst geladen werden. Bei einem Ring — zwei Typen, die
-    aufeinander zeigen — greift die alphabetische Reihenfolge, denn eine
-    richtige Reihenfolge gibt es dann nicht.
-    """
-    kanten: dict[str, set[str]] = {}
-    for typ, ressourcen in nach_typ.items():
-        ziele: set[str] = set()
-        for r in ressourcen:
-            _verweis_ziele(r, ziele)
-        # Nur Verweise auf Typen, die in diesem Export auch vorkommen.
-        kanten[typ] = (ziele & set(nach_typ)) - {typ}
-
-    reihenfolge: list[str] = []
-    offen = set(nach_typ)
-    while offen:
-        frei = sorted(t for t in offen if not (kanten[t] - set(reihenfolge)))
-        if not frei:                       # Ring: alphabetisch auflösen
-            frei = [min(offen)]
-        reihenfolge.extend(frei)
-        offen -= set(frei)
-    return reihenfolge
 
 
 def _belegt(verzeichnis: Path) -> set[str]:

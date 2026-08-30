@@ -95,6 +95,24 @@ ATC_SYSTEM = "http://www.whocc.no/atc"
 # ValueSet gebunden, und die Bindung ist verpflichtend.
 ACT_CODE_SYSTEM = "http://terminology.hl7.org/CodeSystem/v3-ActCode"
 
+# Kennzeichnung als Testdaten. `HTEST` steht in v3-ActReason, NICHT in
+# v3-ActCode — eine Zusammenfassung der Spezifikationsseite hatte hier
+# zuerst ActCode genannt, und HAPI wies es ab:
+#   Unknown code 'http://terminology.hl7.org/CodeSystem/v3-ActCode#HTEST'
+# Nachgeprüft an der Primärquelle (terminology.hl7.org, CodeSystem
+# v3-ActReason): HTEST gehört zur Gruppe SYSDEV unter PurposeOfUse.
+#
+# Die Definition dort trifft dieses Projekt wörtlich: „To perform one or
+# more operations on information that is simulated or synthetic health data
+# used for testing system capabilities outside of a production or
+# operational system environment."
+ACT_REASON_SYSTEM = "http://terminology.hl7.org/CodeSystem/v3-ActReason"
+TESTDATEN_LABEL = {
+    "system": ACT_REASON_SYSTEM,
+    "code": "HTEST",
+    "display": "test health data",
+}
+
 
 @dataclass(frozen=True)
 class ObservationCode:

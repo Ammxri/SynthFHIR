@@ -23,7 +23,7 @@ Produkt.
 |---|---|---|
 | **0 — Spike** | Architekturentscheidung mit Messdaten | ✅ abgeschlossen 2026-08-28 |
 | **1 — MVP** | Eingabe, Generierung, Validierung, Lokalisierung, Export, Veröffentlichung | ✅ veröffentlicht 2026-08-29 |
-| **2 — v1.x** | Weitere Ressourcentypen, Bulk-Export, Seed, größere Kohorten | ⏳ 4 von 5 — Gate erfüllt 2026-08-29 (200 Patienten, 1020/1020 gültig gegen HAPI); seit 2026-08-30 fünf Ressourcentypen |
+| **2 — v1.x** | Weitere Ressourcentypen, Bulk-Export, Seed, Server-Push, größere Kohorten | ✅ abgeschlossen 2026-08-30 |
 | 3 — Vision | Deutsche Profile (KBV/ISiK), API, weitere Standards | langfristig |
 
 ---
@@ -41,6 +41,7 @@ src/      das Produkt (Phase 1)
     generation.py die Kette bis zum Bundle
     kohorte.py    große Kohorten in Teilen (Phase 2)
     ndjson.py     Bulk-Export nach FHIR Bulk Data (Phase 2)
+    push.py       Laden in einen FHIR-Server (Phase 2)
     aufzeichnung.py  Läufe aufzeichnen und wiedergeben (Phase 2)
     cli.py        Kommandozeile
     web/          Oberfläche (FastAPI, serverseitig gerendert)
@@ -88,6 +89,9 @@ saubere Datei.
 | `--aufzeichnen` | den Beitrag des Modells mitschreiben |
 | `--wiedergeben` | eine Aufzeichnung abspielen statt das Modell zu fragen |
 | `--ndjson` | zusätzlich als NDJSON in ein Verzeichnis schreiben |
+| `--push` | in einen FHIR-Server laden — **schreibt nichts ohne `--push-ausfuehren`** |
+| `--push-ausfuehren` | den Push wirklich ausführen |
+| `--fremde-daten-ok` | auch pushen, wenn auf dem Ziel ungekennzeichnete Daten liegen |
 | `--ueberschreiben` | vorhandene NDJSON-Dateien dort ersetzen |
 | `--bericht` | Messwerte des Laufs als JSON |
 | `--still` | kein Fortschritt auf stderr |
@@ -156,6 +160,55 @@ ist, muss auch der maschinenlesbare Kanal sagen, nicht nur stderr.
 Begründung und die Grenzen der Zusage in
 [ADR-006](docs/adr-006-reproduzierbarkeit.md).
 
+### In einen FHIR-Server laden
+
+Das ist der einzige Teil, der in ein **fremdes System** schreibt. Ein
+Tippfehler in der Ziel-URL schriebe erfundene Patienten in etwas, das
+vielleicht kein Testserver ist. Deshalb ist der Trockenlauf die
+Voreinstellung:
+
+```bash
+synthfhir --wiedergeben lauf.aufz.json --push http://localhost:8080/fhir
+```
+
+```
+Push: http://localhost:8080/fhir
+  Server:       FHIR 4.0.1
+  Bestand dort: 0 Patienten, davon 0 als Testdaten gekennzeichnet
+  Reihenfolge:  Patient -> Encounter -> MedicationStatement -> Condition -> Observation
+  TROCKENLAUF:  1 Transaktionen würden geschrieben. Es wurde nichts verändert.
+  Wirklich ausführen mit:  --push-ausfuehren
+```
+
+Geschrieben wird in Transaktionen mit `PUT`: atomar je Paket und
+idempotent — zweimal ausgeführt ergibt denselben Serverzustand statt
+doppelter Patienten. Ein Zugangstoken kommt aus `SYNTHFHIR_PUSH_TOKEN`,
+ausdrücklich nicht von der Kommandozeile: Argumente stehen in der
+Shell-Historie.
+
+**Der Push weigert sich**, wenn auf dem Ziel Patienten **ohne**
+Testkennzeichen liegen — ein Hinweis darauf, dass es kein Testserver ist.
+`--fremde-daten-ok` hebt das auf. Verlassen sollte man sich darauf nicht:
+Der Wächter liest den Suchindex des Zielservers, und der hängt hinterher.
+
+### Jede Ressource ist als Testdatum gekennzeichnet
+
+```json
+"meta": {"security": [{
+  "system": "http://terminology.hl7.org/CodeSystem/v3-ActReason",
+  "code": "HTEST", "display": "test health data"}]}
+```
+
+Das Versprechen „nur synthetische Daten" stand bisher im README, im
+Manifest und in jeder Konsolenausgabe — also überall dort, wo ein *Mensch*
+hinsieht. `HTEST` ist der Standardcode dafür, und er macht daraus eine
+Angabe, nach der ein Server suchen kann (`_security=…|HTEST`).
+
+Das Label sitzt an **jeder** erzeugten Ressource, nicht nur an gepushten:
+Eine Datei, die heute exportiert wird, kann morgen jemand anderes irgendwo
+hineinladen. Begründung in
+[ADR-008](docs/adr-008-server-push.md).
+
 ### Bulk-Export als NDJSON
 
 Ein Bundle ist zum Ansehen gut und zum Laden schlecht. Wer eine Kohorte in
@@ -212,6 +265,7 @@ in dieser Reihenfolge:
 | [ADR-005](docs/adr-005-ndjson-export.md) | Warum der Bulk-Export ein Verzeichnis ist und kein Strom |
 | [ADR-006](docs/adr-006-reproduzierbarkeit.md) | Warum es kein `--seed` gibt, sondern Aufzeichnungen |
 | [ADR-007](docs/adr-007-weitere-ressourcentypen.md) | Encounter und MedicationStatement — und was sie an Token kosten |
+| [ADR-008](docs/adr-008-server-push.md) | Server-Push, und warum jede Ressource als Testdatum gekennzeichnet ist |
 | [Konzepte](docs/konzepte.md) | Die FHIR-Grundlagen dahinter, ausführlich erklärt |
 
 ### Die tragenden Entscheidungen in drei Sätzen

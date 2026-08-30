@@ -375,3 +375,87 @@ def test_aufzeichnung_ueberlebt_einen_gescheiterten_ndjson_export(stub, tmp_path
                    "--aufzeichnen", str(datei)])
     assert rc == 2, "der Export ist gescheitert"
     assert datei.exists(), "die Aufzeichnung ist trotzdem da"
+
+
+# --- Server-Push -----------------------------------------------------------
+
+
+def test_push_ist_voreingestellt_ein_trockenlauf(stub, tmp_path, capsys, monkeypatch):
+    gesendet = []
+    monkeypatch.setattr("synthfhir.cli.pushe",
+                        lambda res, url, **kw: _stub_push(res, url, gesendet, **kw))
+    rc = cli.main(["30 Diabetikerinnen", "-n", "30", "--teilgroesse", "15",
+                   "-o", str(tmp_path / "k.json"), "--push", "http://ziel/fhir"])
+    assert rc == 0
+    assert gesendet[0]["ausfuehren"] is False
+    assert "TROCKENLAUF" in capsys.readouterr().err
+
+
+def test_push_ausfuehren_wird_durchgereicht(stub, tmp_path, monkeypatch):
+    gesendet = []
+    monkeypatch.setattr("synthfhir.cli.pushe",
+                        lambda res, url, **kw: _stub_push(res, url, gesendet, **kw))
+    cli.main(["30 Diabetikerinnen", "-n", "30", "--teilgroesse", "15",
+              "-o", str(tmp_path / "k.json"), "--push", "http://ziel/fhir",
+              "--push-ausfuehren", "--fremde-daten-ok"])
+    assert gesendet[0]["ausfuehren"] is True
+    assert gesendet[0]["fremde_daten_ok"] is True
+
+
+def test_luecke_wird_beim_pushen_ausdruecklich_gemeldet(monkeypatch, tmp_path, capsys):
+    """Eine Lücke verhindert den Push nicht — was geliefert wurde, ist
+    gültig und in sich geschlossen. Sie muss aber dort stehen, wo nach
+    außen geschrieben wird, nicht nur in der Zusammenfassung darüber."""
+    monkeypatch.setattr(cli, "client_aus_umgebung", lambda: TeilClient(faellt_aus={2}))
+    monkeypatch.setattr(cli, "load_dotenv", lambda *a, **k: None)
+    gesendet = []
+    monkeypatch.setattr("synthfhir.cli.pushe",
+                        lambda res, url, **kw: _stub_push(res, url, gesendet, **kw))
+    rc = cli.main(["45 Diabetikerinnen", "-n", "45", "--teilgroesse", "15",
+                   "-o", str(tmp_path / "k.json"), "--push", "http://ziel/fhir",
+                   "--push-ausfuehren"])
+    err = capsys.readouterr().err
+    assert gesendet, "gepusht wird trotzdem"
+    assert "ACHTUNG" in err and "30 von 45" in err
+    assert rc == 1, "der Rückgabewert sagt weiterhin: Lücken"
+
+
+def test_ungueltige_kohorte_wird_nicht_gepusht(stub, tmp_path, capsys, monkeypatch):
+    """Ungültig ist etwas anderes als unvollständig: In ein fremdes System
+    gehört nur, was die Prüfung besteht."""
+    gesendet = []
+    monkeypatch.setattr("synthfhir.cli.pushe",
+                        lambda res, url, **kw: _stub_push(res, url, gesendet, **kw))
+
+    from synthfhir.kohorte import Kohortenergebnis
+    monkeypatch.setattr(Kohortenergebnis, "fertig", property(lambda self: False))
+    rc = cli.main(["30 Diabetikerinnen", "-n", "30", "--teilgroesse", "15",
+                   "-o", str(tmp_path / "k.json"), "--push", "http://ziel/fhir",
+                   "--push-ausfuehren"])
+    assert rc == 2
+    assert gesendet == [], "es darf gar nicht erst versucht werden"
+    assert "nicht vollständig gültig" in capsys.readouterr().err
+
+
+def test_push_unterdrueckt_das_bundle_auf_stdout(stub, capsys, monkeypatch):
+    gesendet = []
+    monkeypatch.setattr("synthfhir.cli.pushe",
+                        lambda res, url, **kw: _stub_push(res, url, gesendet, **kw))
+    cli.main(["30 Diabetikerinnen", "-n", "30", "--teilgroesse", "15",
+              "--push", "http://ziel/fhir"])
+    assert capsys.readouterr().out == ""
+
+
+def _stub_push(res, url, gesendet, **kw):
+    """Ein Push, der nichts tut und mitschreibt, wie er gerufen wurde."""
+    from synthfhir.push import Pushergebnis, Zielbefund
+
+    gesendet.append(dict(kw))
+    e = Pushergebnis(ziel=url, trockenlauf=not kw.get("ausfuehren"))
+    e.befund = Zielbefund(url=url, erreichbar=True, fhir_version="4.0.1",
+                          ressourcen_gesamt=0, ressourcen_mit_testlabel=0)
+    e.pakete = 1
+    e.reihenfolge = ["Patient"]
+    if kw.get("ausfuehren"):
+        e.geschrieben = len(res)
+    return e
