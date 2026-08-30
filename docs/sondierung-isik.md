@@ -32,6 +32,26 @@ Geladene Pakete (geprüft am 2026-08-30 auf simplifier.net):
   FHIR R4
 * `de.basisprofil.r4` **1.5.3** — Abhängigkeit des ISiK-Pakets
 
+> **Nachtrag zur Version.** 4.0.3 ist die `latest` des Paketregisters, aber
+> **nicht** die maßgebliche Stufe. Die gematik führt ISiK in Stufen; die
+> tragende Bestätigungsstufe ist derzeit **Stufe 3** (`3.1.1`), und für
+> **Stufe 5** wird die Verbindlichkeit gerade festgelegt — Hersteller mit
+> gültiger Stufe-3-Bestätigung erhalten dafür eine Verlängerung. „Aktuelle
+> Fassung" war für 4.0.3 also die falsche Beschreibung.
+>
+> Technisch folgt daraus mehr als eine Fußnote: **Die kanonischen
+> Profil-URLs unterscheiden sich zwischen den Stufen.**
+>
+> | Stufe | URL von ISiKPatient |
+> |---|---|
+> | 3.1.1 | `https://gematik.de/fhir/isik/v3/Basismodul/StructureDefinition/ISiKPatient` |
+> | 4.0.3 | `https://gematik.de/fhir/isik/StructureDefinition/ISiKPatient` |
+>
+> Wer je `meta.profile` setzt, entscheidet damit eine Stufe. Die
+> Lückenklassen unten sind davon unberührt — `isik-con1` etwa existiert in
+> beiden Fassungen —, die Wahl der Stufe wäre aber eine eigene
+> Entscheidung.
+
 Beide Pakete laden über die Umgebungsvariablen
 `hapi.fhir.implementationguides.<name>.name` und `.version` und werden im
 Protokoll des Containers bestätigt.
@@ -50,6 +70,9 @@ Kohorte, wie sie das Produkt heute erzeugt.
 | Patient | ISiKPatient | 1 |
 | Encounter | ISiKKontaktGesundheitseinrichtung | 3 |
 | Condition | ISiKDiagnose | 5 |
+
+(Gemessen an einer Kohorte **mit** Begegnung. Ohne Begegnung kommt ein
+sechster Fehler dazu — siehe unten.)
 
 Im Einzelnen:
 
@@ -76,6 +99,30 @@ Versuchsweise ergänzt wurden:
 | ISiKPatient | 1 | **0** |
 | ISiKKontaktGesundheitseinrichtung | 3 | **0** |
 | ISiKDiagnose | 5 | **2** |
+
+### Und ein Fehler, den diese Messung zuerst übersehen hat
+
+Die Messkohorte hatte eine Begegnung. Damit lief sie an einer
+Zwangsbedingung vorbei, die ISiK stellt:
+
+```
+Constraint failed: isik-con1: 'Falls eine kodierte Diagnose vorliegt muss
+angegeben werden durch welchen Kontakt diese Dokumentation erfolgte.'
+```
+
+Nachgestellt mit einem Patienten **ohne** Begegnung: Die Diagnose ist dann
+nicht konform. Und genau diesen Fall erzeugt das Produkt heute regelmäßig —
+`begegnungen` ist im Parameterobjekt optional, und die Vorlage setzt
+`Condition.encounter` nur, wenn eine Begegnung vorliegt.
+
+**Das ändert den Zuschnitt.** ISiK-Konformität ist nicht nur eine Frage von
+fünf additiven Feldern, sondern verlangt eine **strukturelle Zusage**: Jeder
+Patient mit kodierter Diagnose braucht einen Kontakt. Das ist eine Änderung
+an der Erzeugung, nicht an einer Vorlage.
+
+Der Prüffehler dahinter ist in diesem Projekt nicht neu: Gemessen wurde der
+Fall, der ohnehin durchgeht. Dieselbe Sorte Irrtum wie zweimal zuvor beim
+Nachstellen von Katalogfehlern.
 
 **Die verbleibenden zwei sind kein Datenfehler.** Der Validator kann das
 ValueSet `DiagnosesSCT` nicht auflösen, weil dem Server keine
@@ -121,6 +168,9 @@ lässt, und nur die Messung zeigt das.
 
 * **Die Nachfrage ist nicht belegt.** Das Gate der Phase 3 verlangt sie
   ausdrücklich, und diese Sondierung hat sie nicht gemessen.
+* **Es verlangt mehr als Felder.** `isik-con1` erzwingt, dass jeder
+  Patient mit kodierter Diagnose einen Kontakt hat — eine Zusage über die
+  Erzeugung, nicht über eine Vorlage.
 * **Es ändert wieder jedes Bundle.** Wie schon beim HTEST-Label melden
   bestehende Aufzeichnungen danach `ABWEICHUNG`.
 * **Vollständige Konformität ist ohne Terminologieserver nicht
