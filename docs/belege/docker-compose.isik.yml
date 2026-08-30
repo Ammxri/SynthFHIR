@@ -1,0 +1,26 @@
+# Ein ZWEITER HAPI, nur zum Messen: Wie weit ist die heutige Ausgabe von
+# ISiK entfernt?
+#
+# Bewusst getrennt vom docker-compose.yml des Projekts und auf einem anderen
+# Port. Der Messaufbau darf die Prüfkette der CI nicht anfassen, solange
+# nicht entschieden ist, ob Profilkonformität überhaupt gebaut wird.
+#
+#   docker compose -f docker-compose.isik.yml up -d
+services:
+  hapi-isik:
+    image: hapiproject/hapi:latest
+    container_name: synthfhir-hapi-isik
+    ports:
+      - "8090:8080"
+    environment:
+      - hapi.fhir.fhir_version=R4
+      - hapi.fhir.allow_external_references=true
+      - hapi.fhir.enforce_referential_integrity_on_write=false
+      # Das ISiK-Basismodul der gematik, FHIR R4.
+      # Geprüft am 2026-08-30 auf simplifier.net: aktuelle Fassung 4.0.3.
+      - hapi.fhir.implementationguides.isik.name=de.gematik.isik-basismodul
+      - hapi.fhir.implementationguides.isik.version=4.0.3
+      # Ohne die Basisprofile DE fehlen dem ISiK-Paket seine Abhängigkeiten.
+      - hapi.fhir.implementationguides.basisprofil.name=de.basisprofil.r4
+      - hapi.fhir.implementationguides.basisprofil.version=1.5.3
+    restart: unless-stopped
