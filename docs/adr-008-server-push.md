@@ -120,12 +120,17 @@ das den Wiedergabebefehl ausgibt.
 
 ### Was der Wächter kann und was nicht
 
-Er vergleicht zwei Zahlen: Patienten auf dem Ziel insgesamt, und Patienten
-mit korrektem Testkennzeichen. Ist die erste größer, liegen dort Daten, die
-nicht von SynthFHIR stammen.
+Er stellt drei Fragen: Wie viele Patienten liegen auf dem Ziel? Wie viele
+davon tragen das korrekte Testkennzeichen? Und — die entscheidende —
+beantwortet dieser Server Suchen nach `_security` überhaupt?
 
-Zwei Fallstricke, beide gemessen:
+Drei Fallstricke, alle gemessen:
 
+- **Die Filterwirkung muss geprüft werden.** Ein Server, der `_security`
+  ignoriert, liefert auf beide Zählfragen dieselbe Zahl und sähe damit aus
+  wie ein sauberer Testserver. Die Gegenprobe mit einem erfundenen Label
+  entlarvt ihn: Wirkt der Filter, ergibt sie null. Ausführlich in
+  Abschnitt 3b — es war der schwerste Fehler dieses Moduls.
 - **Das Suchtoken braucht sein System.** Eine Suche nach `HTEST` ohne
   System traf auch eine Ressource, die den Code unter einem *anderen*
   System trug. Der Wächter hätte fremde Daten für eigene gehalten.
