@@ -111,20 +111,25 @@ def test_referenzkohorte_ist_ohne_modell_und_stabil():
 
 
 def test_referenzkohorte_enthaelt_den_fall_ohne_begegnung():
-    """Der wichtigste Patient der Kohorte — und der einzige, der scheitert.
+    """Der Patient, für den es diese Kohorte gibt.
 
-    Die erste Sondierung hat isik-con1 übersehen, weil jeder Patient eine
-    Begegnung hatte. Ein Messaufbau, der nur den Fall enthält, der ohnehin
-    durchgeht, misst nichts.
+    In den **Parametern** liefert er keine Begegnung — das war der Fall,
+    den die erste Sondierung übersah und an dem `isik-con1` scheiterte.
+    Seit ADR-009 ergänzt der Code den Kontakt, und derselbe Patient belegt
+    nun die Zusage statt der Lücke.
+
+    Er bleibt deshalb in der Kohorte. Ihn zu entfernen, weil er jetzt
+    durchgeht, hiesse die Messung genau um den Fall zu erleichtern, der sie
+    einmal gerettet hat.
     """
     ohne = [p for p in PARAMETER["patienten"] if not p.get("begegnungen")]
-    assert len(ohne) == 1, "genau ein Patient ohne Begegnung, absichtlich"
+    assert len(ohne) == 1, "genau ein Patient ohne Begegnung in den Parametern"
 
     res = baue()
     diagnosen_ohne = [
         r for r in res if r["resourceType"] == "Condition" and "encounter" not in r
     ]
-    assert diagnosen_ohne, "sonst greift isik-con1 nie"
+    assert not diagnosen_ohne, "jede kodierte Diagnose nennt ihren Kontakt"
 
 
 def test_referenzkohorte_deckt_mehrere_ressourcen_je_typ_ab():
@@ -169,16 +174,31 @@ def test_bericht_nennt_paket_und_terminologiestand(profilserver):
 def test_bericht_zaehlt_drei_spalten_getrennt(profilserver):
     b = pruefe_gegen_profile(baue(), profilserver)
     s = b.to_dict()["summe"]
-    assert s["geprueft"] == 10
-    assert s["fehler"] > 0, "die Lücke ist real und soll sichtbar sein"
+    assert s["geprueft"] == 11
     assert s["ungeprueft"] > 0, "die SNOMED-Bindung ist ohne Terminologie offen"
 
 
-def test_isik_con1_wird_gefunden(profilserver):
-    """Der Befund, für den es die Referenzkohorte gibt."""
+def test_keine_fehler_mehr(profilserver):
+    """Die Zusage aus ADR-009, gemessen statt behauptet.
+
+    25 Fehler waren es bei der Sondierung. Dass hier null steht, heisst
+    **nicht** „ISiK-konform": Acht Befunde bleiben ungeprüft, weil ohne
+    Terminologieserver niemand sagen kann, ob die SNOMED-Codes im
+    geforderten ValueSet liegen. Genau dafür gibt es die dritte Spalte.
+    """
     b = pruefe_gegen_profile(baue(), profilserver)
-    meldungen = " ".join(f.meldung for e in b.ergebnisse for f in e.fehler)
-    assert "isik-con1" in meldungen
+    fehler = [(e.ressourcentyp, f.meldung) for e in b.ergebnisse for f in e.fehler]
+    assert fehler == [], fehler
+
+
+def test_isik_con1_greift_nicht_mehr(profilserver):
+    """Der Befund, der die Kohorte einmal gerettet hat — jetzt als
+    Regressionsschutz."""
+    b = pruefe_gegen_profile(baue(), profilserver)
+    alle = " ".join(
+        f.meldung for e in b.ergebnisse for f in e.fehler + e.ungeprueft
+    )
+    assert "isik-con1" not in alle
 
 
 def test_bericht_ueberlebt_den_umweg_ueber_json(profilserver):

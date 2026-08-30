@@ -1,5 +1,5 @@
 {
-  "erzeugt": "2026-08-30T21:08:55Z",
+  "erzeugt": "2026-08-30T21:37:17Z",
   "server": "http://localhost:8090/fhir",
   "fhir_version": "4.0.1",
   "paket": "de.gematik.isik-basismodul",
@@ -7,27 +7,27 @@
   "terminologieserver": "keiner",
   "hinweis": "Synthetische Testdaten. 'ungeprueft' heißt: Der Validator konnte es nicht entscheiden — nicht, dass es richtig ist.",
   "summe": {
-    "geprueft": 10,
-    "fehler": 25,
+    "geprueft": 11,
+    "fehler": 0,
     "ungeprueft": 8,
-    "warnungen": 26
+    "warnungen": 19
   },
   "je_typ": {
     "Patient": {
       "geprueft": 3,
-      "fehler": 3,
-      "ungeprueft": 0,
-      "warnungen": 15
-    },
-    "Encounter": {
-      "geprueft": 3,
-      "fehler": 9,
+      "fehler": 0,
       "ungeprueft": 0,
       "warnungen": 3
     },
+    "Encounter": {
+      "geprueft": 4,
+      "fehler": 0,
+      "ungeprueft": 0,
+      "warnungen": 8
+    },
     "Condition": {
       "geprueft": 4,
-      "fehler": 13,
+      "fehler": 0,
       "ungeprueft": 8,
       "warnungen": 8
     }
@@ -40,40 +40,10 @@
       "ressourcentyp": "Patient",
       "kennung": "pat-001",
       "profil": "https://gematik.de/fhir/isik/StructureDefinition/ISiKPatient",
-      "fehler": 1,
+      "fehler": 0,
       "ungeprueft": 0,
-      "warnungen": 5,
+      "warnungen": 1,
       "befunde": [
-        {
-          "schweregrad": "information",
-          "ort": "Patient.identifier[0]",
-          "ungeprueft": false,
-          "meldung": "This element does not match any known slice defined in the profile https://gematik.de/fhir/isik/StructureDefinition/ISiKPatient|4.0.3 (this may not be a problem, but you should check that it's not intended to match a slice) - Does not match slice 'VersichertenId' (discriminator: $this.where(type.coding.where((system = 'http://fhir.de/CodeSystem/identifier-type-de-basis') and (code = 'KVZ10')).exists()).exists())"
-        },
-        {
-          "schweregrad": "information",
-          "ort": "Patient.identifier[0]",
-          "ungeprueft": false,
-          "meldung": "This element does not match any known slice defined in the profile https://gematik.de/fhir/isik/StructureDefinition/ISiKPatient|4.0.3 (this may not be a problem, but you should check that it's not intended to match a slice) - Does not match slice 'VersichertenId-GKV' (discriminator: $this.where(type.coding.where((system = 'http://fhir.de/CodeSystem/identifier-type-de-basis') and (code = 'GKV')).exists()).exists())"
-        },
-        {
-          "schweregrad": "information",
-          "ort": "Patient.identifier[0]",
-          "ungeprueft": false,
-          "meldung": "This element does not match any known slice defined in the profile https://gematik.de/fhir/isik/StructureDefinition/ISiKPatient|4.0.3 (this may not be a problem, but you should check that it's not intended to match a slice) - Does not match slice 'Patientennummer' (discriminator: $this.where(type.coding.where((system = 'http://terminology.hl7.org/CodeSystem/v2-0203') and (code = 'MR')).exists()).exists())"
-        },
-        {
-          "schweregrad": "information",
-          "ort": "Patient.identifier[0]",
-          "ungeprueft": false,
-          "meldung": "This element does not match any known slice defined in the profile https://gematik.de/fhir/isik/StructureDefinition/ISiKPatient|4.0.3 (this may not be a problem, but you should check that it's not intended to match a slice) - Does not match slice 'Versichertennummer_PKV' (discriminator: $this.where(type.coding.where((system = 'http://fhir.de/CodeSystem/identifier-type-de-basis') and (code = 'PKV')).exists()).exists())"
-        },
-        {
-          "schweregrad": "error",
-          "ort": "Patient",
-          "ungeprueft": false,
-          "meldung": "Slice 'Patient.identifier:Patientennummer': a matching slice is required, but not found (from https://gematik.de/fhir/isik/StructureDefinition/ISiKPatient|4.0.3). Note that other slices are allowed in addition to this required slice"
-        },
         {
           "schweregrad": "warning",
           "ort": "Patient",
@@ -86,27 +56,15 @@
       "ressourcentyp": "Encounter",
       "kennung": "enc-001",
       "profil": "https://gematik.de/fhir/isik/StructureDefinition/ISiKKontaktGesundheitseinrichtung",
-      "fehler": 3,
+      "fehler": 0,
       "ungeprueft": 0,
-      "warnungen": 1,
+      "warnungen": 2,
       "befunde": [
         {
-          "schweregrad": "error",
-          "ort": "Encounter",
+          "schweregrad": "warning",
+          "ort": "Encounter.identifier[0].type",
           "ungeprueft": false,
-          "meldung": "Encounter.identifier: minimum required = 1, but only found 0 (from https://gematik.de/fhir/isik/StructureDefinition/ISiKKontaktGesundheitseinrichtung|4.0.3)"
-        },
-        {
-          "schweregrad": "error",
-          "ort": "Encounter",
-          "ungeprueft": false,
-          "meldung": "Encounter.type: minimum required = 1, but only found 0 (from https://gematik.de/fhir/isik/StructureDefinition/ISiKKontaktGesundheitseinrichtung|4.0.3)"
-        },
-        {
-          "schweregrad": "error",
-          "ort": "Encounter",
-          "ungeprueft": false,
-          "meldung": "Slice 'Encounter.type:Kontaktebene': a matching slice is required, but not found (from https://gematik.de/fhir/isik/StructureDefinition/ISiKKontaktGesundheitseinrichtung|4.0.3). Note that other slices are allowed in addition to this required slice"
+          "meldung": "None of the codings provided are in the value set 'IdentifierType' (http://hl7.org/fhir/ValueSet/identifier-type|4.0.1), and a coding should come from this value set unless it has no suitable code (note that the validator cannot judge what is suitable) (codes = http://terminology.hl7.org/CodeSystem/v2-0203#VN)"
         },
         {
           "schweregrad": "warning",
@@ -120,7 +78,7 @@
       "ressourcentyp": "Condition",
       "kennung": "cond-001",
       "profil": "https://gematik.de/fhir/isik/StructureDefinition/ISiKDiagnose",
-      "fehler": 3,
+      "fehler": 0,
       "ungeprueft": 2,
       "warnungen": 2,
       "befunde": [
@@ -132,33 +90,15 @@
         },
         {
           "schweregrad": "error",
-          "ort": "Condition",
-          "ungeprueft": false,
-          "meldung": "Condition.recordedDate: minimum required = 1, but only found 0 (from https://gematik.de/fhir/isik/StructureDefinition/ISiKDiagnose|4.0.3)"
+          "ort": "Condition.code.coding[0]",
+          "ungeprueft": true,
+          "meldung": "Unable to expand ValueSet: cannot apply filters '[org.hl7.fhir.r5.model.ValueSet$ConceptSetFilterComponent@17e65773]' because CodeSystem 'http://snomed.info/sct' is ignored/not-present"
         },
         {
           "schweregrad": "error",
           "ort": "Condition.code.coding[0]",
           "ungeprueft": true,
-          "meldung": "Unable to expand ValueSet: cannot apply filters '[org.hl7.fhir.r5.model.ValueSet$ConceptSetFilterComponent@86082de]' because CodeSystem 'http://snomed.info/sct' is ignored/not-present"
-        },
-        {
-          "schweregrad": "error",
-          "ort": "Condition.code.coding[0]",
-          "ungeprueft": true,
-          "meldung": "The Coding provided (http://snomed.info/sct#44054006) was not found in the value set 'DiagnosesSCT' (https://gematik.de/fhir/isik/ValueSet/DiagnosesSCT|4.0.3), and a code is required from this value set.  (error message = Failed to expand ValueSet 'https://gematik.de/fhir/isik/ValueSet/DiagnosesSCT' (in-memory). Could not validate code http://snomed.info/sct#44054006. Error was: HAPI-2646: Unable to expand ValueSet: cannot apply filters '[org.hl7.fhir.r5.model.ValueSet$ConceptSetFilterComponent@86082de]' because CodeSystem 'http://snomed.info/sct' is ignored/not-present; Unable to expand ValueSet: cannot apply filters '[org.hl7.fhir.r5.model.ValueSet$ConceptSetFilterComponent@86082de]' because CodeSystem 'http://snomed.info/sct' is ignored/not-present)"
-        },
-        {
-          "schweregrad": "error",
-          "ort": "Condition.code.coding[1]",
-          "ungeprueft": false,
-          "meldung": "Coding.version: minimum required = 1, but only found 0 (from https://gematik.de/fhir/isik/StructureDefinition/ISiKICD10GMCoding|4.0.3)"
-        },
-        {
-          "schweregrad": "error",
-          "ort": "Condition.code.coding[1]",
-          "ungeprueft": false,
-          "meldung": "Condition.code.coding:ICD-10-GM.version: minimum required = 1, but only found 0 (from https://gematik.de/fhir/isik/StructureDefinition/ISiKDiagnose|4.0.3)"
+          "meldung": "The Coding provided (http://snomed.info/sct#44054006) was not found in the value set 'DiagnosesSCT' (https://gematik.de/fhir/isik/ValueSet/DiagnosesSCT|4.0.3), and a code is required from this value set.  (error message = Failed to expand ValueSet 'https://gematik.de/fhir/isik/ValueSet/DiagnosesSCT' (in-memory). Could not validate code http://snomed.info/sct#44054006. Error was: HAPI-2646: Unable to expand ValueSet: cannot apply filters '[org.hl7.fhir.r5.model.ValueSet$ConceptSetFilterComponent@17e65773]' because CodeSystem 'http://snomed.info/sct' is ignored/not-present; Unable to expand ValueSet: cannot apply filters '[org.hl7.fhir.r5.model.ValueSet$ConceptSetFilterComponent@17e65773]' because CodeSystem 'http://snomed.info/sct' is ignored/not-present)"
         },
         {
           "schweregrad": "warning",
@@ -172,40 +112,10 @@
       "ressourcentyp": "Patient",
       "kennung": "pat-002",
       "profil": "https://gematik.de/fhir/isik/StructureDefinition/ISiKPatient",
-      "fehler": 1,
+      "fehler": 0,
       "ungeprueft": 0,
-      "warnungen": 5,
+      "warnungen": 1,
       "befunde": [
-        {
-          "schweregrad": "information",
-          "ort": "Patient.identifier[0]",
-          "ungeprueft": false,
-          "meldung": "This element does not match any known slice defined in the profile https://gematik.de/fhir/isik/StructureDefinition/ISiKPatient|4.0.3 (this may not be a problem, but you should check that it's not intended to match a slice) - Does not match slice 'VersichertenId' (discriminator: $this.where(type.coding.where((system = 'http://fhir.de/CodeSystem/identifier-type-de-basis') and (code = 'KVZ10')).exists()).exists())"
-        },
-        {
-          "schweregrad": "information",
-          "ort": "Patient.identifier[0]",
-          "ungeprueft": false,
-          "meldung": "This element does not match any known slice defined in the profile https://gematik.de/fhir/isik/StructureDefinition/ISiKPatient|4.0.3 (this may not be a problem, but you should check that it's not intended to match a slice) - Does not match slice 'VersichertenId-GKV' (discriminator: $this.where(type.coding.where((system = 'http://fhir.de/CodeSystem/identifier-type-de-basis') and (code = 'GKV')).exists()).exists())"
-        },
-        {
-          "schweregrad": "information",
-          "ort": "Patient.identifier[0]",
-          "ungeprueft": false,
-          "meldung": "This element does not match any known slice defined in the profile https://gematik.de/fhir/isik/StructureDefinition/ISiKPatient|4.0.3 (this may not be a problem, but you should check that it's not intended to match a slice) - Does not match slice 'Patientennummer' (discriminator: $this.where(type.coding.where((system = 'http://terminology.hl7.org/CodeSystem/v2-0203') and (code = 'MR')).exists()).exists())"
-        },
-        {
-          "schweregrad": "information",
-          "ort": "Patient.identifier[0]",
-          "ungeprueft": false,
-          "meldung": "This element does not match any known slice defined in the profile https://gematik.de/fhir/isik/StructureDefinition/ISiKPatient|4.0.3 (this may not be a problem, but you should check that it's not intended to match a slice) - Does not match slice 'Versichertennummer_PKV' (discriminator: $this.where(type.coding.where((system = 'http://fhir.de/CodeSystem/identifier-type-de-basis') and (code = 'PKV')).exists()).exists())"
-        },
-        {
-          "schweregrad": "error",
-          "ort": "Patient",
-          "ungeprueft": false,
-          "meldung": "Slice 'Patient.identifier:Patientennummer': a matching slice is required, but not found (from https://gematik.de/fhir/isik/StructureDefinition/ISiKPatient|4.0.3). Note that other slices are allowed in addition to this required slice"
-        },
         {
           "schweregrad": "warning",
           "ort": "Patient",
@@ -218,27 +128,15 @@
       "ressourcentyp": "Encounter",
       "kennung": "enc-002",
       "profil": "https://gematik.de/fhir/isik/StructureDefinition/ISiKKontaktGesundheitseinrichtung",
-      "fehler": 3,
+      "fehler": 0,
       "ungeprueft": 0,
-      "warnungen": 1,
+      "warnungen": 2,
       "befunde": [
         {
-          "schweregrad": "error",
-          "ort": "Encounter",
+          "schweregrad": "warning",
+          "ort": "Encounter.identifier[0].type",
           "ungeprueft": false,
-          "meldung": "Encounter.identifier: minimum required = 1, but only found 0 (from https://gematik.de/fhir/isik/StructureDefinition/ISiKKontaktGesundheitseinrichtung|4.0.3)"
-        },
-        {
-          "schweregrad": "error",
-          "ort": "Encounter",
-          "ungeprueft": false,
-          "meldung": "Encounter.type: minimum required = 1, but only found 0 (from https://gematik.de/fhir/isik/StructureDefinition/ISiKKontaktGesundheitseinrichtung|4.0.3)"
-        },
-        {
-          "schweregrad": "error",
-          "ort": "Encounter",
-          "ungeprueft": false,
-          "meldung": "Slice 'Encounter.type:Kontaktebene': a matching slice is required, but not found (from https://gematik.de/fhir/isik/StructureDefinition/ISiKKontaktGesundheitseinrichtung|4.0.3). Note that other slices are allowed in addition to this required slice"
+          "meldung": "None of the codings provided are in the value set 'IdentifierType' (http://hl7.org/fhir/ValueSet/identifier-type|4.0.1), and a coding should come from this value set unless it has no suitable code (note that the validator cannot judge what is suitable) (codes = http://terminology.hl7.org/CodeSystem/v2-0203#VN)"
         },
         {
           "schweregrad": "warning",
@@ -252,27 +150,15 @@
       "ressourcentyp": "Encounter",
       "kennung": "enc-003",
       "profil": "https://gematik.de/fhir/isik/StructureDefinition/ISiKKontaktGesundheitseinrichtung",
-      "fehler": 3,
+      "fehler": 0,
       "ungeprueft": 0,
-      "warnungen": 1,
+      "warnungen": 2,
       "befunde": [
         {
-          "schweregrad": "error",
-          "ort": "Encounter",
+          "schweregrad": "warning",
+          "ort": "Encounter.identifier[0].type",
           "ungeprueft": false,
-          "meldung": "Encounter.identifier: minimum required = 1, but only found 0 (from https://gematik.de/fhir/isik/StructureDefinition/ISiKKontaktGesundheitseinrichtung|4.0.3)"
-        },
-        {
-          "schweregrad": "error",
-          "ort": "Encounter",
-          "ungeprueft": false,
-          "meldung": "Encounter.type: minimum required = 1, but only found 0 (from https://gematik.de/fhir/isik/StructureDefinition/ISiKKontaktGesundheitseinrichtung|4.0.3)"
-        },
-        {
-          "schweregrad": "error",
-          "ort": "Encounter",
-          "ungeprueft": false,
-          "meldung": "Slice 'Encounter.type:Kontaktebene': a matching slice is required, but not found (from https://gematik.de/fhir/isik/StructureDefinition/ISiKKontaktGesundheitseinrichtung|4.0.3). Note that other slices are allowed in addition to this required slice"
+          "meldung": "None of the codings provided are in the value set 'IdentifierType' (http://hl7.org/fhir/ValueSet/identifier-type|4.0.1), and a coding should come from this value set unless it has no suitable code (note that the validator cannot judge what is suitable) (codes = http://terminology.hl7.org/CodeSystem/v2-0203#VN)"
         },
         {
           "schweregrad": "warning",
@@ -286,7 +172,7 @@
       "ressourcentyp": "Condition",
       "kennung": "cond-002",
       "profil": "https://gematik.de/fhir/isik/StructureDefinition/ISiKDiagnose",
-      "fehler": 3,
+      "fehler": 0,
       "ungeprueft": 2,
       "warnungen": 2,
       "befunde": [
@@ -298,33 +184,15 @@
         },
         {
           "schweregrad": "error",
-          "ort": "Condition",
-          "ungeprueft": false,
-          "meldung": "Condition.recordedDate: minimum required = 1, but only found 0 (from https://gematik.de/fhir/isik/StructureDefinition/ISiKDiagnose|4.0.3)"
+          "ort": "Condition.code.coding[0]",
+          "ungeprueft": true,
+          "meldung": "Unable to expand ValueSet: cannot apply filters '[org.hl7.fhir.r5.model.ValueSet$ConceptSetFilterComponent@58d084a0]' because CodeSystem 'http://snomed.info/sct' is ignored/not-present"
         },
         {
           "schweregrad": "error",
           "ort": "Condition.code.coding[0]",
           "ungeprueft": true,
-          "meldung": "Unable to expand ValueSet: cannot apply filters '[org.hl7.fhir.r5.model.ValueSet$ConceptSetFilterComponent@3f8a4293]' because CodeSystem 'http://snomed.info/sct' is ignored/not-present"
-        },
-        {
-          "schweregrad": "error",
-          "ort": "Condition.code.coding[0]",
-          "ungeprueft": true,
-          "meldung": "The Coding provided (http://snomed.info/sct#38341003) was not found in the value set 'DiagnosesSCT' (https://gematik.de/fhir/isik/ValueSet/DiagnosesSCT|4.0.3), and a code is required from this value set.  (error message = Failed to expand ValueSet 'https://gematik.de/fhir/isik/ValueSet/DiagnosesSCT' (in-memory). Could not validate code http://snomed.info/sct#38341003. Error was: HAPI-2646: Unable to expand ValueSet: cannot apply filters '[org.hl7.fhir.r5.model.ValueSet$ConceptSetFilterComponent@3f8a4293]' because CodeSystem 'http://snomed.info/sct' is ignored/not-present; Unable to expand ValueSet: cannot apply filters '[org.hl7.fhir.r5.model.ValueSet$ConceptSetFilterComponent@3f8a4293]' because CodeSystem 'http://snomed.info/sct' is ignored/not-present)"
-        },
-        {
-          "schweregrad": "error",
-          "ort": "Condition.code.coding[1]",
-          "ungeprueft": false,
-          "meldung": "Coding.version: minimum required = 1, but only found 0 (from https://gematik.de/fhir/isik/StructureDefinition/ISiKICD10GMCoding|4.0.3)"
-        },
-        {
-          "schweregrad": "error",
-          "ort": "Condition.code.coding[1]",
-          "ungeprueft": false,
-          "meldung": "Condition.code.coding:ICD-10-GM.version: minimum required = 1, but only found 0 (from https://gematik.de/fhir/isik/StructureDefinition/ISiKDiagnose|4.0.3)"
+          "meldung": "The Coding provided (http://snomed.info/sct#38341003) was not found in the value set 'DiagnosesSCT' (https://gematik.de/fhir/isik/ValueSet/DiagnosesSCT|4.0.3), and a code is required from this value set.  (error message = Failed to expand ValueSet 'https://gematik.de/fhir/isik/ValueSet/DiagnosesSCT' (in-memory). Could not validate code http://snomed.info/sct#38341003. Error was: HAPI-2646: Unable to expand ValueSet: cannot apply filters '[org.hl7.fhir.r5.model.ValueSet$ConceptSetFilterComponent@58d084a0]' because CodeSystem 'http://snomed.info/sct' is ignored/not-present; Unable to expand ValueSet: cannot apply filters '[org.hl7.fhir.r5.model.ValueSet$ConceptSetFilterComponent@58d084a0]' because CodeSystem 'http://snomed.info/sct' is ignored/not-present)"
         },
         {
           "schweregrad": "warning",
@@ -338,7 +206,7 @@
       "ressourcentyp": "Condition",
       "kennung": "cond-003",
       "profil": "https://gematik.de/fhir/isik/StructureDefinition/ISiKDiagnose",
-      "fehler": 3,
+      "fehler": 0,
       "ungeprueft": 2,
       "warnungen": 2,
       "befunde": [
@@ -350,33 +218,15 @@
         },
         {
           "schweregrad": "error",
-          "ort": "Condition",
-          "ungeprueft": false,
-          "meldung": "Condition.recordedDate: minimum required = 1, but only found 0 (from https://gematik.de/fhir/isik/StructureDefinition/ISiKDiagnose|4.0.3)"
+          "ort": "Condition.code.coding[0]",
+          "ungeprueft": true,
+          "meldung": "Unable to expand ValueSet: cannot apply filters '[org.hl7.fhir.r5.model.ValueSet$ConceptSetFilterComponent@165e97e2]' because CodeSystem 'http://snomed.info/sct' is ignored/not-present"
         },
         {
           "schweregrad": "error",
           "ort": "Condition.code.coding[0]",
           "ungeprueft": true,
-          "meldung": "Unable to expand ValueSet: cannot apply filters '[org.hl7.fhir.r5.model.ValueSet$ConceptSetFilterComponent@7ded7edd]' because CodeSystem 'http://snomed.info/sct' is ignored/not-present"
-        },
-        {
-          "schweregrad": "error",
-          "ort": "Condition.code.coding[0]",
-          "ungeprueft": true,
-          "meldung": "The Coding provided (http://snomed.info/sct#84114007) was not found in the value set 'DiagnosesSCT' (https://gematik.de/fhir/isik/ValueSet/DiagnosesSCT|4.0.3), and a code is required from this value set.  (error message = Failed to expand ValueSet 'https://gematik.de/fhir/isik/ValueSet/DiagnosesSCT' (in-memory). Could not validate code http://snomed.info/sct#84114007. Error was: HAPI-2646: Unable to expand ValueSet: cannot apply filters '[org.hl7.fhir.r5.model.ValueSet$ConceptSetFilterComponent@7ded7edd]' because CodeSystem 'http://snomed.info/sct' is ignored/not-present; Unable to expand ValueSet: cannot apply filters '[org.hl7.fhir.r5.model.ValueSet$ConceptSetFilterComponent@7ded7edd]' because CodeSystem 'http://snomed.info/sct' is ignored/not-present)"
-        },
-        {
-          "schweregrad": "error",
-          "ort": "Condition.code.coding[1]",
-          "ungeprueft": false,
-          "meldung": "Coding.version: minimum required = 1, but only found 0 (from https://gematik.de/fhir/isik/StructureDefinition/ISiKICD10GMCoding|4.0.3)"
-        },
-        {
-          "schweregrad": "error",
-          "ort": "Condition.code.coding[1]",
-          "ungeprueft": false,
-          "meldung": "Condition.code.coding:ICD-10-GM.version: minimum required = 1, but only found 0 (from https://gematik.de/fhir/isik/StructureDefinition/ISiKDiagnose|4.0.3)"
+          "meldung": "The Coding provided (http://snomed.info/sct#84114007) was not found in the value set 'DiagnosesSCT' (https://gematik.de/fhir/isik/ValueSet/DiagnosesSCT|4.0.3), and a code is required from this value set.  (error message = Failed to expand ValueSet 'https://gematik.de/fhir/isik/ValueSet/DiagnosesSCT' (in-memory). Could not validate code http://snomed.info/sct#84114007. Error was: HAPI-2646: Unable to expand ValueSet: cannot apply filters '[org.hl7.fhir.r5.model.ValueSet$ConceptSetFilterComponent@165e97e2]' because CodeSystem 'http://snomed.info/sct' is ignored/not-present; Unable to expand ValueSet: cannot apply filters '[org.hl7.fhir.r5.model.ValueSet$ConceptSetFilterComponent@165e97e2]' because CodeSystem 'http://snomed.info/sct' is ignored/not-present)"
         },
         {
           "schweregrad": "warning",
@@ -390,40 +240,10 @@
       "ressourcentyp": "Patient",
       "kennung": "pat-003",
       "profil": "https://gematik.de/fhir/isik/StructureDefinition/ISiKPatient",
-      "fehler": 1,
+      "fehler": 0,
       "ungeprueft": 0,
-      "warnungen": 5,
+      "warnungen": 1,
       "befunde": [
-        {
-          "schweregrad": "information",
-          "ort": "Patient.identifier[0]",
-          "ungeprueft": false,
-          "meldung": "This element does not match any known slice defined in the profile https://gematik.de/fhir/isik/StructureDefinition/ISiKPatient|4.0.3 (this may not be a problem, but you should check that it's not intended to match a slice) - Does not match slice 'VersichertenId' (discriminator: $this.where(type.coding.where((system = 'http://fhir.de/CodeSystem/identifier-type-de-basis') and (code = 'KVZ10')).exists()).exists())"
-        },
-        {
-          "schweregrad": "information",
-          "ort": "Patient.identifier[0]",
-          "ungeprueft": false,
-          "meldung": "This element does not match any known slice defined in the profile https://gematik.de/fhir/isik/StructureDefinition/ISiKPatient|4.0.3 (this may not be a problem, but you should check that it's not intended to match a slice) - Does not match slice 'VersichertenId-GKV' (discriminator: $this.where(type.coding.where((system = 'http://fhir.de/CodeSystem/identifier-type-de-basis') and (code = 'GKV')).exists()).exists())"
-        },
-        {
-          "schweregrad": "information",
-          "ort": "Patient.identifier[0]",
-          "ungeprueft": false,
-          "meldung": "This element does not match any known slice defined in the profile https://gematik.de/fhir/isik/StructureDefinition/ISiKPatient|4.0.3 (this may not be a problem, but you should check that it's not intended to match a slice) - Does not match slice 'Patientennummer' (discriminator: $this.where(type.coding.where((system = 'http://terminology.hl7.org/CodeSystem/v2-0203') and (code = 'MR')).exists()).exists())"
-        },
-        {
-          "schweregrad": "information",
-          "ort": "Patient.identifier[0]",
-          "ungeprueft": false,
-          "meldung": "This element does not match any known slice defined in the profile https://gematik.de/fhir/isik/StructureDefinition/ISiKPatient|4.0.3 (this may not be a problem, but you should check that it's not intended to match a slice) - Does not match slice 'Versichertennummer_PKV' (discriminator: $this.where(type.coding.where((system = 'http://fhir.de/CodeSystem/identifier-type-de-basis') and (code = 'PKV')).exists()).exists())"
-        },
-        {
-          "schweregrad": "error",
-          "ort": "Patient",
-          "ungeprueft": false,
-          "meldung": "Slice 'Patient.identifier:Patientennummer': a matching slice is required, but not found (from https://gematik.de/fhir/isik/StructureDefinition/ISiKPatient|4.0.3). Note that other slices are allowed in addition to this required slice"
-        },
         {
           "schweregrad": "warning",
           "ort": "Patient",
@@ -433,10 +253,32 @@
       ]
     },
     {
+      "ressourcentyp": "Encounter",
+      "kennung": "enc-004",
+      "profil": "https://gematik.de/fhir/isik/StructureDefinition/ISiKKontaktGesundheitseinrichtung",
+      "fehler": 0,
+      "ungeprueft": 0,
+      "warnungen": 2,
+      "befunde": [
+        {
+          "schweregrad": "warning",
+          "ort": "Encounter.identifier[0].type",
+          "ungeprueft": false,
+          "meldung": "None of the codings provided are in the value set 'IdentifierType' (http://hl7.org/fhir/ValueSet/identifier-type|4.0.1), and a coding should come from this value set unless it has no suitable code (note that the validator cannot judge what is suitable) (codes = http://terminology.hl7.org/CodeSystem/v2-0203#VN)"
+        },
+        {
+          "schweregrad": "warning",
+          "ort": "Encounter",
+          "ungeprueft": false,
+          "meldung": "Constraint failed: dom-6: 'A resource should have narrative for robust management' (defined in http://hl7.org/fhir/StructureDefinition/DomainResource) (Best Practice Recommendation)"
+        }
+      ]
+    },
+    {
       "ressourcentyp": "Condition",
       "kennung": "cond-004",
       "profil": "https://gematik.de/fhir/isik/StructureDefinition/ISiKDiagnose",
-      "fehler": 4,
+      "fehler": 0,
       "ungeprueft": 2,
       "warnungen": 2,
       "befunde": [
@@ -448,45 +290,21 @@
         },
         {
           "schweregrad": "error",
-          "ort": "Condition",
-          "ungeprueft": false,
-          "meldung": "Condition.recordedDate: minimum required = 1, but only found 0 (from https://gematik.de/fhir/isik/StructureDefinition/ISiKDiagnose|4.0.3)"
+          "ort": "Condition.code.coding[0]",
+          "ungeprueft": true,
+          "meldung": "Unable to expand ValueSet: cannot apply filters '[org.hl7.fhir.r5.model.ValueSet$ConceptSetFilterComponent@126179ba]' because CodeSystem 'http://snomed.info/sct' is ignored/not-present"
         },
         {
           "schweregrad": "error",
           "ort": "Condition.code.coding[0]",
           "ungeprueft": true,
-          "meldung": "Unable to expand ValueSet: cannot apply filters '[org.hl7.fhir.r5.model.ValueSet$ConceptSetFilterComponent@4706717]' because CodeSystem 'http://snomed.info/sct' is ignored/not-present"
-        },
-        {
-          "schweregrad": "error",
-          "ort": "Condition.code.coding[0]",
-          "ungeprueft": true,
-          "meldung": "The Coding provided (http://snomed.info/sct#195967001) was not found in the value set 'DiagnosesSCT' (https://gematik.de/fhir/isik/ValueSet/DiagnosesSCT|4.0.3), and a code is required from this value set.  (error message = Failed to expand ValueSet 'https://gematik.de/fhir/isik/ValueSet/DiagnosesSCT' (in-memory). Could not validate code http://snomed.info/sct#195967001. Error was: HAPI-2646: Unable to expand ValueSet: cannot apply filters '[org.hl7.fhir.r5.model.ValueSet$ConceptSetFilterComponent@4706717]' because CodeSystem 'http://snomed.info/sct' is ignored/not-present; Unable to expand ValueSet: cannot apply filters '[org.hl7.fhir.r5.model.ValueSet$ConceptSetFilterComponent@4706717]' because CodeSystem 'http://snomed.info/sct' is ignored/not-present)"
-        },
-        {
-          "schweregrad": "error",
-          "ort": "Condition.code.coding[1]",
-          "ungeprueft": false,
-          "meldung": "Coding.version: minimum required = 1, but only found 0 (from https://gematik.de/fhir/isik/StructureDefinition/ISiKICD10GMCoding|4.0.3)"
-        },
-        {
-          "schweregrad": "error",
-          "ort": "Condition.code.coding[1]",
-          "ungeprueft": false,
-          "meldung": "Condition.code.coding:ICD-10-GM.version: minimum required = 1, but only found 0 (from https://gematik.de/fhir/isik/StructureDefinition/ISiKDiagnose|4.0.3)"
+          "meldung": "The Coding provided (http://snomed.info/sct#195967001) was not found in the value set 'DiagnosesSCT' (https://gematik.de/fhir/isik/ValueSet/DiagnosesSCT|4.0.3), and a code is required from this value set.  (error message = Failed to expand ValueSet 'https://gematik.de/fhir/isik/ValueSet/DiagnosesSCT' (in-memory). Could not validate code http://snomed.info/sct#195967001. Error was: HAPI-2646: Unable to expand ValueSet: cannot apply filters '[org.hl7.fhir.r5.model.ValueSet$ConceptSetFilterComponent@126179ba]' because CodeSystem 'http://snomed.info/sct' is ignored/not-present; Unable to expand ValueSet: cannot apply filters '[org.hl7.fhir.r5.model.ValueSet$ConceptSetFilterComponent@126179ba]' because CodeSystem 'http://snomed.info/sct' is ignored/not-present)"
         },
         {
           "schweregrad": "warning",
           "ort": "Condition",
           "ungeprueft": false,
           "meldung": "Constraint failed: dom-6: 'A resource should have narrative for robust management' (defined in http://hl7.org/fhir/StructureDefinition/DomainResource) (Best Practice Recommendation)"
-        },
-        {
-          "schweregrad": "error",
-          "ort": "Condition",
-          "ungeprueft": false,
-          "meldung": "Constraint failed: isik-con1: 'Falls eine kodierte Diagnose vorliegt muss angegeben werden durch welchen Kontakt diese Dokumentation erfolgte.' (defined in https://gematik.de/fhir/isik/StructureDefinition/ISiKDiagnose)"
         }
       ]
     }

@@ -46,6 +46,9 @@ from .codes import (
     ENCOUNTER_CLASSES,
     ENCOUNTER_STATUS,
     ICD10GM_SYSTEM,
+    ICD10GM_VERSION,
+    KONTAKTEBENE_CODE,
+    KONTAKTEBENE_SYSTEM,
     LOINC_SYSTEM,
     MEDICATION_CODES,
     MEDICATION_STATUS,
@@ -53,6 +56,7 @@ from .codes import (
     SNOMED_SYSTEM,
     TESTDATEN_LABEL,
     UCUM_SYSTEM,
+    V2_0203_SYSTEM,
     ConditionCode,
     EncounterClass,
     MedicationCode,
@@ -63,6 +67,7 @@ CONDITION_CLINICAL_SYSTEM = "http://terminology.hl7.org/CodeSystem/condition-cli
 CONDITION_VER_STATUS_SYSTEM = "http://terminology.hl7.org/CodeSystem/condition-ver-status"
 OBSERVATION_CATEGORY_SYSTEM = "http://terminology.hl7.org/CodeSystem/observation-category"
 PATIENT_IDENTIFIER_SYSTEM = "http://synthfhir.local/identifier/patient"
+FALL_IDENTIFIER_SYSTEM = "http://synthfhir.local/identifier/fall"
 
 ALLOWED_GENDERS = ("male", "female", "other", "unknown")
 
@@ -185,7 +190,16 @@ def baue_patient(params: dict, index: int, beanstandungen: list[Beanstandung]) -
         "resourceType": "Patient",
         "id": f"tmp-pat-{index}",
         "identifier": [
-            {"system": PATIENT_IDENTIFIER_SYSTEM, "value": f"SYN-{index + 1:04d}"}
+            {
+                # `type` ist der Schlüssel zum ISiK-Slice
+                # `identifier:Patientennummer`: Das Profil erkennt die
+                # Patientennummer am Muster `MR`, nicht am System. Ohne diese
+                # Kodierung greift der Slice nicht, und die Ressource ist
+                # nicht konform — obwohl ein Identifier dasteht.
+                "type": {"coding": [{"system": V2_0203_SYSTEM, "code": "MR"}]},
+                "system": PATIENT_IDENTIFIER_SYSTEM,
+                "value": f"SYN-{index + 1:04d}",
+            }
         ],
         "name": [
             {
@@ -212,12 +226,17 @@ def baue_condition(
     weiterhin gültiges FHIR.
     """
     spec = _diagnosecode(params.get("code"), index, beanstandungen)
+    beginn = _datum(params.get("beginn"), "2020-01-01", beanstandungen, "beginn")
 
     codings = [{"system": SNOMED_SYSTEM, "code": spec.code, "display": spec.display}]
     if spec.hat_icd:
         codings.append(
             {
                 "system": ICD10GM_SYSTEM,
+                # Die Jahresfassung gehört zur Kodierung: ICD-10-GM ändert
+                # sich jährlich, ein Schlüssel ohne Jahr ist nur ungefähr
+                # bestimmt. ISiK macht sie zur Pflicht.
+                "version": ICD10GM_VERSION,
                 "code": spec.icd10gm,
                 "display": spec.icd10gm_display or spec.display_de,
             }
@@ -238,7 +257,11 @@ def baue_condition(
         },
         "code": {"coding": codings, "text": spec.display_de},
         "subject": {"reference": f"Patient/tmp-pat-{patient_index}"},
-        "onsetDateTime": _datum(params.get("beginn"), "2020-01-01", beanstandungen, "beginn"),
+        "onsetDateTime": beginn,
+        # Wann die Diagnose dokumentiert wurde. ISiK verlangt das Feld;
+        # ein besseres Datum als den Beginn haben wir nicht, und eines zu
+        # erfinden wäre schlechter, als das bekannte zu nehmen.
+        "recordedDate": beginn,
     }
 
 
@@ -315,6 +338,23 @@ def _begegnungsart(
     return ersatz
 
 
+def _kontaktdatum(patient: dict) -> str:
+    """Ein plausibles Datum für einen vom Code ergänzten Kontakt.
+
+    Der Beginn der ersten Diagnose passt am besten: Der Kontakt, in dem
+    eine Diagnose gestellt wird, liegt zu ihrem Beginn. Ein erfundenes
+    Datum wäre schlechter als ein bekanntes.
+    """
+    for feld, schluessel in (("diagnosen", "beginn"), ("messwerte", "datum")):
+        eintraege = patient.get(feld)
+        if isinstance(eintraege, list):
+            for e in eintraege:
+                wert = e.get(schluessel) if isinstance(e, dict) else None
+                if isinstance(wert, str) and _DATE_RE.match(wert.strip()):
+                    return wert.strip()
+    return "2024-01-01"
+
+
 def baue_encounter(
     params: dict, patient_index: int, index: int,
     beanstandungen: list[Beanstandung], teil: int = 0
@@ -344,6 +384,22 @@ def baue_encounter(
         "id": f"tmp-enc-{teil}-{index}",
         "status": ENCOUNTER_STATUS,
         "class": {"system": art.system, "code": art.code, "display": art.display},
+        # Die Fallnummer. ISiK verlangt mindestens einen Identifier, und die
+        # Typkodierung `VN` ist dort ein 1..1-Slice — ein Identifier ohne sie
+        # erfüllt die Vorgabe nicht.
+        "identifier": [
+            {
+                "type": {"coding": [{"system": V2_0203_SYSTEM, "code": "VN"}]},
+                "system": FALL_IDENTIFIER_SYSTEM,
+                "value": f"FALL-{index + 1:04d}",
+            }
+        ],
+        # Die Kontaktebene. Nicht zu verwechseln mit `class`: `class` sagt,
+        # WIE der Kontakt stattfand (ambulant, stationär), `type` mit der
+        # Kontaktebene sagt, auf welcher Ebene er verbucht ist.
+        "type": [
+            {"coding": [{"system": KONTAKTEBENE_SYSTEM, "code": KONTAKTEBENE_CODE}]}
+        ],
         "subject": {"reference": f"Patient/tmp-pat-{patient_index}"},
         "period": {"start": datum, "end": datum},
     }
@@ -445,6 +501,19 @@ def baue_aus_parametern(
         # verweisen, und ein Verweis nach vorn ist leichter zu prüfen als
         # einer nach hinten — auch wenn `assign_ids` beide auflöst.
         begegnungen = roh.get("begegnungen") if isinstance(roh.get("begegnungen"), list) else []
+        diagnosen_roh = roh.get("diagnosen") if isinstance(roh.get("diagnosen"), list) else []
+        if not begegnungen and diagnosen_roh:
+            # ISiK verlangt über `isik-con1`, dass eine kodierte Diagnose
+            # nennt, in welchem Kontakt sie gestellt wurde. Das Modell
+            # liefert Begegnungen aber nur, wenn danach gefragt wurde —
+            # also stellt der Code den Kontakt her, so wie er auch
+            # Pflichtfelder und Einheiten herstellt (ADR-001).
+            #
+            # Das ist der eine Punkt, an dem Profilkonformität nicht durch
+            # ein zusätzliches Feld zu haben war, sondern die Erzeugung
+            # selbst betrifft: Eine Diagnose ohne Kontakt ist kein
+            # unvollständiger Datensatz, sondern ein unzulässiger.
+            begegnungen = [{"art": "AMB", "datum": _kontaktdatum(roh)}]
         erste_begegnung: str | None = None
         for eintrag in begegnungen:
             ergebnis.ressourcen.append(

@@ -24,7 +24,7 @@ Produkt.
 | **0 — Spike** | Architekturentscheidung mit Messdaten | ✅ abgeschlossen 2026-08-28 |
 | **1 — MVP** | Eingabe, Generierung, Validierung, Lokalisierung, Export, Veröffentlichung | ✅ veröffentlicht 2026-08-29 |
 | **2 — v1.x** | Weitere Ressourcentypen, Bulk-Export, Seed, Server-Push, größere Kohorten | ✅ abgeschlossen 2026-08-30 |
-| 3 — Vision | Deutsche Profile (KBV/ISiK), API, weitere Standards | ⏳ ISiK-Abstand gemessen und wiederholbar (2026-08-30) |
+| 3 — Vision | Deutsche Profile (KBV/ISiK), API, weitere Standards | ⏳ ISiK-Basismodul: 0 Fehler, 8 ungeprüft (2026-08-30) |
 
 ---
 
@@ -174,11 +174,16 @@ synthfhir-profil -o docs/belege/isik-profilbericht.json
 
 ```
 Typ                     geprüft   Fehler  ungeprüft  Warnungen
-Condition                     4       13          8          8
-Encounter                     3        9          0          3
-Patient                       3        3          0         15
-SUMME                        10       25          8         26
+Condition                     4        0          8          8
+Encounter                     4        0          0          8
+Patient                       3        0          0          3
+SUMME                        11        0          8         19
 ```
+
+Bei der ersten Messung waren es **25 Fehler**; [ADR-009](docs/adr-009-isik-konformitaet.md)
+hat sie geschlossen. **„0 Fehler" heißt aber nicht „ISiK-konform"** — die
+acht ungeprüften Befunde bleiben, solange kein Terminologieserver die
+SNOMED-Bindung entscheiden kann.
 
 **Drei Spalten, nicht zwei.** `ungeprüft` heißt: Der Validator konnte es
 nicht entscheiden — nicht, dass es richtig ist. Ohne Terminologieserver
@@ -300,6 +305,7 @@ in dieser Reihenfolge:
 | [ADR-006](docs/adr-006-reproduzierbarkeit.md) | Warum es kein `--seed` gibt, sondern Aufzeichnungen |
 | [ADR-007](docs/adr-007-weitere-ressourcentypen.md) | Encounter und MedicationStatement — und was sie an Token kosten |
 | [ADR-008](docs/adr-008-server-push.md) | Server-Push, und warum jede Ressource als Testdatum gekennzeichnet ist |
+| [ADR-009](docs/adr-009-isik-konformitaet.md) | ISiK-Basismodul erfüllen — und was daran nicht additiv war |
 | [Konzepte](docs/konzepte.md) | Die FHIR-Grundlagen dahinter, ausführlich erklärt |
 
 ### Die tragenden Entscheidungen in drei Sätzen

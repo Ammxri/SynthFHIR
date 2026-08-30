@@ -74,7 +74,7 @@ def test_stdout_traegt_nur_das_bundle(stub, capsys):
     bundle = json.loads(ausgabe.out)          # wirft, wenn etwas dazwischenfunkt
     assert bundle["resourceType"] == "Bundle"
     assert bundle["type"] == "collection"
-    assert len(bundle["entry"]) == 60
+    assert len(bundle["entry"]) == 80, "je Patient zusätzlich ein Encounter"
     assert "Teil 1/" in ausgabe.err
 
 
@@ -155,7 +155,8 @@ def test_ndjson_schreibt_eine_datei_je_typ(stub, tmp_path, capsys):
     rc = cli.main(["30 Diabetikerinnen", "-n", "30", "--teilgroesse", "15", "--ndjson", str(ziel)])
     assert rc == 0
     assert {p.name for p in ziel.glob("*.ndjson")} == {
-        "Patient.ndjson", "Condition.ndjson", "Observation.ndjson"
+        "Patient.ndjson", "Encounter.ndjson", "Condition.ndjson",
+        "Observation.ndjson"
     }
     assert (ziel / "manifest.json").exists()
     assert "NDJSON:" in capsys.readouterr().err

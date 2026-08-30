@@ -178,9 +178,17 @@ def test_kaputte_parameter_ergeben_trotzdem_gueltige_struktur():
             ]
         }
     )
-    assert len(ergebnis.ressourcen) == 3
-    patient = ergebnis.ressourcen[0]
-    observation = ergebnis.ressourcen[2]
+    # Vier statt drei: Der Encounter kommt vom Code, weil eine kodierte
+    # Diagnose ihren Kontakt nennen muss (ADR-009). Auch aus kaputten
+    # Parametern entsteht eine strukturell vollständige Ressourcenmenge —
+    # das ist die Aussage dieses Tests.
+    assert len(ergebnis.ressourcen) == 4
+    # Nach Typ statt nach Position: Kommt ein Ressourcentyp hinzu,
+    # verschieben sich sonst die Indizes und der Test prüft etwas anderes,
+    # ohne rot zu werden.
+    nach_typ = {r["resourceType"]: r for r in ergebnis.ressourcen}
+    patient = nach_typ["Patient"]
+    observation = nach_typ["Observation"]
     assert patient["gender"] == "unknown"
     assert patient["birthDate"] == "1970-01-01"
     assert observation["status"] == "final"
@@ -213,7 +221,11 @@ def test_ids_kommen_vom_code_und_referenzen_ziehen_mit():
     )
     normalisiert = assign_ids(ergebnis.ressourcen)
     ids = [r["id"] for r in normalisiert.resources]
-    assert ids == ["pat-001", "cond-001", "obs-001"]
+    # Der Encounter steht dazwischen, seit der Code ihn garantiert:
+    # ISiK verlangt, dass eine kodierte Diagnose ihren Kontakt nennt
+    # (ADR-009). Er wird VOR den Diagnosen gebaut, damit die Verweise
+    # nach hinten zeigen.
+    assert ids == ["pat-001", "enc-001", "cond-001", "obs-001"]
     for r in normalisiert.resources[1:]:
         assert r["subject"]["reference"] == "Patient/pat-001"
 

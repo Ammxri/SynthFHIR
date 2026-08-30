@@ -187,15 +187,48 @@ def test_diagnose_und_messwert_verweisen_auf_die_begegnung():
         assert r["encounter"]["reference"] == f"Encounter/{enc['id']}"
 
 
-def test_ohne_begegnung_kein_verweis_ins_leere():
-    """Der gefährliche Fall: ein Verweis auf eine Begegnung, die es nicht
-    gibt. Strukturell einwandfrei, inhaltlich falsch."""
+def test_ohne_diagnose_wird_keine_begegnung_erfunden():
+    """Der Code ergänzt einen Kontakt nur, wo ISiK ihn verlangt.
+
+    `isik-con1` gilt für kodierte **Diagnosen**. Ein Patient mit
+    ausschließlich Messwerten braucht keinen Kontakt — und bekommt
+    deshalb auch keinen. Ressourcen zu erfinden, die niemand fordert,
+    wäre das Gegenteil von dem, was ADR-001 will.
+    """
     p = patient_mit_allem()
     p["patienten"][0].pop("begegnungen")
+    p["patienten"][0].pop("diagnosen")
+    p["patienten"][0].pop("medikamente")
     res = gebaut(p)
+    assert not [r for r in res if r["resourceType"] == "Encounter"]
     for r in res:
         assert "encounter" not in r, f"{r['resourceType']} verweist ins Leere"
     assert check_resources(res).ok
+
+
+def test_diagnose_ohne_begegnung_bekommt_einen_kontakt():
+    """Die Zusage aus ADR-009: Eine kodierte Diagnose nennt immer den
+    Kontakt, in dem sie gestellt wurde — auch wenn das Modell keine
+    Begegnung geliefert hat."""
+    p = patient_mit_allem()
+    p["patienten"][0].pop("begegnungen")
+    res = gebaut(p)
+    encounters = [r for r in res if r["resourceType"] == "Encounter"]
+    assert len(encounters) == 1, "genau einer, nicht je Diagnose einer"
+    cond = next(r for r in res if r["resourceType"] == "Condition")
+    assert cond["encounter"]["reference"] == f"Encounter/{encounters[0]['id']}"
+    assert check_resources(res).ok
+
+
+def test_der_ergaenzte_kontakt_traegt_ein_plausibles_datum():
+    """Der Beginn der ersten Diagnose. Ein erfundenes Datum wäre
+    schlechter als ein bekanntes."""
+    p = patient_mit_allem()
+    p["patienten"][0].pop("begegnungen")
+    p["patienten"][0]["diagnosen"] = [{"code": "44054006", "beginn": "2011-03-04"}]
+    res = gebaut(p)
+    enc = next(r for r in res if r["resourceType"] == "Encounter")
+    assert enc["period"]["start"] == "2011-03-04"
 
 
 def test_neue_typen_brauchen_einen_patientenbezug():

@@ -47,7 +47,9 @@ def _patient(**abweichend) -> dict:
 def test_gute_antwort_ergibt_ein_fertiges_bundle():
     e = generiere(FesterClient(_antwort([_patient()])), "Eine Diabetikerin über 60")
     assert e.fertig
-    assert e.anzahl_je_typ == {"Patient": 1, "Condition": 1, "Observation": 1}
+    assert e.anzahl_je_typ == {
+        "Patient": 1, "Encounter": 1, "Condition": 1, "Observation": 1
+    }, "der Encounter kommt vom Code, nicht vom Modell (ADR-009)"
     assert e.bundle["type"] == "collection"
     assert e.befunde_als_text() == []
 

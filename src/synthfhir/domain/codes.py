@@ -76,6 +76,16 @@ UCUM_SYSTEM = "http://unitsofmeasure.org"
 # Kanonischer URL des deutschen ICD-10-GM-CodeSystems, wie ihn die
 # deutschen FHIR-Basisprofile (fhir.de) festlegen.
 ICD10GM_SYSTEM = "http://fhir.de/CodeSystem/bfarm/icd-10-gm"
+# Die Jahresfassung, gegen die der Katalog geprüft wurde. Sie gehört in die
+# Kodierung: ICD-10-GM ändert sich jährlich, und ein Schlüssel ohne
+# Jahresangabe ist nur ungefähr bestimmt. ISiK verlangt sie ausdrücklich
+# (`Condition.code.coding:ICD-10-GM.version` ist Pflicht).
+#
+# Der Wert ist an die Prüfung von 2026-08-28 gebunden: Damals wurden alle
+# 25 Schlüssel gegen den amtlichen Katalog **Version 2026** abgeglichen.
+# Wer ihn hochsetzt, muss die Schlüssel neu prüfen — sonst behauptet die
+# Angabe eine Prüfung, die nicht stattgefunden hat.
+ICD10GM_VERSION = "2026"
 # ATC in der Fassung der WHO. Das ist die von HL7 kanonisierte URI
 # (terminology.hl7.org, CodeSystem v3-WC).
 #
@@ -94,6 +104,26 @@ ATC_SYSTEM = "http://www.whocc.no/atc"
 # Begegnungsart. Kein deutsches System: `Encounter.class` ist an dieses
 # ValueSet gebunden, und die Bindung ist verpflichtend.
 ACT_CODE_SYSTEM = "http://terminology.hl7.org/CodeSystem/v3-ActCode"
+# Identifier-Typen. Geprüft am 2026-08-30 an den Profilen selbst: ISiK
+# verlangt für die Patientennummer das Muster `MR` und für die
+# Aufnahmenummer `VN`, beide aus diesem System.
+V2_0203_SYSTEM = "http://terminology.hl7.org/CodeSystem/v2-0203"
+# Kontaktebene. Geprüft am 2026-08-30 am CodeSystem der Basisprofile DE
+# (de.basisprofil.r4 1.5.3): Es kennt genau drei Codes —
+# `einrichtungskontakt`, `abteilungskontakt`, `versorgungsstellenkontakt`.
+KONTAKTEBENE_SYSTEM = "http://fhir.de/CodeSystem/Kontaktebene"
+# `abteilungskontakt` — und das ist keine Bedeutungsfrage, sondern eine
+# Messung. Hier stand zuerst `einrichtungskontakt`, hergeleitet aus der
+# Bedeutung: Unsere Begegnung bildet den Kontakt mit der Einrichtung als
+# Ganzes ab. Das ValueSet erlaubt auch alle drei Codes.
+#
+# Das Profil entscheidet aber nicht über die Bedeutung, sondern über ein
+# **Muster**: Der Slice `Encounter.type:Kontaktebene` trägt
+# `patternCodeableConcept` mit genau `abteilungskontakt`, und der
+# Diskriminator vergleicht darauf. Mit jedem anderen Code greift der Slice
+# nicht, und die Ressource ist nicht konform — obwohl die Kodierung im
+# ValueSet steht.
+KONTAKTEBENE_CODE = "abteilungskontakt"
 
 # Kennzeichnung als Testdaten. `HTEST` steht in v3-ActReason, NICHT in
 # v3-ActCode — eine Zusammenfassung der Spezifikationsseite hatte hier
@@ -485,6 +515,8 @@ SYSTEME: tuple[str, ...] = (
     ICD10GM_SYSTEM,
     ATC_SYSTEM,
     ACT_CODE_SYSTEM,
+    V2_0203_SYSTEM,
+    KONTAKTEBENE_SYSTEM,
 )
 
 # Auch die festen Statuswerte gehören zum Fingerabdruck: Sie stehen im
@@ -492,6 +524,9 @@ SYSTEME: tuple[str, ...] = (
 FESTE_WERTE: tuple[str, ...] = (
     ENCOUNTER_STATUS,
     MEDICATION_STATUS,
+    # Auch die ICD-Jahresfassung: Sie steht in jeder Diagnose.
+    ICD10GM_VERSION,
+    KONTAKTEBENE_CODE,
     # Auch das Testdaten-Kennzeichen: Es steht in jeder Ressource, ändert
     # also jedes Bundle, wenn es sich ändert. Ohne diesen Eintrag meldete
     # eine Wiedergabe zwar die Abweichung, benannte aber den Katalog als
