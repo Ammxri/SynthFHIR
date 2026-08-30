@@ -33,6 +33,7 @@ dev = [
 
 [project.scripts]
 synthfhir = "synthfhir.cli:main"
+synthfhir-profil = "synthfhir.profil_cli:main"
 synthfhir-web = "synthfhir.web.start:main"
 
 [tool.setuptools.packages.find]

@@ -181,6 +181,71 @@ lässt, und nur die Messung zeigt das.
   zweiten Profilserver betreiben.
 * Observation und MedicationStatement blieben zunächst außen vor.
 
+## Aus der Sondierung ist eine Messung geworden
+
+Die Zahlen oben waren einmalig und von Hand erhoben. Seit dem 2026-08-30
+sind sie wiederholbar:
+
+```bash
+docker compose -f docs/belege/docker-compose.isik.yml up -d
+synthfhir-profil -o docs/belege/isik-profilbericht.json
+```
+
+Gemessen wird eine **feste Referenzkohorte** (`referenzkohorte.py`) — drei
+Patienten, ohne Modellaufruf, deterministisch. Das ist die Voraussetzung
+für einen Vergleich: Eine vom Modell erzeugte Kohorte ändert sich bei jedem
+Lauf, und dann misst man das Modell statt der Profilkonformität.
+
+Der dritte Patient hat **keine Begegnung** — absichtlich. Er ist der Fall,
+den die erste Messung übersehen hat, und der einzige, an dem `isik-con1`
+greift. Ein Messaufbau, der nur den Fall enthält, der ohnehin durchgeht,
+misst nichts.
+
+### Stand am 2026-08-30
+
+`de.gematik.isik-basismodul` 4.0.3, HAPI FHIR 4.0.1, **kein**
+Terminologieserver:
+
+| Typ | geprüft | Fehler | ungeprüft | Warnungen |
+|---|---|---|---|---|
+| Patient | 3 | 3 | 0 | 15 |
+| Encounter | 3 | 9 | 0 | 3 |
+| Condition | 4 | 13 | 8 | 8 |
+| **Summe** | **10** | **25** | **8** | **26** |
+
+Observation und MedicationStatement sind nicht geprüft — das Basismodul
+kennt für sie kein Profil. Der Bericht weist das aus, statt sie
+stillschweigend zu überspringen.
+
+### Warum drei Spalten und nicht zwei
+
+`ungeprüft` heißt: **Der Validator konnte es nicht entscheiden.** Nicht,
+dass es richtig ist.
+
+Die acht ungeprüften Befunde sind allesamt dieselbe Sache: Das ISiK-Profil
+bindet `Condition.code` an ein SNOMED-ValueSet mit `is-a`-Filtern, und ohne
+SNOMED-Terminologie lässt sich die Zugehörigkeit weder bestätigen noch
+widerlegen. Der Validator sagt das selbst — trägt den Befund aber als
+`error`.
+
+Solche Befunde als Fehler zu zählen macht das Ergebnis schlechter, als es
+ist. Sie zu verschweigen macht es besser. Beides wäre Schönfärberei mit
+Zahlen. Die Einstufungsregel ist deshalb scharf: Ein „nicht im ValueSet
+enthalten" gilt nur dann als ungeprüft, wenn der Validator **in demselben
+Lauf** erklärt hat, dass er genau dieses ValueSet nicht auflösen kann.
+Ohne diese Klage bleibt es ein Fehler — sonst liesse sich jede
+Bindungsverletzung wegdeuten.
+
+### Der Satz, der daraus folgt
+
+> Gegen `de.gematik.isik-basismodul 4.0.3`, HAPI FHIR 4.0.1, ohne
+> Terminologieserver, Stand 2026-08-30: Patient 3 Fehler, Encounter 9,
+> Condition 13 Fehler und 8 ungeprüfte Befunde, über eine Referenzkohorte
+> von 10 profilierten Ressourcen. Observation und MedicationStatement sind
+> im Basismodul nicht profiliert.
+
+Das ist ein Satz, den man nicht zurücknehmen muss.
+
 ## Offene Frage an die Entscheidung
 
 Ein **Profilmodus** (`--profil isik`) wäre die vorsichtige Form: Er ließe

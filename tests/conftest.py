@@ -44,3 +44,34 @@ def hapi() -> HapiValidator:
             pytest.fail(_HINWEIS, pytrace=False)
         pytest.skip(_HINWEIS, allow_module_level=True)
     return validator
+
+
+PROFIL_BASIS_URL = os.environ.get("SYNTHFHIR_PROFIL_URL", "http://localhost:8090/fhir")
+PROFIL_PFLICHT = os.environ.get("SYNTHFHIR_REQUIRE_PROFIL", "").strip() in ("1", "true", "yes")
+
+_PROFIL_HINWEIS = (
+    f"Der Profilserver ist unter {PROFIL_BASIS_URL} nicht erreichbar.\n"
+    "  Start:  docker compose -f docs/belege/docker-compose.isik.yml up -d\n"
+    "Er lädt die ISiK-Pakete und ist NICHT derselbe Server wie der\n"
+    "Validierungsserver der CI — die Profilmessung darf die bestehende\n"
+    "Prüfkette nicht anfassen."
+)
+
+
+@pytest.fixture(scope="session")
+def profilserver() -> str:
+    """Die Basis-URL eines FHIR-Servers mit geladenen ISiK-Profilen.
+
+    Anders als bei `hapi` ist ein fehlender Server hier standardmäßig ein
+    Übersprung und **kein** Fehlschlag, auch nicht in der CI: Die
+    Profilmessung ist nach ADR-002 keine Produktzusage, sondern eine
+    Sondierung. Sie zur Auflage zu machen hieße, ein Versprechen zu geben,
+    über das noch gar nicht entschieden ist. `SYNTHFHIR_REQUIRE_PROFIL=1`
+    kehrt das für einen gezielten Lauf um.
+    """
+    validator = HapiValidator(PROFIL_BASIS_URL)
+    if validator.bereit(wartezeit_s=10.0) is None:
+        if PROFIL_PFLICHT:
+            pytest.fail(_PROFIL_HINWEIS, pytrace=False)
+        pytest.skip(_PROFIL_HINWEIS, allow_module_level=True)
+    return PROFIL_BASIS_URL

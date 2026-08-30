@@ -24,7 +24,7 @@ Produkt.
 | **0 — Spike** | Architekturentscheidung mit Messdaten | ✅ abgeschlossen 2026-08-28 |
 | **1 — MVP** | Eingabe, Generierung, Validierung, Lokalisierung, Export, Veröffentlichung | ✅ veröffentlicht 2026-08-29 |
 | **2 — v1.x** | Weitere Ressourcentypen, Bulk-Export, Seed, Server-Push, größere Kohorten | ✅ abgeschlossen 2026-08-30 |
-| 3 — Vision | Deutsche Profile (KBV/ISiK), API, weitere Standards | langfristig |
+| 3 — Vision | Deutsche Profile (KBV/ISiK), API, weitere Standards | ⏳ ISiK-Abstand gemessen und wiederholbar (2026-08-30) |
 
 ---
 
@@ -42,6 +42,8 @@ src/      das Produkt (Phase 1)
     kohorte.py    große Kohorten in Teilen (Phase 2)
     ndjson.py     Bulk-Export nach FHIR Bulk Data (Phase 2)
     push.py       Laden in einen FHIR-Server (Phase 2)
+    profil.py     Messung gegen ISiK-Profile (Phase 3)
+    referenzkohorte.py  feste Kohorte für wiederholbare Messungen
     aufzeichnung.py  Läufe aufzeichnen und wiedergeben (Phase 2)
     cli.py        Kommandozeile
     web/          Oberfläche (FastAPI, serverseitig gerendert)
@@ -159,6 +161,38 @@ ist, muss auch der maschinenlesbare Kanal sagen, nicht nur stderr.
 
 Begründung und die Grenzen der Zusage in
 [ADR-006](docs/adr-006-reproduzierbarkeit.md).
+
+### Wie weit ist die Ausgabe von ISiK entfernt?
+
+Das misst ein eigener Befehl. Er **ändert nichts** an der Erzeugung — er
+hält die Ausgabe gegen die ISiK-Profile der gematik und berichtet:
+
+```bash
+docker compose -f docs/belege/docker-compose.isik.yml up -d
+synthfhir-profil -o docs/belege/isik-profilbericht.json
+```
+
+```
+Typ                     geprüft   Fehler  ungeprüft  Warnungen
+Condition                     4       13          8          8
+Encounter                     3        9          0          3
+Patient                       3        3          0         15
+SUMME                        10       25          8         26
+```
+
+**Drei Spalten, nicht zwei.** `ungeprüft` heißt: Der Validator konnte es
+nicht entscheiden — nicht, dass es richtig ist. Ohne Terminologieserver
+bleibt jede Bindung an SNOMED, LOINC, ICD-10-GM und ATC in dieser Spalte.
+Solche Befunde als Fehler zu zählen machte das Ergebnis schlechter, als es
+ist; sie zu verschweigen besser. Beides wäre Schönfärberei mit Zahlen.
+
+Gemessen wird eine feste Referenzkohorte ohne Modellaufruf — sonst
+verglichen zwei Läufe verschiedene Daten. Einer der drei Patienten hat
+**keine** Begegnung: Er ist der Fall, an dem `isik-con1` greift, und er
+gehört dazu, *weil* er scheitert.
+
+Einordnung und offene Entscheidung in
+[docs/sondierung-isik.md](docs/sondierung-isik.md).
 
 ### In einen FHIR-Server laden
 
