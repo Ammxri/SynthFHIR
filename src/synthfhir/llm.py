@@ -30,6 +30,24 @@ DEFAULT_BASE_URL = "http://localhost:11434/v1"  # Ollama
 # der aufrufende Code nur eine Schreibweise kennen muss.
 FINISH_REASON = {"length": "max_tokens", "stop": "end_turn"}
 
+# Voreinstellung für die Antwortlänge. Der Wert MUSS zu dem Prompt passen,
+# den dieser Code ausliefert: Anbieter rechnen `max_tokens` in die
+# Anfragegröße ein, und im Gratistarif (8000 Token/Minute) bleibt neben
+# einem Prompt von rund 2900 Token nicht mehr Platz.
+#
+# Er stand auf 5600 und passte zum Prompt mit drei Katalogen. Mit den
+# Katalogen der Phase 2 wuchs der Prompt, und die veröffentlichte Seite
+# antwortete auf JEDE Anfrage mit HTTP 413 — die Voreinstellung wurde in
+# `.env.example` gesenkt, aber nicht hier, und ein Deployment ohne gesetzte
+# Umgebungsvariable landet genau hier.
+#
+# `tests/test_llm.py` hält den Wert gegen den tatsächlichen Prompt.
+# Gewählt mit Spielraum: Der Teil-Prompt für Kohorten trägt einen Zusatz
+# und ist der längste, den dieses Projekt sendet. Bei 4800 lag er pessimistisch
+# gerechnet zwei Token über der Grenze — ein Spielraum von zwei Token ist
+# keiner.
+STANDARD_MAX_TOKENS = 4500
+
 _LIMIT_RE = re.compile(r"Limit\s+(\d+)", re.I)
 _REQUESTED_RE = re.compile(r"Requested\s+(\d+)", re.I)
 
@@ -78,7 +96,7 @@ class OpenAIKompatiblerClient(LLMClient):
         basis_url: str | None = None,
         api_schluessel: str | None = None,
         temperatur: float = 0.7,
-        max_tokens: int = 5600,
+        max_tokens: int = STANDARD_MAX_TOKENS,
         timeout_s: float = 180.0,
         versuche: int = 3,
     ) -> None:
@@ -248,7 +266,9 @@ def client_aus_umgebung() -> LLMClient:
         modell=modell,
         basis_url=os.environ.get("SYNTHFHIR_LLM_BASE_URL") or None,
         temperatur=float(os.environ.get("SYNTHFHIR_LLM_TEMPERATURE", "0.7")),
-        max_tokens=int(os.environ.get("SYNTHFHIR_LLM_MAX_TOKENS", "5600")),
+        max_tokens=int(
+            os.environ.get("SYNTHFHIR_LLM_MAX_TOKENS", str(STANDARD_MAX_TOKENS))
+        ),
     )
 
 

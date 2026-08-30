@@ -35,6 +35,14 @@ services:
       - key: SYNTHFHIR_LLM_BASE_URL
         value: https://api.groq.com/openai/v1
 
+      # Ausdrücklich gesetzt, obwohl der Code denselben Wert voreinstellt:
+      # Wer hier nachsieht, soll den Zusammenhang sehen. Das Kontingent von
+      # 8000 Token je Minute wird zwischen Prompt (rund 2900) und dieser
+      # Reserve aufgeteilt. Zu hoch gesetzt, scheitert JEDE Anfrage mit
+      # HTTP 413 — genau das ist am 2026-08-30 passiert.
+      - key: SYNTHFHIR_LLM_MAX_TOKENS
+        value: "4500"
+
       # `sync: false` heißt: Render fragt den Wert beim Anlegen ab und
       # speichert ihn verschlüsselt im Dashboard. Er steht damit NIE im
       # Repository - die einzige zulässige Handhabung für einen Schlüssel.

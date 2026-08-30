@@ -51,7 +51,8 @@ from .validation import Pruefergebnis, pruefe_alle
 # nachdem Encounter und MedicationStatement hinzukamen:
 #
 #   Ausgabe je Patient          504 Token   (vorher rund 276 mit drei Typen)
-#   max_tokens im Gratistarif  4800         (8000/Minute minus 3016 Prompt)
+#   max_tokens im Gratistarif  4500         (8000/Minute minus Prompt,
+#                                            mit Spielraum gewählt)
 #   ergibt rechnerisch            9,5 Patienten
 #   gewählt mit Reserve           8         — Patienten mit mehreren
 #                                             Diagnosen kosten mehr

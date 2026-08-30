@@ -333,7 +333,7 @@ def test_teilgroesse_traegt_die_gemessene_ausgabe():
     from synthfhir.kohorte import TEILGROESSE
 
     ausgabe_je_patient = 504
-    max_tokens = 4800
+    max_tokens = 4500
     assert TEILGROESSE * ausgabe_je_patient <= max_tokens, (
         f"{TEILGROESSE} Patienten brauchen rund "
         f"{TEILGROESSE * ausgabe_je_patient} Token, erlaubt sind {max_tokens}"
