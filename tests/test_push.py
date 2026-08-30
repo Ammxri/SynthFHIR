@@ -17,6 +17,7 @@ from synthfhir.domain import assign_ids, baue_aus_parametern
 from synthfhir.domain.codes import TESTDATEN_LABEL
 from synthfhir.push import (
     TOKEN_VARIABLE,
+    UNSINNSLABEL,
     Zielbefund,
     baue_transaktion,
     befrage_ziel,
@@ -49,7 +50,13 @@ class StubAntwort:
 
 
 class StubSitzung:
-    """Ein Zielserver, der sich beliebig verhalten lässt — ohne Netz."""
+    """Ein Zielserver, der sich beliebig verhalten lässt — ohne Netz.
+
+    Bildet ausdrücklich einen Server nach, der `_security` **beachtet**:
+    Auf ein Label, das es nicht gibt, antwortet er mit null. Das ist keine
+    Feinheit — der Wächter erkennt genau daran, ob die Auskunft des Servers
+    überhaupt etwas wert ist.
+    """
 
     def __init__(self, gesamt=0, mit_label=0, metadata=True, post_status=200):
         self.gesamt, self.mit_label = gesamt, mit_label
@@ -64,7 +71,12 @@ class StubSitzung:
             return StubAntwort(200, {"resourceType": "CapabilityStatement",
                                      "fhirVersion": "4.0.1"})
         params = params or {}
-        n = self.mit_label if "_security" in params else self.gesamt
+        if "_security" not in params:
+            n = self.gesamt
+        elif params["_security"] == UNSINNSLABEL:
+            n = 0                      # ein Server, der den Filter beachtet
+        else:
+            n = self.mit_label
         return StubAntwort(200, {"resourceType": "Bundle", "total": n})
 
     def post(self, url, data=None, timeout=None):
@@ -350,3 +362,89 @@ def test_push_gegen_echten_server(hapi, monkeypatch):
     gelesen = s.get(f"{basis}/Patient/pt-pat-001", timeout=60)
     assert gelesen.status_code == 200
     assert gelesen.json()["meta"]["security"][0]["code"] == "HTEST"
+
+
+# --- Nachgestellte Befunde -------------------------------------------------
+
+
+def test_server_der_security_ignoriert_gilt_als_verdaechtig(monkeypatch):
+    """Der gefährlichste Fehler dieses Moduls, nachgestellt.
+
+    Ein FHIR-Server darf einen unbekannten Suchparameter stillschweigend
+    ignorieren — gemessen: Beide geprüften Server liefern auf einen
+    erfundenen Parameter die volle Trefferzahl. Beachtet das Ziel
+    `_security` nicht, sind beide Zahlen gleich groß, und der Wächter
+    hielte einen Server voller echter Patienten für einen leeren
+    Testserver. Er versagte nach der falschen Seite.
+    """
+    class Ignoriert(StubSitzung):
+        def get(self, url, params=None, timeout=None):
+            if url.endswith("/metadata"):
+                return super().get(url, params, timeout)
+            # Filter wird ignoriert: immer die volle Zahl.
+            return StubAntwort(200, {"resourceType": "Bundle", "total": 8252})
+
+    s = Ignoriert()
+    monkeypatch.setattr("synthfhir.push._sitzung", lambda token: s)
+
+    befund = befrage_ziel("http://produktiv/fhir")
+    assert befund.security_filter_wirkt is False
+    assert befund.fremde_daten, "gleich große Zahlen dürfen nicht beruhigen"
+
+    e = pushe(kohorte(), "http://produktiv/fhir", ausfuehren=True)
+    assert e.geschrieben == 0
+    assert s.posts == []
+
+
+def test_gegenprobe_erkennt_einen_wirksamen_filter(monkeypatch):
+    """Ein Server, der auf ein erfundenes Label null liefert, beachtet den
+    Filter — und erst dann sagt seine HTEST-Zahl etwas aus."""
+    s = StubSitzung(gesamt=42, mit_label=42)
+    monkeypatch.setattr("synthfhir.push._sitzung", lambda token: s)
+    befund = befrage_ziel("http://ziel/fhir")
+    assert befund.security_filter_wirkt is True
+    assert not befund.fremde_daten
+
+
+@pytest.mark.parametrize("ressource", [
+    {"resourceType": "../Binary", "id": "x"},
+    {"resourceType": "Patient/x", "id": "y"},
+    {"resourceType": "Patient", "id": "../evil"},
+    {"resourceType": "Patient", "id": ""},
+    {"resourceType": "", "id": "x"},
+])
+def test_typ_und_kennung_kommen_nicht_ungeprueft_in_den_url_pfad(ressource, ziel):
+    """Beide wandern in den URL-Pfad der Transaktion. Ein `resourceType`
+    von "../Binary" schriebe an eine andere Stelle des Servers."""
+    from synthfhir.push import PushFehler
+
+    with pytest.raises(PushFehler):
+        baue_transaktion([ressource])
+
+    ressource = dict(ressource, meta={"security": [dict(TESTDATEN_LABEL)]})
+    e = pushe([ressource], "http://ziel/fhir", ausfuehren=True)
+    assert e.geschrieben == 0
+    assert ziel.posts == [], "nichts gesendet, auch kein erstes Paket"
+
+
+def test_pruefung_laeuft_vor_dem_ersten_paket(monkeypatch):
+    """Eine kaputte Ressource im letzten Paket darf die ersten nicht schon
+    auf den Server gebracht haben."""
+    s = StubSitzung()
+    monkeypatch.setattr("synthfhir.push._sitzung", lambda token: s)
+    res = kohorte(20)
+    res[-1]["resourceType"] = "../Binary"
+    e = pushe(res, "http://ziel/fhir", ausfuehren=True, paketgroesse=10)
+    assert s.posts == [], "kein einziges Paket unterwegs"
+    assert e.geschrieben == 0
+
+
+def test_testlabel_wirkt_im_katalog_fingerabdruck(monkeypatch):
+    """Das Kennzeichen steht in jeder Ressource, ändert also jedes Bundle.
+    Fehlte es im Fingerabdruck, meldete eine Wiedergabe zwar die
+    Abweichung, benannte aber den Katalog als unverändert."""
+    from synthfhir import aufzeichnung as aufz
+
+    vorher = aufz.katalog_pruefsumme()
+    monkeypatch.setattr(aufz, "FESTE_WERTE", ("anders",))
+    assert aufz.katalog_pruefsumme() != vorher

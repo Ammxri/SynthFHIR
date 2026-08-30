@@ -292,7 +292,21 @@ def _pushen(args, ergebnis) -> int:
     )
     if not args.still:
         print(_push_zeilen(e, args), file=sys.stderr)
-    return 2 if e.fehler else 0
+
+    if not e.fehler:
+        return 0
+    # 2 hieße „nichts passiert". Wenn aber schon Pakete durchgingen, liegen
+    # Daten auf einem fremden Server, und der Rückgabewert darf das nicht
+    # verschweigen. 1 heißt hier wie überall: geliefert, aber unvollständig.
+    if e.geschrieben:
+        print(
+            f"  ACHTUNG: {e.geschrieben} Ressourcen sind bereits auf "
+            f"{e.ziel} geschrieben. Der Push ist idempotent — ein zweiter "
+            "Versuch ergänzt sie, statt sie zu verdoppeln.",
+            file=sys.stderr,
+        )
+        return 1
+    return 2
 
 
 def _push_zeilen(e, args) -> str:

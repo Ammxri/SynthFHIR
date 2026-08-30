@@ -489,7 +489,17 @@ SYSTEME: tuple[str, ...] = (
 
 # Auch die festen Statuswerte gehören zum Fingerabdruck: Sie stehen im
 # Bundle und ändern sich, wenn jemand sie hier ändert.
-FESTE_WERTE: tuple[str, ...] = (ENCOUNTER_STATUS, MEDICATION_STATUS)
+FESTE_WERTE: tuple[str, ...] = (
+    ENCOUNTER_STATUS,
+    MEDICATION_STATUS,
+    # Auch das Testdaten-Kennzeichen: Es steht in jeder Ressource, ändert
+    # also jedes Bundle, wenn es sich ändert. Ohne diesen Eintrag meldete
+    # eine Wiedergabe zwar die Abweichung, benannte aber den Katalog als
+    # unverändert und schickte die Suche zu den Vorlagen.
+    TESTDATEN_LABEL["system"],
+    TESTDATEN_LABEL["code"],
+    TESTDATEN_LABEL["display"],
+)
 
 
 def medication_catalog_text() -> str:

@@ -178,6 +178,60 @@ wiedergegebenen Aufzeichnung:
 
 ---
 
+## 3b. Nachträglich gefundene Fehler (2026-08-30)
+
+Eine gegnerische Durchsicht fand vier Fehler. Der erste hebt den
+wichtigsten Schutzmechanismus dieses Moduls auf.
+
+### Der Wächter versagte nach der falschen Seite
+
+Ein FHIR-Server darf einen **unbekannten Suchparameter stillschweigend
+ignorieren** — das ist die Voreinstellung (*lenient handling*). Beachtet
+das Ziel `_security` nicht, liefert es auf den HTEST-Filter dieselbe Zahl
+wie ohne Filter. Beide Zahlen sind dann gleich groß, und der Wächter
+meldete: keine fremden Daten.
+
+Er hätte also einen Server voller echter Patienten für einen leeren
+Testserver gehalten — und den Push freigegeben. Ein Schutz, der nach der
+falschen Seite versagt, ist schlechter als keiner: Er gibt Sicherheit vor.
+
+Gemessen an zwei Servern:
+
+```
+                          lokaler HAPI    öffentlicher HAPI
+ohne Filter                        24                 8253
+erfundener Parameter               24                 8253   <- ignoriert
+_security = Unsinnslabel            0                    0   <- Filter wirkt
+```
+
+Die Messung liefert die Abhilfe gleich mit: **Eine Gegenprobe mit einem
+Sicherheitslabel, das es nirgends gibt.** Wirkt der Filter, ergibt sie
+null. Kommt stattdessen die volle Trefferzahl, ignoriert der Server den
+Parameter — und dann ist auch seine Auskunft über HTEST wertlos.
+`fremde_daten` prüft das jetzt zuerst, und jede Unsicherheit zählt als Ja.
+
+Nachgeprüft nach der Korrektur:
+
+| Ziel | Bestand | gekennzeichnet | Filter wirkt | Urteil |
+|---|---|---|---|---|
+| lokaler HAPI | 24 | 24 | ja | Push frei |
+| `hapi.fhir.org/baseR4` | 8253 | 0 | ja | **verweigert** |
+
+### Die übrigen drei
+
+| Befund | Was passierte | Behebung |
+|---|---|---|
+| **`resourceType` ungeprüft im URL-Pfad** | Ein Wert wie `"../Binary"` schriebe an eine andere Stelle des Servers als gemeint — dieselbe Lücke wie beim NDJSON-Export, dort schon behoben | Typ und Kennung müssen den Mustern genügen; geprüft wird **vor** dem ersten Paket |
+| **Teilerfolg meldete Rückgabewert 2** | 2 heißt „nichts passiert". Nach drei durchgegangenen Paketen liegen aber Daten auf einem fremden Server | Rückgabewert 1, plus eine Zeile, die sagt, wie viel schon dort liegt |
+| **Testlabel fehlte im Katalog-Fingerabdruck** | Es steht in jeder Ressource; ändert es sich, ändert sich jedes Bundle. Eine Wiedergabe meldete die Abweichung, nannte den Katalog aber unverändert | in `FESTE_WERTE` aufgenommen |
+
+Der dritte ist zum vierten Mal dieselbe Klasse: eine Aufzählung von Hand,
+die einen neuen Eintrag nicht kennt. Nach `vital_sign`, den
+Katalogsammlungen und den Beanstandungsarten ist das ein Muster, kein
+Zufall.
+
+---
+
 ## 4. Konsequenzen
 
 ### Positiv
@@ -193,7 +247,10 @@ wiedergegebenen Aufzeichnung:
 - **Alle Bundles ändern sich.** Das Label steht in jeder Ressource. Ältere
   Aufzeichnungen melden bei der Wiedergabe `ABWEICHUNG` — richtig so, das
   ist der Selbsttest aus ADR-006 bei der Arbeit.
-- **Der Wächter ist kein Beweis** (siehe oben).
+- **Der Wächter ist kein Beweis** (siehe oben). Er verweigert inzwischen
+  auch dann, wenn der Server `_security` gar nicht beantwortet — das ist
+  streng, aber die einzige Haltung, die nicht nach der falschen Seite
+  versagt.
 - **Kein Löschen, kein Zurückrollen über Paketgrenzen.** Bricht Paket 3 von
   5 ab, stehen die ersten beiden auf dem Server. Sie sind gültig,
   gekennzeichnet und beim nächsten Versuch idempotent überschreibbar — aber
@@ -218,6 +275,7 @@ wiedergegebenen Aufzeichnung:
 | Das Label nur an gepushten Ressourcen | Eine exportierte Datei kann später jemand anderes laden. Dann fehlte die Kennzeichnung genau dort, wo sie gebraucht wird. |
 | Fehlende Kennzeichnung beim Push nachrüsten | Wenn dort etwas ohne Kennzeichen ankommt, stimmt weiter oben etwas nicht — das gehört gesehen, nicht stillschweigend geflickt. |
 | Das Token als Kommandozeilenargument | Landet in der Shell-Historie und in der Prozessliste. |
+| Dem Zielserver glauben, ohne die Filterwirkung zu prüfen | Ein Server, der `_security` ignoriert, sähe aus wie ein sauberer Testserver. Gemessen: Unbekannte Parameter werden stillschweigend ignoriert. |
 
 ---
 

@@ -83,6 +83,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 from dataclasses import dataclass, field
 
 import requests
@@ -102,6 +103,18 @@ TIMEOUT_S = 120.0
 # Prozessliste, wo sie jeder Mitbenutzer des Rechners lesen kann.
 TOKEN_VARIABLE = "SYNTHFHIR_PUSH_TOKEN"
 
+# Ein Sicherheitslabel, das es nirgends gibt. Es dient als Gegenprobe: Ein
+# Server, der `_security` beachtet, findet darauf nichts. Liefert er
+# stattdessen die volle Trefferzahl, ignoriert er den Parameter — und dann
+# ist auch seine Auskunft über HTEST wertlos.
+UNSINNSLABEL = "http://synthfhir.invalid/kein-system|KEIN-CODE"
+
+# FHIR-Ressourcentypen bestehen nur aus Buchstaben. Der Typ wird zum
+# URL-Pfad der Transaktion; ohne diese Prüfung schriebe ein Wert wie
+# "../woanders" an eine andere Stelle des Servers.
+TYP_MUSTER = re.compile(r"^[A-Za-z]+$")
+KENNUNG_MUSTER = re.compile(r"^[A-Za-z0-9\-.]{1,64}$")
+
 
 class PushFehler(RuntimeError):
     """Der Push konnte nicht ausgeführt werden."""
@@ -116,16 +129,26 @@ class Zielbefund:
     fhir_version: str | None = None
     ressourcen_gesamt: int | None = None
     ressourcen_mit_testlabel: int | None = None
+    security_filter_wirkt: bool | None = None
     hinweise: list[str] = field(default_factory=list)
 
     @property
     def fremde_daten(self) -> bool:
         """Liegen dort Daten, die NICHT als Testdaten gekennzeichnet sind?
 
-        `None` bei einer der Zahlen heißt: Der Server hat nicht geantwortet.
-        Das gilt als verdächtig, nicht als unverdächtig — wer nicht sagen
-        kann, was auf dem Zielsystem liegt, sollte nicht hineinschreiben.
+        Jede Unsicherheit zählt als Ja. Wer nicht sagen kann, was auf dem
+        Zielsystem liegt, sollte nicht hineinschreiben.
+
+        Der erste Zweig ist der wichtigste und war zuerst nicht da: Ein
+        FHIR-Server darf einen unbekannten Suchparameter stillschweigend
+        ignorieren, und beide gemessenen Server tun das auch (ein
+        erfundener Parameter liefert die volle Trefferzahl). Beachtet das
+        Ziel `_security` nicht, wären beide Zahlen gleich groß — und der
+        Wächter hielte einen Server voller echter Patienten für einen
+        leeren Testserver. Er versagte damit nach der falschen Seite.
         """
+        if self.security_filter_wirkt is not True:
+            return True
         if self.ressourcen_gesamt is None or self.ressourcen_mit_testlabel is None:
             return True
         return self.ressourcen_gesamt > self.ressourcen_mit_testlabel
@@ -137,6 +160,7 @@ class Zielbefund:
             "fhir_version": self.fhir_version,
             "ressourcen_gesamt": self.ressourcen_gesamt,
             "ressourcen_mit_testlabel": self.ressourcen_mit_testlabel,
+            "security_filter_wirkt": self.security_filter_wirkt,
             "fremde_daten": self.fremde_daten,
             "hinweise": self.hinweise,
         }
@@ -225,6 +249,15 @@ def befrage_ziel(url: str, token: str | None = None) -> Zielbefund:
     befund.ressourcen_mit_testlabel = _zaehle(
         s, basis, {"_security": f"{TESTDATEN_LABEL['system']}|{TESTDATEN_LABEL['code']}"}
     )
+    # Gegenprobe VOR der Auswertung: Beachtet der Server den Filter?
+    probe = _zaehle(s, basis, {"_security": UNSINNSLABEL})
+    befund.security_filter_wirkt = None if probe is None else probe == 0
+    if befund.security_filter_wirkt is False:
+        befund.hinweise.append(
+            "Der Server beantwortet Suchen nach _security nicht: Ein Filter "
+            "auf ein erfundenes Label liefert Treffer. Seine Auskunft "
+            "darüber, was dort liegt, ist damit wertlos."
+        )
     if befund.ressourcen_gesamt is None:
         befund.hinweise.append(
             "Der Server beantwortet keine Zählabfrage. Ob dort echte Daten "
@@ -285,20 +318,27 @@ def baue_transaktion(ressourcen: list[dict]) -> dict:
     der Push idempotent — zweimal ausgeführt ergibt denselben Zustand statt
     doppelter Patienten.
     """
-    return {
-        "resourceType": "Bundle",
-        "type": "transaction",
-        "entry": [
-            {
-                "resource": r,
-                "request": {
-                    "method": "PUT",
-                    "url": f"{r['resourceType']}/{r['id']}",
-                },
-            }
-            for r in ressourcen
-        ],
-    }
+    eintraege = []
+    for r in ressourcen:
+        typ = str(r.get("resourceType") or "")
+        kennung = str(r.get("id") or "")
+        # Beide wandern ungefiltert in den URL-Pfad der Transaktion. Ein
+        # `resourceType` von "../Binary" schriebe an eine andere Stelle des
+        # Servers, als der Aufrufer meint. Im eigenen Ablauf setzen die
+        # Vorlagen beides, aber `pushe` nimmt beliebige dicts entgegen.
+        if not TYP_MUSTER.match(typ):
+            raise PushFehler(
+                f"{typ!r} ist kein Ressourcentyp. Der Typ wird zum URL-Pfad."
+            )
+        if not KENNUNG_MUSTER.match(kennung):
+            raise PushFehler(
+                f"{typ}: {kennung!r} ist keine zulässige Kennung. Sie wird "
+                "zum URL-Pfad."
+            )
+        eintraege.append(
+            {"resource": r, "request": {"method": "PUT", "url": f"{typ}/{kennung}"}}
+        )
+    return {"resourceType": "Bundle", "type": "transaction", "entry": eintraege}
 
 
 def _pakete(ressourcen: list[dict], groesse: int) -> list[list[dict]]:
@@ -378,6 +418,16 @@ def pushe(
             else f"Auf {befund.url} lässt sich der Bestand nicht ermitteln. "
             "Ob dort echte Daten liegen, ist damit unbekannt. Push abgebrochen."
         )
+        return ergebnis
+
+    try:
+        # Einmal über alles, bevor irgendetwas gesendet wird: Ein Abbruch
+        # mitten in der Reihe hinterließe geschriebene Pakete auf einem
+        # fremden Server.
+        for r in ressourcen:
+            baue_transaktion([r])
+    except PushFehler as exc:
+        ergebnis.fehler.append(str(exc))
         return ergebnis
 
     pakete = _pakete(ressourcen, paketgroesse)
