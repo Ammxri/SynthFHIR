@@ -35,6 +35,10 @@
       Diese Seite läuft als Demo auf einem kostenlosen Kontingent — es reicht
       für etwa eine Anfrage pro Minute, für alle Besucher zusammen. Deshalb
       sind {{ demo_anfragen }} Anfragen je Stunde und Adresse erlaubt.
+      {% if gesamtbremse_greift %}
+      Hier greift die Gesamtgrenze über <em>alle</em> Besucher, nicht deine
+      persönliche.
+      {% endif %}
     </p>
     <p>
       In etwa <strong>{{ wartezeit_min }} Minuten</strong> geht es wieder, oder
@@ -162,16 +166,34 @@
       <h3>{{ p.name }} <span class="kennung">{{ p.id }}</span></h3>
       <p class="stamm">{{ p.geschlecht }} · geboren {{ p.geburtsdatum }}</p>
 
+      {% if p.begegnungen %}
+      <h4>Kontakte</h4>
+      <table>
+        <thead><tr><th>Art</th><th>Zeitraum</th><th>Fallnummer</th><th>Kennung</th></tr></thead>
+        <tbody>
+        {% for b in p.begegnungen %}
+          <tr>
+            <td>{{ b.art }}</td>
+            <td class="zahl">{{ b.zeitraum }}</td>
+            <td class="code">{{ b.fallnummer }}</td>
+            <td class="code">{{ b.id }}</td>
+          </tr>
+        {% endfor %}
+        </tbody>
+      </table>
+      {% endif %}
+
       {% if p.diagnosen %}
       <h4>Diagnosen</h4>
       <table>
-        <thead><tr><th>Diagnose</th><th>Codes</th><th>Beginn</th></tr></thead>
+        <thead><tr><th>Diagnose</th><th>Codes</th><th>Beginn</th><th>Kontakt</th></tr></thead>
         <tbody>
         {% for d in p.diagnosen %}
           <tr>
             <td>{{ d.text }}</td>
             <td class="code">{{ d.codes | join(" · ") }}</td>
             <td class="zahl">{{ d.beginn }}</td>
+            <td class="code">{{ d.kontakt or "—" }}</td>
           </tr>
         {% endfor %}
         </tbody>
@@ -189,6 +211,23 @@
             <td class="zahl">{{ m.wert }}</td>
             <td class="code">{{ m.code }}</td>
             <td class="zahl">{{ m.datum }}</td>
+          </tr>
+        {% endfor %}
+        </tbody>
+      </table>
+      {% endif %}
+
+      {% if p.medikamente %}
+      <h4>Medikation</h4>
+      <table>
+        <thead><tr><th>Wirkstoff</th><th>Codes</th><th>Dosierung</th><th>Seit</th></tr></thead>
+        <tbody>
+        {% for m in p.medikamente %}
+          <tr>
+            <td>{{ m.text }}</td>
+            <td class="code">{{ m.codes | join(" · ") }}</td>
+            <td>{{ m.dosierung or "—" }}</td>
+            <td class="zahl">{{ m.seit or "—" }}</td>
           </tr>
         {% endfor %}
         </tbody>
@@ -212,18 +251,46 @@
 
   {% if bundle_json %}
   <section class="ausgabe">
+    {# Ein Formular, drei Knöpfe. Der angeklickte Knopf schickt sein
+       name/value mit, also reist das Bundle einmal statt dreimal — bei
+       200 Patienten ist das der Unterschied zwischen einer und drei
+       Kopien von mehreren Megabyte in der Seite. #}
     <form method="post" action="/export" class="zeile">
       <input type="hidden" name="bundle" value="{{ bundle_json }}">
-      <input type="hidden" name="dateiname" value="synthfhir-bundle.json">
-      <button type="submit" {% if not ergebnis.fertig %}disabled{% endif %}>
+      {% if aufzeichnung_json %}
+      <input type="hidden" name="aufzeichnung" value="{{ aufzeichnung_json }}">
+      {% endif %}
+      <button type="submit" name="art" value="json"
+              {% if not ergebnis.fertig %}disabled{% endif %}>
         Als FHIR-JSON herunterladen
       </button>
-      {% if not ergebnis.fertig %}
-      <span class="hinweis">
-        Der Download ist gesperrt, solange die Prüfung nicht durchgeht.
-      </span>
+      <button type="submit" name="art" value="ndjson" class="zweitrangig"
+              {% if not ergebnis.fertig %}disabled{% endif %}>
+        Als NDJSON-Archiv (ZIP)
+      </button>
+      {% if aufzeichnung_json %}
+      {# Nicht an `fertig` gebunden, und das ist Absicht: Eine
+         Aufzeichnung ist die EINGABE eines Laufs, nicht sein Ergebnis.
+         Gerade wenn die Prüfung nicht durchging, will man den Lauf
+         wiederholen können — ohne dafür noch einmal das Modell zu
+         fragen. #}
+      <button type="submit" name="art" value="aufzeichnung" class="zweitrangig">
+        Aufzeichnung speichern
+      </button>
       {% endif %}
     </form>
+    <p class="hinweis">
+      {% if not ergebnis.fertig %}
+      Die Datenausgabe ist gesperrt, solange die Prüfung nicht durchgeht.
+      {% endif %}
+      Das ZIP enthält je Ressourcentyp eine NDJSON-Datei und ein Manifest —
+      das Format, das Bulk-Import-Werkzeuge erwarten.
+      {% if aufzeichnung_json %}
+      Mit der Aufzeichnung lässt sich derselbe Lauf später ohne
+      Modellaufruf wiederholen:
+      <code>synthfhir --wiedergeben datei.json</code>.
+      {% endif %}
+    </p>
 
     <details>
       <summary>Roh-JSON ansehen ({{ bundle_json|length }} Zeichen)</summary>
@@ -239,9 +306,10 @@
 
 <footer class="huelle">
   <p>
-    Erzeugt Patient-, Condition- und Observation-Ressourcen nach FHIR R4.
-    Diagnosen tragen SNOMED CT und, wo vorhanden, ICD-10-GM.
-    Messwerte tragen LOINC mit UCUM-Einheiten.
+    Erzeugt Patient-, Encounter-, Condition-, Observation- und
+    MedicationStatement-Ressourcen nach FHIR R4.
+    Diagnosen tragen SNOMED CT und, wo vorhanden, ICD-10-GM;
+    Messwerte LOINC mit UCUM-Einheiten; Medikamente ATC.
   </p>
 </footer>
 

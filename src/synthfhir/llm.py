@@ -53,7 +53,24 @@ _REQUESTED_RE = re.compile(r"Requested\s+(\d+)", re.I)
 
 
 class LLMFehler(RuntimeError):
-    """Der Aufruf ist endgültig fehlgeschlagen."""
+    """Der Aufruf ist endgültig fehlgeschlagen.
+
+    `art` ist ein geschlossener Wortschatz. Ohne ihn müsste eine
+    aufrufende Schicht deutsche Fehlerprosa zerlegen, um zu entscheiden,
+    wessen Fehler das war — und ein umformulierter Satz änderte still das
+    Verhalten. Die Meldung ist für Menschen, die Art für Code.
+
+    * `nicht_konfiguriert` — der Betreiber hat etwas nicht gesetzt
+    * `abgelehnt`          — der Anbieter weist den Schlüssel zurück (401)
+    * `kein_zugriff`       — Schlüssel gültig, Modell oder Region gesperrt
+    * `kontingent`         — Ratengrenze oder Anfrage zu groß (429/413)
+    * `unbrauchbar`        — Antwort kam an, taugt aber nichts
+    * `verbindung`         — kein Kontakt zum Anbieter
+    """
+
+    def __init__(self, meldung: str, *, art: str = "unbrauchbar") -> None:
+        super().__init__(meldung)
+        self.art = art
 
 
 @dataclass(frozen=True)
@@ -99,6 +116,7 @@ class OpenAIKompatiblerClient(LLMClient):
         max_tokens: int = STANDARD_MAX_TOKENS,
         timeout_s: float = 180.0,
         versuche: int = 3,
+        umgebung_erlaubt: bool = True,
     ) -> None:
         self.modell = modell
         self.basis_url = (basis_url or DEFAULT_BASE_URL).rstrip("/")
@@ -108,12 +126,42 @@ class OpenAIKompatiblerClient(LLMClient):
         self.versuche = max(1, versuche)
 
         self.session = requests.Session()
+        # `trust_env` steht voreingestellt auf True, und das ist hier
+        # gefährlich: Der Schlüssel wird als KOPFZEILE gesetzt, nicht über
+        # den `auth`-Parameter. requests sieht ihn an dieser Stelle also
+        # nicht, hält die Anfrage für unauthentifiziert und ersetzt bei
+        # vorhandener `.netrc` den Bearer-Kopf durch HTTPBasicAuth.
+        # Nachgemessen: Ein gesetzter `Bearer sk-...` ging als
+        # `Basic <netrc-Zugangsdaten>` hinaus. Aus derselben Wurzel griffen
+        # HTTP_PROXY und REQUESTS_CA_BUNDLE der Betreiberumgebung auf einen
+        # fremden Schlüssel zu.
+        self.session.trust_env = False
         self.session.headers["Content-Type"] = "application/json"
+
+        # Erst normalisieren, dann entscheiden. Vorher stand hier
+        #   (api_schluessel or os.environ.get(...)).strip()
+        # und das hatte DREI Ausgänge statt zwei: `None` und `""` fielen
+        # still auf den Betreiberschlüssel zurück, `"   "` dagegen war für
+        # `or` wahr, wurde von `.strip()` geleert und schickte die Anfrage
+        # ganz OHNE Authorization hinaus. Alle drei nachgemessen.
+        eigener = (api_schluessel or "").strip()
+        if eigener:
+            self.schluessel_herkunft = "aufrufer"
+        elif umgebung_erlaubt:
+            eigener = os.environ.get("SYNTHFHIR_LLM_API_KEY", "").strip()
+            self.schluessel_herkunft = "betreiber" if eigener else "keiner"
+        else:
+            # Der Riegel. Ohne ihn hinge die Zusage „niemals auf Kosten des
+            # Betreibers" allein daran, dass jeder Aufrufer vorher richtig
+            # geprüft hat.
+            raise LLMFehler(
+                "Ohne eigenen Schlüssel ist dieser Weg gesperrt.",
+                art="abgelehnt",
+            )
         # Ollama braucht keinen Schlüssel, verträgt aber auch keinen leeren
         # Header - deshalb nur setzen, wenn tatsächlich einer da ist.
-        schluessel = (api_schluessel or os.environ.get("SYNTHFHIR_LLM_API_KEY", "")).strip()
-        if schluessel:
-            self.session.headers["Authorization"] = f"Bearer {schluessel}"
+        if eigener:
+            self.session.headers["Authorization"] = f"Bearer {eigener}"
 
     def frage(self, *, system: str, benutzer: str) -> LLMAntwort:
         rumpf = {
@@ -135,7 +183,8 @@ class OpenAIKompatiblerClient(LLMClient):
             raise LLMFehler(
                 f"Keine Verbindung zu {url}: {exc}\n"
                 "  Lokales Ollama: läuft der Dienst?  ollama list\n"
-                "  Cloud-Dienst: stimmt SYNTHFHIR_LLM_BASE_URL?"
+                "  Cloud-Dienst: stimmt SYNTHFHIR_LLM_BASE_URL?",
+                art="verbindung",
             ) from exc
 
         dauer = time.perf_counter() - beginn
@@ -195,7 +244,8 @@ class OpenAIKompatiblerClient(LLMClient):
         if antwort.status_code == 429:
             raise LLMFehler(
                 f"Ratengrenze bei {url} auch nach Wartezeit aktiv (HTTP 429). "
-                "Kontingent erschöpft — später erneut versuchen."
+                "Kontingent erschöpft — später erneut versuchen.",
+                art="kontingent",
             )
         if antwort.status_code == 413:
             # Anbieter rechnen `max_tokens` in die Anfragegröße ein. Ein zu
@@ -211,20 +261,42 @@ class OpenAIKompatiblerClient(LLMClient):
                     f"(davon {self.max_tokens} als max_tokens reserviert)."
                     f"\n  -> max_tokens auf höchstens {vorschlag} setzen."
                 )
-            raise LLMFehler(f"Anfrage an {url} zu groß für das Kontingent (HTTP 413).{hinweis}")
-        if antwort.status_code in (401, 403):
             raise LLMFehler(
-                f"Zugriff auf {url} verweigert (HTTP {antwort.status_code}). "
-                "Fehlt SYNTHFHIR_LLM_API_KEY?"
+                f"Anfrage an {url} zu groß für das Kontingent (HTTP 413).{hinweis}",
+                art="kontingent",
+            )
+        if antwort.status_code in (401, 403):
+            # Getrennt, weil beide verschiedene Ratschläge verdienen: 401
+            # heißt „falscher Schlüssel", 403 „richtiger Schlüssel, falsche
+            # Berechtigung" — dasselbe noch einmal zu senden hilft dort
+            # nie. Der frühere Text lautete hier „Fehlt
+            # SYNTHFHIR_LLM_API_KEY?" und unterstellte damit jedem, der
+            # seinen EIGENEN Schlüssel geschickt hatte, eine
+            # Fehlkonfiguration des Betreibers.
+            welcher = {
+                "aufrufer": "Der übermittelte Schlüssel",
+                "betreiber": "Der hinterlegte Schlüssel",
+                "keiner": "Es wurde kein Schlüssel gesendet; er",
+            }[self.schluessel_herkunft]
+            if antwort.status_code == 401:
+                raise LLMFehler(
+                    f"{welcher} wurde vom Anbieter abgelehnt (HTTP 401).",
+                    art="abgelehnt",
+                )
+            raise LLMFehler(
+                f"{welcher} hat keinen Zugriff auf {self.modell!r} (HTTP 403).",
+                art="kein_zugriff",
             )
         if antwort.status_code == 404:
             raise LLMFehler(
                 f"{url} antwortete mit HTTP 404. Stimmt die Basis-URL, und gibt es "
-                f"das Modell {self.modell!r}?"
+                f"das Modell {self.modell!r}?",
+                art="unbrauchbar",
             )
         if antwort.status_code >= 400:
             raise LLMFehler(
-                f"{url} antwortete mit HTTP {antwort.status_code}: {antwort.text[:300]}"
+                f"{url} antwortete mit HTTP {antwort.status_code}: {antwort.text[:300]}",
+                art="unbrauchbar",
             )
 
 
@@ -250,6 +322,91 @@ class FesterClient(LLMClient):
         )
 
 
+# Ein Schlüssel darf nur druckbare ASCII-Zeichen enthalten. Das ist keine
+# Formsache: `requests` wirft bei einem Zeilenumbruch im Kopfwert eine
+# `InvalidHeader`, deren Text den WERT enthält — und `frage()` bettet
+# `{exc}` in den `LLMFehler` ein. Nachgemessen landete ein fremder
+# Schlüssel so wörtlich in `Ergebnis.fehler`, und von dort in die
+# gerenderte Seite und in jede mit `--bericht` geschriebene Datei.
+_SCHLUESSEL_MUSTER = re.compile(r"^[!-~]+$")
+
+# Großzügig, aber nicht unbegrenzt: 100 000 Zeichen gingen nachweislich
+# ungeprüft an den Anbieter hinaus.
+SCHLUESSEL_HOECHSTLAENGE = 4096
+
+
+def client_mit_fremdschluessel(
+    schluessel: str | None,
+    *,
+    modell: str | None = None,
+    timeout_s: float = 40.0,
+    versuche: int = 1,
+) -> OpenAIKompatiblerClient:
+    """Ein Client, der ausschließlich auf Rechnung des Aufrufers arbeitet.
+
+    Der einzige Weg, auf dem der programmatische Zugang einen Client baut.
+    Er kennt `client_aus_umgebung` nicht — was nicht importiert ist, kann
+    nicht versehentlich aufgerufen werden.
+
+    Drei Riegel, jeder gegen einen nachgemessenen Ausgang:
+
+    1. **Der Schlüssel muss echt sein.** `None` und `""` fielen im
+       Konstruktor still auf `SYNTHFHIR_LLM_API_KEY` zurück, reiner
+       Leerraum schickte die Anfrage ganz ohne Authorization hinaus.
+       Hier scheitert alles drei, bevor ein Client entsteht.
+    2. **`umgebung_erlaubt=False`.** Der Riegel sitzt damit an der Quelle
+       und nicht bei einem Aufrufer, der ihn vergessen kann.
+    3. **Die Basis-URL muss gesetzt sein.** Ohne
+       `SYNTHFHIR_LLM_BASE_URL` griffe `DEFAULT_BASE_URL` — und der zeigt
+       auf ein lokales Ollama. Der Schlüssel eines Fremden ginge dann an
+       einen Dienst, den niemand gemeint hat.
+
+    Zeitgrenzen sind knapper als in der Oberfläche: Dort wartet ein
+    Mensch, der zusieht. Hier wartet ein Programm, und jede Sekunde
+    belegt einen Platz im Threadpool, der auch die Weboberfläche bedient.
+    """
+    roh = (schluessel or "").strip()
+    if not roh:
+        raise LLMFehler(
+            "Dieser Zugang verlangt einen eigenen Schlüssel.",
+            art="abgelehnt",
+        )
+    if len(roh) > SCHLUESSEL_HOECHSTLAENGE:
+        raise LLMFehler("Der Schlüssel ist zu lang.", art="abgelehnt")
+    if not _SCHLUESSEL_MUSTER.match(roh):
+        # Absichtlich ohne den Wert: Diese Meldung wird weitergereicht.
+        raise LLMFehler(
+            "Der Schlüssel enthält Zeichen, die in einer HTTP-Kopfzeile "
+            "nicht zulässig sind.",
+            art="abgelehnt",
+        )
+
+    basis_url = (os.environ.get("SYNTHFHIR_LLM_BASE_URL") or "").strip()
+    if not basis_url:
+        raise LLMFehler(
+            "SYNTHFHIR_LLM_BASE_URL ist nicht gesetzt.",
+            art="nicht_konfiguriert",
+        )
+    gewaehlt = (modell or os.environ.get("SYNTHFHIR_LLM_MODEL", "")).strip()
+    if not gewaehlt:
+        raise LLMFehler(
+            "SYNTHFHIR_LLM_MODEL ist nicht gesetzt.",
+            art="nicht_konfiguriert",
+        )
+
+    return OpenAIKompatiblerClient(
+        modell=gewaehlt,
+        basis_url=basis_url,
+        api_schluessel=roh,
+        max_tokens=int(
+            os.environ.get("SYNTHFHIR_LLM_MAX_TOKENS", str(STANDARD_MAX_TOKENS))
+        ),
+        timeout_s=timeout_s,
+        versuche=versuche,
+        umgebung_erlaubt=False,
+    )
+
+
 def client_aus_umgebung() -> LLMClient:
     """Baut den Client aus den Umgebungsvariablen.
 
@@ -260,7 +417,8 @@ def client_aus_umgebung() -> LLMClient:
     if not modell:
         raise LLMFehler(
             "SYNTHFHIR_LLM_MODEL ist nicht gesetzt. Verfügbare Modelle des Anbieters:\n"
-            f"  curl {os.environ.get('SYNTHFHIR_LLM_BASE_URL', DEFAULT_BASE_URL)}/models"
+            f"  curl {os.environ.get('SYNTHFHIR_LLM_BASE_URL', DEFAULT_BASE_URL)}/models",
+            art="nicht_konfiguriert",
         )
     return OpenAIKompatiblerClient(
         modell=modell,

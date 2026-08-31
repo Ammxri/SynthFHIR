@@ -55,3 +55,23 @@ services:
         value: "5"
       - key: SYNTHFHIR_DEMO_FENSTER_S
         value: "3600"
+
+      # Die zweite Bremse, ohne Kennung: wie oft der Betreiberschlüssel
+      # im Zeitfenster insgesamt benutzt werden darf. Sie ist die einzige,
+      # die sich nicht über eine gefälschte X-Forwarded-For-Kopfzeile
+      # umgehen lässt — nachgemessen ergaben 30 Anfragen mit rotierendem
+      # Kopf zuvor 30 Aufrufe und kein einziges 429.
+      - key: SYNTHFHIR_DEMO_GESAMT
+        value: "30"
+
+      # Render setzt genau einen Proxy davor. Die Bremse zählt so viele
+      # Glieder von rechts; das linke schreibt der Aufrufer selbst.
+      - key: SYNTHFHIR_VERTRAUTE_PROXYS
+        value: "1"
+
+      # Gleichzeitige Läufe über /api/v1. Kein Ratenlimit — der Zugang
+      # läuft auf fremde Rechnung und ist über die Zeit unbegrenzt —,
+      # sondern der Schutz davor, dass ein Aufrufer alle Arbeitsplätze
+      # des einen Prozesses belegt und die Weboberfläche mitreisst.
+      - key: SYNTHFHIR_API_GLEICHZEITIG
+        value: "4"

@@ -245,7 +245,8 @@ Prüfsumme belegt Byte-Gleichheit" stimmt so nicht (siehe Abschnitt 2).
 
 ## 6. Offen
 
-- Aufzeichnungen in der Weboberfläche (zustimmungspflichtig, weil UI).
+- ~~Aufzeichnungen in der Weboberfläche~~ — erledigt in
+  [ADR-010](adr-010-ausgabewege-in-der-weboberflaeche.md).
 - **Der Katalog-Fingerabdruck hat keine eigene Version.** Ändert sich sein
   Verfahren, passen ältere Aufzeichnungen nicht mehr, und die Wiedergabe
   meldet eine Katalogänderung, die keine ist. Beim Einbau von `vital_sign`

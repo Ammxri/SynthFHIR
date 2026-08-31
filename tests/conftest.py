@@ -23,6 +23,10 @@ import pytest
 
 from .hapi import HapiValidator
 
+# Erkennbar als Platzhalter. Er steht in `os.environ` statt des echten
+# Schlüssels, sobald die autouse-Fixture unten greift.
+BETREIBER_PLATZHALTER = "BETREIBERSCHLUESSEL-NUR-FUER-TESTS"
+
 HAPI_BASIS_URL = os.environ.get("SYNTHFHIR_FHIR_BASE_URL", "http://localhost:8080/fhir")
 HAPI_PFLICHT = os.environ.get("SYNTHFHIR_REQUIRE_HAPI", "").strip() in ("1", "true", "yes")
 
@@ -75,3 +79,26 @@ def profilserver() -> str:
             pytest.fail(_PROFIL_HINWEIS, pytrace=False)
         pytest.skip(_PROFIL_HINWEIS, allow_module_level=True)
     return PROFIL_BASIS_URL
+
+
+# --- Vorbedingung, kein Test -----------------------------------------------
+
+
+@pytest.fixture(autouse=True)
+def kein_echter_schluessel(monkeypatch):
+    """Ersetzt den Betreiberschlüssel für die Dauer der Suite.
+
+    Ohne diese Fixture beweisen die Zusagen des programmatischen Zugangs
+    nichts. `oberflaeche.py` ruft beim Import `load_dotenv()`, und die
+    `.env` dieses Projekts setzt `SYNTHFHIR_LLM_API_KEY` — nachgemessen
+    steht der echte Groq-Schlüssel danach in `os.environ`. Ein Test, der
+    prüft „der Schlüssel des Betreibers wurde nicht benutzt", vergliche
+    dann gegen den echten Wert, und ein Test, der versehentlich einen
+    echten Client baut, telefonierte nach draußen.
+
+    Der Platzhalter ist absichtlich als solcher erkennbar: Taucht er in
+    einer Antwort auf, ist sofort klar, woher er stammt.
+    """
+    monkeypatch.setenv("SYNTHFHIR_LLM_API_KEY", BETREIBER_PLATZHALTER)
+    monkeypatch.setenv("SYNTHFHIR_LLM_BASE_URL", "https://anbieter.invalid/v1")
+    monkeypatch.setenv("SYNTHFHIR_LLM_MODEL", "test-modell")

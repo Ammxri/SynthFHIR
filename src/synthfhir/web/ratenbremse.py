@@ -17,10 +17,39 @@ kennen muss:
 Für eine Portfolio-Demo ist beides tragbar. Wer die Bremse umgehen will,
 bringt seinen eigenen Schlüssel mit — das ist der vorgesehene Weg und keine
 Lücke.
+
+===========================================================================
+ZWEI BREMSEN, WEIL EINE FÄLSCHBAR IST
+===========================================================================
+
+Die Bremse je Adresse hat eine Schwäche, die gemessen wurde und nicht
+theoretisch ist: 30 Anfragen mit jeweils anderem ``X-Forwarded-For``
+ergaben **30 Aufrufe auf den Betreiberschlüssel und kein einziges 429**.
+Mit fester Adresse greift sie korrekt ab der sechsten.
+
+Die Ursache war die Auswahl des Glieds. ``X-Forwarded-For`` wächst von
+links nach rechts: Jeder Proxy hängt **an**, von welcher Adresse er
+empfangen hat. Das linke Glied stammt damit aus der Anfrage selbst und ist
+frei erfunden; das rechte hat der letzte — und einzige vertrauenswürdige —
+Proxy geschrieben. Gelesen wurde bisher das linke.
+
+Von rechts zu zählen behebt den Fall, verlässt sich aber weiterhin auf eine
+richtig eingestellte Zahl vertrauenswürdiger Proxys. Deshalb steht daneben
+eine **Gesamtbremse**, die keine Kennung kennt: Sie zählt schlicht, wie oft
+der Schlüssel des Betreibers insgesamt benutzt wurde. Sie lässt sich nicht
+fälschen, weil es nichts zu fälschen gibt.
+
+Der Preis ist ehrlich zu nennen: Wer die Gesamtbremse ausschöpft, sperrt
+für den Rest des Fensters auch alle anderen anonymen Besucher aus. Das ist
+gewollt. Die Zusage lautet „das Kontingent des Betreibers bleibt seines",
+nicht „jeder Besucher bekommt seinen Anteil" — und ein erschöpftes
+Gratiskontingent sperrt ohnehin alle aus, nur eben ohne dass es jemand
+gewollt hätte.
 """
 
 from __future__ import annotations
 
+import os
 import threading
 import time
 from collections import defaultdict, deque
@@ -80,15 +109,34 @@ class Ratenbremse:
                     del self._verlauf[kennung]
 
 
-def kennung_aus_anfrage(request) -> str:
+# Wie viele Proxys zwischen Aufrufer und Anwendung stehen, deren Angaben
+# man glauben darf. Bei Render ist es genau einer. Steht hier eine zu hohe
+# Zahl, greift die Bremse wieder auf ein vom Aufrufer geschriebenes Glied
+# zu — deshalb ist die Vorgabe die kleinstmögliche.
+VERTRAUTE_PROXYS = int(os.environ.get("SYNTHFHIR_VERTRAUTE_PROXYS", "1"))
+
+
+def kennung_aus_anfrage(request, vertraute_proxys: int | None = None) -> str:
     """Ermittelt die Kennung des Aufrufers.
 
     Hinter einem Proxy — und das ist bei jedem Hosting-Anbieter der Fall —
-    steht die echte Adresse in `X-Forwarded-For`. Der Kopf ist fälschbar;
-    für eine Portfolio-Demo ist das hinnehmbar, für eine Abrechnung wäre es
-    das nicht.
+    steht die echte Adresse in `X-Forwarded-For`. Gelesen wird das Glied,
+    das der letzte vertrauenswürdige Proxy geschrieben hat, also das
+    `vertraute_proxys`-te von **rechts**.
+
+    Zuvor stand hier `split(",")[0]`, also das linke Glied. Das schreibt
+    der Aufrufer selbst, und die Bremse wirkte damit ausschließlich gegen
+    ehrliche Clients — nachgemessen: 30 Anfragen mit rotierendem Kopf,
+    30 Aufrufe, kein 429.
     """
-    weitergeleitet = request.headers.get("x-forwarded-for", "")
-    if weitergeleitet:
-        return weitergeleitet.split(",")[0].strip()
+    hops = VERTRAUTE_PROXYS if vertraute_proxys is None else vertraute_proxys
+    glieder = [
+        g.strip()
+        for g in request.headers.get("x-forwarded-for", "").split(",")
+        if g.strip()
+    ]
+    if glieder and hops > 0:
+        # min(): Sind weniger Glieder da als erwartet, ist das linkeste das
+        # beste, was zu haben ist — und nicht etwa ein Griff ins Leere.
+        return glieder[-min(hops, len(glieder))]
     return request.client.host if request.client else "unbekannt"

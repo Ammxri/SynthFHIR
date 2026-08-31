@@ -229,12 +229,15 @@ alle.
 | Kein Manifest, Typ aus dem Dateinamen | Der Leitfaden schreibt Dateinamen nicht vor und erklärt `type` zum normativen Feld. Ein Empfänger, der den Namen parst, tut etwas, das die Spezifikation ihm untersagt. |
 | Stillschweigend überschreiben | Reste eines früheren Laufs würden mitgeladen, ohne dass es irgendwo steht. |
 | Zielverzeichnis vollständig leeren | Zu übergriffig: Der Export darf löschen, was er selbst erzeugt haben könnte, nicht was sonst dort liegt. |
-| NDJSON auch in der Weboberfläche | UI-Änderungen sind laut Auftrag zustimmungspflichtig. Der `/export`-Endpunkt ist zudem fest auf `application/fhir+json` verdrahtet. Offen, nicht verworfen. |
+| NDJSON auch in der Weboberfläche | War zustimmungspflichtig und ist es nicht mehr: **erledigt in [ADR-010](adr-010-ausgabewege-in-der-weboberflaeche.md)**, als ZIP-Archiv, damit die Aufteilung je Ressourcentyp erhalten bleibt. |
 
 ---
 
 ## 6. Offen
 
-- NDJSON-Download in der Weboberfläche (zustimmungspflichtig).
+- ~~NDJSON-Download in der Weboberfläche~~ — erledigt in
+  [ADR-010](adr-010-ausgabewege-in-der-weboberflaeche.md), als
+  ZIP-Archiv: Ein Browser lädt eine Datei, und die Aufteilung je
+  Ressourcentyp musste trotzdem erhalten bleiben.
 - Aufteilung großer Dateien nach dem Muster `<index>.<Typ>.ndjson`.
 - gzip nach v3.0.0, falls Exporte je einmal groß genug werden.

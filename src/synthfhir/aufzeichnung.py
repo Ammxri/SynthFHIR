@@ -76,6 +76,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from .domain.codes import FESTE_WERTE, KATALOGE, SYSTEME
+from .generation import Ergebnis
 from .kohorte import Kohortenergebnis, TeilParameter, baue_aus_aufzeichnung
 
 # Erhöhen, wenn sich das Dateiformat so ändert, dass alte Dateien nicht mehr
@@ -280,6 +281,49 @@ def aus_ergebnis(
         beschreibung=ergebnis.beschreibung,
         angefragt=ergebnis.angefragt,
         teile=list(ergebnis.parameter),
+        modell=modell,
+        erzeugt=jetzt.astimezone(timezone.utc)
+        .isoformat(timespec="seconds")
+        .replace("+00:00", "Z"),
+        bundle_pruefsumme=pruefsumme(ergebnis.bundle) if ergebnis.bundle else "",
+        katalog_pruefsumme=katalog_pruefsumme(),
+    )
+
+
+def aus_einzellauf(
+    ergebnis: Ergebnis,
+    *,
+    modell: str = "unbekannt",
+    zeitpunkt: datetime | None = None,
+) -> Aufzeichnung:
+    """Dasselbe für einen Lauf, der nicht in Teile zerfiel.
+
+    Die Weboberfläche erzeugt in einem Zug: ein Modellaufruf, ein
+    Parameterobjekt, kein Stückeln. Aufgezeichnet wird trotzdem im selben
+    Format — als Aufzeichnung mit genau einem Teil.
+
+    Ein zweites Format wäre der naheliegende Fehler gewesen. Es hätte
+    bedeutet, dass `wiedergabe` zwei Wege kennen muss, dass die
+    Katalogprüfsumme zweimal berechnet wird und dass eine Aufzeichnung aus
+    der Weboberfläche sich auf der Kommandozeile nicht abspielen lässt.
+    Ein Lauf in einem Stück ist ein Lauf mit einem Teil, mehr nicht.
+    """
+    if ergebnis.parameter is None:
+        raise AufzeichnungFehler(
+            "Der Lauf hat kein Parameterobjekt hinterlassen — es gibt "
+            "nichts aufzuzeichnen."
+        )
+    jetzt = zeitpunkt or datetime.now(timezone.utc)
+    if jetzt.tzinfo is None:
+        raise AufzeichnungFehler("zeitpunkt braucht eine Zeitzone.")
+    return Aufzeichnung(
+        beschreibung=ergebnis.beschreibung,
+        angefragt=ergebnis.angefragt,
+        teile=[
+            TeilParameter(
+                angefragt=ergebnis.angefragt, parameter=ergebnis.parameter
+            )
+        ],
         modell=modell,
         erzeugt=jetzt.astimezone(timezone.utc)
         .isoformat(timespec="seconds")

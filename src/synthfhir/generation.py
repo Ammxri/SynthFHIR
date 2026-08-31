@@ -77,6 +77,19 @@ class Ergebnis:
     llm_antworten: list[LLMAntwort] = field(default_factory=list)
     versuche: int = 0
     fehler: str | None = None
+    # Die Art des Fehlers, aus `LLMFehler.art`. `fehler` ist ein Satz für
+    # Menschen; wer daraus einen HTTP-Statuscode ableiten will, müsste ihn
+    # zerlegen — und eine Umformulierung änderte still das Verhalten.
+    fehlerart: str | None = None
+    # Das Parameterobjekt, aus dem tatsächlich gebaut wurde — nicht
+    # dasselbe wie `llm_antworten`, wo auch verworfene Versuche stehen.
+    # Ohne dieses Feld liess sich der Einzellauf nicht aufzeichnen, und
+    # damit war ADR-006 auf den Kommandozeilenweg beschränkt: Wer über
+    # die Weboberfläche erzeugte, bekam kein wiederholbares Ergebnis.
+    parameter: dict | None = None
+    # Die Sollmenge, gegen die geprüft wurde. 0 heisst: keine — das Modell
+    # hat keine Patientenzahl zurückgelesen.
+    angefragt: int = 0
 
     # -- die Zusage ---------------------------------------------------------
     @property
@@ -166,7 +179,9 @@ def generiere(
     if parameter is None:
         return ergebnis
 
+    ergebnis.parameter = parameter
     ergebnis.verstanden = _lies_verstanden(parameter)
+    ergebnis.angefragt = ergebnis.verstanden.anzahl_patienten or 0
     # Nicht abbildbare Kriterien wandern in die Beanstandungen, damit sie im
     # selben Kanal landen wie alles andere, was der Nutzer wissen muss.
     for luecke in ergebnis.verstanden.nicht_abbildbar:
@@ -202,13 +217,13 @@ def _hole_parameter(
     Konfigurationsproblem (`max_tokens` zu klein), nicht ein Modellfehler.
     Die Unterscheidung hat in Phase 0 eine ganze Messreihe gekostet.
     """
-    letzter_fehler = "unbekannt"
+    letzter_fehler, letzte_art = "unbekannt", "unbrauchbar"
     for _ in range(max(1, versuche)):
         ergebnis.versuche += 1
         try:
             antwort = client.frage(system=system, benutzer=benutzer)
         except LLMFehler as exc:
-            letzter_fehler = str(exc)
+            letzter_fehler, letzte_art = str(exc), exc.art
             continue
 
         ergebnis.llm_antworten.append(antwort)
@@ -225,12 +240,14 @@ def _hole_parameter(
                 "Die Antwort wurde von max_tokens abgeschnitten und ist unvollständig. "
                 "Für diese Kohortengröße reicht die Obergrenze nicht."
             )
+            letzte_art = "unbrauchbar"
             continue
 
         try:
             geparst = extract_json(antwort.text)
         except JsonExtractionError as exc:
             letzter_fehler = f"Die Antwort war kein gültiges JSON: {exc}"
+            letzte_art = "unbrauchbar"
             continue
 
         if not isinstance(geparst, dict):
@@ -252,6 +269,7 @@ def _hole_parameter(
         return geparst
 
     ergebnis.fehler = letzter_fehler
+    ergebnis.fehlerart = letzte_art
     return None
 
 

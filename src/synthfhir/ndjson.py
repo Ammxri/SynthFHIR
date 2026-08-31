@@ -34,8 +34,9 @@ Dieses Modul schreibt LF, aus drei Gründen in dieser Reihenfolge: Für
 diesen Anwendungsfall ist der Bulk-Data-Leitfaden die einschlägige und
 veröffentlichte Spezifikation (v3.0.0 STU 3), während die Kernseite auf
 *Maturity Level 2, Standards Status: Draft* steht. Und die Werkzeuge, die
-NDJSON tatsächlich einlesen, erwarten LF. Erzwungen wird es über den
-``newline``-Parameter beim Öffnen.
+NDJSON tatsächlich einlesen, erwarten LF. Erzwungen wird es dadurch, dass
+die Dateien als **Bytes** geschrieben werden: Was der Textmodus nicht zu
+sehen bekommt, kann er auch nicht übersetzen.
 
 Beim **Lesen** ist `lies_ndjson` dagegen nachsichtig und verkraftet auch
 CRLF. Die Strenge gehört an die Stelle, an der wir etwas erzeugen, nicht an
@@ -92,8 +93,10 @@ Protokollzusage.
 
 from __future__ import annotations
 
+import io
 import json
 import re
+import zipfile
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
@@ -114,6 +117,27 @@ MANIFEST_NAME = "manifest.json"
 # von "../woanders" schrieb die Datei nachweislich außerhalb des
 # Zielverzeichnisses.
 TYP_MUSTER = re.compile(r"^[A-Za-z]+$")
+
+
+@dataclass(frozen=True)
+class Rohdatei:
+    """Eine NDJSON-Datei, bevor sie irgendwo liegt.
+
+    Der Export auf Platte und der Download über die Weboberfläche brauchen
+    denselben Inhalt an zwei Ausgängen. Zwei Abschriften der Regeln — LF,
+    kein BOM, kompakt, abschließender Zeilenvorschub — liefen auseinander,
+    und zwar unbemerkt: Ein CRLF im Download sieht in keiner Anzeige anders
+    aus als ein LF.
+    """
+
+    typ: str
+    inhalt: bytes
+    anzahl: int
+
+    @property
+    def name(self) -> str:
+        """Auch die Namenskonvention gehört an genau eine Stelle."""
+        return f"{self.typ}{ENDUNG}"
 
 
 @dataclass(frozen=True)
@@ -238,20 +262,29 @@ def schreibe_ndjson(
     # Bricht eine Datei ab, wird das Angefangene zurückgenommen. Ein halber
     # Export ohne Manifest sieht aus wie ein ganzer: Der Empfänger sieht
     # NDJSON-Dateien und lädt sie. Lieber gar nichts als die Hälfte.
+    angefangen: Path | None = None
     try:
-        for typ in ladereihenfolge(nach_typ):
-            pfad = ziel / f"{typ}{ENDUNG}"
-            geschrieben = _schreibe_datei(pfad, nach_typ[typ])
+        # Erst vollständig bauen, dann schreiben. Ein Fehler beim Bauen
+        # erreicht die Platte damit gar nicht erst — vorher schrieb ein
+        # NaN in der letzten Ressource erst alle vorherigen Dateien und
+        # nahm sie danach wieder zurück.
+        for roh in baue_dateien(ressourcen):
+            angefangen = ziel / roh.name
+            # `write_bytes` statt Textmodus: Die Zeilenenden stehen schon im
+            # Inhalt, und was als Bytes hineingeht, kommt als Bytes heraus.
+            angefangen.write_bytes(roh.inhalt)
             ergebnis.dateien.append(
-                Datei(typ=typ, pfad=pfad, anzahl=len(nach_typ[typ]),
-                      bytes=geschrieben)
+                Datei(typ=roh.typ, pfad=angefangen, anzahl=roh.anzahl,
+                      bytes=len(roh.inhalt))
             )
+            angefangen = None
     except (OSError, ValueError, ExportFehler) as exc:
         for d in ergebnis.dateien:
             d.pfad.unlink(missing_ok=True)
-        (ziel / f"{typ}{ENDUNG}").unlink(missing_ok=True)
+        if angefangen is not None:
+            angefangen.unlink(missing_ok=True)
         raise ExportFehler(
-            f"Export abgebrochen bei {typ}: {exc}. Angefangene Dateien wurden "
+            f"Export abgebrochen: {exc}. Angefangene Dateien wurden "
             "entfernt, damit kein halber Export zurückbleibt."
         ) from exc
 
@@ -306,35 +339,176 @@ def _belegt(verzeichnis: Path) -> set[str]:
     }
 
 
-def _schreibe_datei(pfad: Path, ressourcen: list[dict]) -> int:
-    """Eine NDJSON-Datei. Gibt die geschriebene Bytezahl zurück.
+def baue_dateien(ressourcen: list[dict]) -> list[Rohdatei]:
+    """Die NDJSON-Dateien als Bytes, ohne Dateisystem.
 
-    `newline="\\n"` verhindert die Übersetzung zu CRLF unter Windows,
-    `separators` erzwingt die kompakteste Form, und `ensure_ascii=False`
-    hält die Umlaute lesbar — UTF-8 ist zulässig, und der Rest des Projekts
-    schreibt ebenso.
+    Der geteilte Kern beider Ausgabewege. `_gruppiere` prüft dabei die
+    Ressourcentypen gegen `TYP_MUSTER` — was auf Platte einen Pfadausbruch
+    verhinderte, verhindert im Archiv einen Eintragsnamen wie
+    ``../entwischt.ndjson``. Dieselbe Gefahr, dieselbe Sperre.
+
+    `allow_nan=False` ist der zweite Punkt: Voreingestellt schriebe
+    json.dumps für einen Fließkomma-NaN das Wort NaN — das RFC 8259 nicht
+    kennt. Die Zeile sähe aus wie JSON und wäre keines.
     """
-    with open(pfad, "w", encoding="utf-8", newline="\n") as datei:
-        for r in ressourcen:
-            # allow_nan=False ist der Punkt: Voreingestellt schriebe
-            # json.dumps für einen Fließkomma-NaN das Wort NaN — das RFC 8259
-            # nicht kennt. Die Zeile sähe aus wie JSON, wäre aber keines, und
-            # der Empfänger stolperte über genau eine Zeile.
-            zeile = json.dumps(
-                r, ensure_ascii=False, separators=(",", ":"), allow_nan=False
-            )
-            # Rückversicherung, kein aktiver Schutz: json.dumps maskiert
-            # Steuerzeichen, dieser Zweig kann also nicht feuern. Er bleibt,
-            # weil die Zusage „eine Ressource je Zeile" an einer fremden
-            # Funktion hängt, die ein Wechsel der Serialisierung
-            # stillschweigend brechen könnte.
-            if "\n" in zeile or "\r" in zeile:
+    nach_typ = _gruppiere(ressourcen)
+    aus: list[Rohdatei] = []
+    for typ in ladereihenfolge(nach_typ):
+        zeilen = []
+        for r in nach_typ[typ]:
+            try:
+                zeile = json.dumps(
+                    r, ensure_ascii=False, separators=(",", ":"),
+                    allow_nan=False,
+                )
+            except ValueError as exc:
+                # Ohne diesen Zweig lautete die Meldung "Out of range float
+                # values are not JSON compliant" — wahr, aber bei 1020
+                # Ressourcen keine Auskunft, sondern eine Suchaufgabe.
+                raise ExportFehler(
+                    f"{typ}/{r.get('id')} lässt sich nicht als JSON "
+                    f"schreiben: {exc}"
+                ) from exc
+            if "\n" in zeile or "\r" in zeile:  # pragma: no cover
                 raise ExportFehler(
                     f"{r.get('resourceType')}/{r.get('id')} enthält einen "
                     "Zeilenumbruch in der Ausgabe."
                 )
-            datei.write(zeile + "\n")
-    return pfad.stat().st_size
+            zeilen.append(zeile)
+        # Der abschließende Zeilenvorschub gehört zur letzten Zeile — hier
+        # wie beim Schreiben auf Platte.
+        aus.append(
+            Rohdatei(
+                typ=typ,
+                inhalt=("\n".join(zeilen) + "\n").encode("utf-8"),
+                anzahl=len(zeilen),
+            )
+        )
+    return aus
+
+
+ARCHIV_HINWEIS = """SynthFHIR — synthetische Testdaten
+
+Dieses Archiv enthaelt AUSSCHLIESSLICH synthetisch erzeugte Daten.
+Es sind keine echten Patientendaten, und sie sind NICHT fuer die
+klinische Nutzung bestimmt.
+
+Je Ressourcentyp eine Datei im Format application/fhir+ndjson: eine
+Ressource je Zeile. manifest.json nennt Typ und Anzahl je Datei; laden
+Sie die Dateien in der dort angegebenen Reihenfolge, dann sind die
+Verweise beim Einlesen aufloesbar.
+"""
+
+ARCHIV_HINWEIS_NAME = "LIESMICH.txt"
+
+
+def baue_archiv(
+    ressourcen: list[dict],
+    *,
+    anfrage: str | None = None,
+    zeitpunkt: datetime | None = None,
+) -> bytes:
+    """Alle NDJSON-Dateien plus Manifest als ZIP-Archiv im Speicher.
+
+    Für den Download über die Weboberfläche. Eine einzelne
+    zusammengehängte Datei wäre der bequemere Weg gewesen und hätte
+    ADR-005 widersprochen: **eine Datei je Ressourcentyp** ist keine
+    Formsache, sondern die Vorgabe des Bulk-Data-Leitfadens. Ein Browser
+    lädt aber nur eine Datei, also braucht es eine Hülle, und das Archiv
+    ist die Hülle, die die Aufteilung erhält.
+
+    **Zwei bewusste Abweichungen**, beide dokumentiert in ADR-010:
+
+    `output[].url` trägt den Eintragsnamen im Archiv, nicht den absoluten
+    Pfad, den der Leitfaden vorsieht. Ein absoluter Pfad wäre hier der
+    Pfad *auf dem Server* — für den Empfänger nutzlos und obendrein eine
+    Auskunft über fremde Verzeichnisse, die ihn nichts angeht.
+
+    Die Zeitstempel der Einträge sind fest auf `zeitpunkt` gesetzt statt
+    auf die Uhr. Sonst unterschieden sich zwei Archive aus denselben
+    Daten in jedem Byte des Zeitfelds — und ADR-006 verspricht, dass
+    gleiche Eingaben gleiche Ausgaben ergeben.
+    """
+    jetzt = zeitpunkt or datetime.now(timezone.utc)
+    if jetzt.tzinfo is None:
+        raise ExportFehler(
+            "zeitpunkt braucht eine Zeitzone (z. B. timezone.utc); "
+            "ohne sie verschöbe sich transactionTime um den lokalen Versatz."
+        )
+    dateien = baue_dateien(ressourcen)
+    if not dateien:
+        raise ExportFehler("Keine Ressourcen zum Schreiben.")
+
+    manifest = _manifest_inhalt(
+        eintraege=[
+            {"type": d.typ, "url": d.name, "count": d.anzahl} for d in dateien
+        ],
+        groessen={d.name: len(d.inhalt) for d in dateien},
+        anfrage=anfrage,
+        jetzt=jetzt,
+    )
+    utc = jetzt.astimezone(timezone.utc)
+    stempel = (utc.year, utc.month, utc.day, utc.hour, utc.minute, utc.second)
+
+    puffer = io.BytesIO()
+    with zipfile.ZipFile(puffer, "w", zipfile.ZIP_DEFLATED) as archiv:
+        inhalte = [(d.name, d.inhalt) for d in dateien]
+        inhalte.append((
+            MANIFEST_NAME,
+            json.dumps(manifest, ensure_ascii=False, indent=2).encode("utf-8"),
+        ))
+        inhalte.append((ARCHIV_HINWEIS_NAME, ARCHIV_HINWEIS.encode("utf-8")))
+        for name, roh in inhalte:
+            eintrag = zipfile.ZipInfo(name, date_time=stempel)
+            # Ohne dieses Attribut trägt der Eintrag Rechte 0000; manche
+            # Entpacker unter Linux legen die Datei dann unlesbar an.
+            eintrag.external_attr = 0o644 << 16
+            eintrag.compress_type = zipfile.ZIP_DEFLATED
+            archiv.writestr(eintrag, roh)
+    return puffer.getvalue()
+
+
+def _manifest_inhalt(
+    *,
+    eintraege: list[dict],
+    groessen: dict[str, int],
+    anfrage: str | None,
+    jetzt: datetime,
+) -> dict:
+    """Der Rumpf des Manifests — für die Platte wie für das Archiv.
+
+    Diese Funktion gibt es, weil genau hier schon einmal etwas eingesickert
+    ist: `outputFormat` und `fileSize` standen auf Wurzelebene, obwohl sie
+    erst der Continuous Build definiert und die veröffentlichte v3.0.0
+    nicht. Eine zweite Abschrift für den Download-Weg wäre die Einladung,
+    denselben Fehler ein zweites Mal zu machen — an einer Stelle, die dann
+    niemand mehr mit der ersten vergleicht.
+
+    Auf Wurzelebene stehen daher ausschließlich `transactionTime`,
+    `request`, `requiresAccessToken`, `output`, `error` und `extension`.
+    """
+    return {
+        "transactionTime": jetzt.astimezone(timezone.utc)
+        .isoformat(timespec="seconds")
+        .replace("+00:00", "Z"),
+        "request": anfrage or "synthfhir",
+        # Falsch, weil hier nichts zu autorisieren ist. Der Leitfaden
+        # verlangt das Feld trotzdem.
+        "requiresAccessToken": False,
+        "output": eintraege,
+        # Pflicht trotz des Namens: Gibt es nichts zu melden, gehört ein
+        # leeres Feld hierher, kein fehlendes.
+        "error": [],
+        # Alles Eigene steht hier — nicht auf Wurzelebene.
+        "extension": {
+            "hinweis": (
+                "Synthetische Testdaten aus SynthFHIR. Nicht für klinische "
+                "Nutzung, keine echten Patientendaten."
+            ),
+            "dateiformat": MIME_TYP,
+            "dateigroessen": groessen,
+        },
+    }
 
 
 def _schreibe_manifest(
@@ -366,29 +540,12 @@ def _schreibe_manifest(
             "zeitpunkt braucht eine Zeitzone (z. B. timezone.utc); "
             "ohne sie verschöbe sich transactionTime um den lokalen Versatz."
         )
-    inhalt = {
-        "transactionTime": jetzt.astimezone(timezone.utc)
-        .isoformat(timespec="seconds")
-        .replace("+00:00", "Z"),
-        "request": anfrage or "synthfhir",
-        "requiresAccessToken": False,
-        "output": [d.zum_manifest() for d in ergebnis.dateien],
-        # Pflicht trotz des Namens: Gibt es nichts zu melden, gehört ein
-        # leeres Feld hierher, kein fehlendes.
-        "error": [],
-        # Alles, was der Leitfaden NICHT kennt, steht hier — nicht auf
-        # Wurzelebene. `outputFormat` und `fileSize` standen einmal dort;
-        # beide definiert erst der Continuous Build, nicht die
-        # veröffentlichte v3.0.0.
-        "extension": {
-            "hinweis": (
-                "Synthetische Testdaten aus SynthFHIR. Nicht für klinische "
-                "Nutzung, keine echten Patientendaten."
-            ),
-            "dateiformat": MIME_TYP,
-            "dateigroessen": {d.pfad.name: d.bytes for d in ergebnis.dateien},
-        },
-    }
+    inhalt = _manifest_inhalt(
+        eintraege=[d.zum_manifest() for d in ergebnis.dateien],
+        groessen={d.pfad.name: d.bytes for d in ergebnis.dateien},
+        anfrage=anfrage,
+        jetzt=jetzt,
+    )
     pfad = ziel / MANIFEST_NAME
     with open(pfad, "w", encoding="utf-8", newline="\n") as datei:
         json.dump(inhalt, datei, ensure_ascii=False, indent=2)

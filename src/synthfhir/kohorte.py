@@ -316,7 +316,13 @@ def _verarbeite_teil(
 
     bau = baue_aus_parametern(
         teilparameter.parameter,
-        {"patienten": teilparameter.angefragt},
+        # Null ist keine Erwartung, sondern das Fehlen einer. Beim
+        # stückweisen Erzeugen kann das nicht vorkommen — Teile sind
+        # immer mindestens eins gross. Beim Einzellauf der Weboberfläche
+        # schon: Liest das Modell keine Patientenzahl zurück, gibt es
+        # nichts zu vergleichen, und `{"patienten": 0}` erzeugte eine
+        # Mengenbeanstandung gegen eine Zahl, die nie jemand verlangt hat.
+        {"patienten": teilparameter.angefragt} if teilparameter.angefragt else {},
         index_versatz=versatz,
     )
     ergebnis.beanstandungen.extend(bau.beanstandungen)

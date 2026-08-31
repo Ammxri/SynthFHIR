@@ -38,3 +38,4 @@ spike/output/**
 # src/synthfhir/ aus: Bereits verfolgte Dateien blieben verfolgt, aber neue
 # Module wären beim Commit stillschweigend liegen geblieben.
 /SynthFHIR/
+.claude/launch.json

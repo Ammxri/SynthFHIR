@@ -100,9 +100,46 @@ def test_kennung_kommt_aus_der_verbindung():
 
 def test_proxy_kopf_hat_vorrang():
     """Hinter einem Proxy - und das ist bei jedem Hosting-Anbieter der Fall -
-    wäre die Verbindungsadresse für alle Besucher dieselbe."""
+    wäre die Verbindungsadresse für alle Besucher dieselbe.
+
+    Gelesen wird das Glied, das der letzte vertrauenswürdige Proxy
+    geschrieben hat: bei einem Proxy das rechte. Dieser Test stand einmal
+    auf `== "203.0.113.7"`, also auf dem LINKEN Glied — und schrieb damit
+    genau die Annahme fest, die sich als fälschbar erwies.
+    """
     anfrage = FalscheAnfrage(host="10.0.0.1", weitergeleitet="203.0.113.7, 10.0.0.1")
-    assert kennung_aus_anfrage(anfrage) == "203.0.113.7"
+    assert kennung_aus_anfrage(anfrage) == "10.0.0.1"
+
+
+def test_gefaelschte_glieder_aendern_die_kennung_nicht():
+    """Die Eigenschaft, um die es wirklich geht.
+
+    Ein Aufrufer kann beliebig viele Glieder voranstellen — er ändert
+    damit nichts, denn gezählt wird von rechts. Vorher ergaben 30 solcher
+    Anfragen nachweislich 30 Aufrufe auf den Betreiberschlüssel und kein
+    einziges 429.
+    """
+    echt = "198.51.100.4"
+    kennungen = {
+        kennung_aus_anfrage(
+            FalscheAnfrage(host="10.0.0.1", weitergeleitet=f"{luege}, {echt}")
+        )
+        for luege in ("203.0.113.1", "203.0.113.2", "8.8.8.8, 1.1.1.1", "")
+    }
+    assert kennungen == {echt}, "die Kennung liess sich verschieben"
+
+
+def test_ohne_vertrauenswuerdigen_proxy_gilt_die_verbindung():
+    """Steht kein Proxy davor, ist jedes Glied der Kopfzeile erfunden."""
+    anfrage = FalscheAnfrage(host="10.0.0.1", weitergeleitet="203.0.113.7")
+    assert kennung_aus_anfrage(anfrage, vertraute_proxys=0) == "10.0.0.1"
+
+
+def test_zu_kurze_kette_greift_nicht_ins_leere():
+    """Kommt weniger an als erwartet, ist das linkeste Glied das beste,
+    was zu haben ist — und kein IndexError."""
+    anfrage = FalscheAnfrage(host="10.0.0.1", weitergeleitet="203.0.113.7")
+    assert kennung_aus_anfrage(anfrage, vertraute_proxys=3) == "203.0.113.7"
 
 
 def test_fehlende_adresse_bricht_nicht():

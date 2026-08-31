@@ -60,6 +60,48 @@ spike/    Phase 0 — eingefrorener Wegwerf-Code samt Messbelegen
 Danach auf <http://127.0.0.1:8000>. Die App liest ihre Konfiguration selbst
 aus der `.env`; im Betrieb gewinnen die Umgebungsvariablen des Anbieters.
 
+Die Oberfläche gibt dreierlei heraus ([ADR-010](docs/adr-010-ausgabewege-in-der-weboberflaeche.md)):
+ein **FHIR-Bundle**, ein **ZIP-Archiv** mit je einer NDJSON-Datei pro
+Ressourcentyp samt Manifest, und die **Aufzeichnung** des Laufs, die sich
+mit `synthfhir --wiedergeben` ohne neuen Modellaufruf abspielen lässt.
+
+### Programmatischer Zugang
+
+`POST /api/v1/erzeugen` erzeugt eine Kohorte über HTTP. Der Zugang läuft
+**ausschließlich auf den Schlüssel des Aufrufers** — der Schlüssel des
+Betreibers ist der Weboberfläche vorbehalten, wo eine Ratenbremse ihn
+schützt. Mit eigenem Schlüssel gibt es keine Anzahlgrenze über die Zeit.
+
+```bash
+curl -X POST https://synthfhir.onrender.com/api/v1/erzeugen \
+  -H "X-SynthFHIR-LLM-Key: $GROQ_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{"beschreibung": "Zwei Patienten mit Asthma und Peak-Flow-Werten"}'
+```
+
+Die Antwort trägt das Bundle **und** die Nachweise — Validierung,
+Referenzintegrität, Beanstandungen und die Rücklesung der Anfrage. Laut
+README sind die Garantien das Produkt; ein Zugang, der nur das Bundle
+zurückgäbe, lieferte die falsche Hälfte.
+
+| Feld | Inhalt |
+|---|---|
+| `fertig` | Darf das Ergebnis ausgeliefert werden? |
+| `bundle` | Nur wenn `fertig` — sonst heißt es `bundle_zurueckgehalten` |
+| `validierung`, `integritaet`, `beanstandungen` | Die Nachweise |
+| `aufzeichnung` | Abspielbar mit `synthfhir --wiedergeben`, ohne neuen Modellaufruf |
+| `lauf.schluessel_herkunft` | Immer `"aufrufer"` — die Zusage, von außen prüfbar |
+
+Beschreibung der Schnittstelle: `/api/v1/docs`.
+
+Grenzen, die trotz „unbegrenzt" gelten: höchstens `25` Patienten je
+Anfrage, 2000 Zeichen Beschreibung, 64 KB Anfragekörper und vier
+gleichzeitige Läufe. Der letzte Punkt ist kein Ratenlimit, sondern der
+Schutz davor, dass ein Aufrufer alle Arbeitsplätze des einen Prozesses
+belegt und die Weboberfläche mitreißt. Und: Die Anbieter-URL ist die des
+Betreibers (Groq) — ein Schlüssel eines anderen Anbieters funktioniert
+daher nicht.
+
 ### Große Kohorten von der Kommandozeile
 
 Die Weboberfläche bleibt bei 25 Patienten je Anfrage: Ein Lauf über Hunderte
@@ -306,6 +348,8 @@ in dieser Reihenfolge:
 | [ADR-007](docs/adr-007-weitere-ressourcentypen.md) | Encounter und MedicationStatement — und was sie an Token kosten |
 | [ADR-008](docs/adr-008-server-push.md) | Server-Push, und warum jede Ressource als Testdatum gekennzeichnet ist |
 | [ADR-009](docs/adr-009-isik-konformitaet.md) | ISiK-Basismodul erfüllen — und was daran nicht additiv war |
+| [ADR-010](docs/adr-010-ausgabewege-in-der-weboberflaeche.md) | Warum der NDJSON-Download ein Archiv ist und die Aufzeichnung nicht gesperrt wird |
+| [ADR-011](docs/adr-011-programmatischer-zugang.md) | Ein API-Zugang, der ausschließlich auf fremde Rechnung läuft |
 | [Konzepte](docs/konzepte.md) | Die FHIR-Grundlagen dahinter, ausführlich erklärt |
 
 ### Die tragenden Entscheidungen in drei Sätzen
@@ -402,6 +446,13 @@ Dazu kommt die Wartezeit des LLM-Kontingents: Ohne eigenen Schlüssel sind
 fünf Anfragen je Stunde und Adresse erlaubt, und bei ausgelastetem
 Gratiskontingent wartet eine Anfrage bis zu einer Minute. Beides ist in der
 Oberfläche erklärt, statt den Nutzer raten zu lassen.
+
+Daneben steht eine **Gesamtgrenze über alle Besucher** (`30` je Stunde).
+Sie kennt keine Kennung und lässt sich deshalb nicht umgehen — anders als
+die Grenze je Adresse, die eine Zeit lang über eine gefälschte
+`X-Forwarded-For`-Kopfzeile zu unterlaufen war. Gemessen ergaben 30
+Anfragen mit rotierendem Kopf 30 Aufrufe und kein einziges 429; heute sind
+es fünf. Näheres in [ADR-011](docs/adr-011-programmatischer-zugang.md).
 
 ## Tests
 

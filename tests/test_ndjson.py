@@ -23,6 +23,8 @@ from synthfhir.ndjson import (
     MANIFEST_NAME,
     MIME_TYP,
     ExportFehler,
+    baue_archiv,
+    baue_dateien,
     lies_ndjson,
     schreibe_ndjson,
 )
@@ -549,3 +551,97 @@ def test_rest_mit_abweichender_schreibweise_wird_erkannt(kohorte, tmp_path):
     ergebnis = schreibe_ndjson(kohorte, tmp_path, ueberschreiben=True)
     assert not (tmp_path / "Encounter.NDJSON").exists()
     assert any("Encounter" in h for h in ergebnis.entfernt)
+
+
+# --- Ein Kern, zwei Ausgänge -----------------------------------------------
+
+
+def test_archiv_und_platte_liefern_dieselben_bytes(kohorte, tmp_path):
+    """Die Zusage hinter `baue_dateien`.
+
+    Solange Datei- und Archivweg denselben Kern benutzen, kann eine der
+    beiden Ausgaben nicht still von den Regeln abweichen. Genau das wäre
+    der Fehler, den niemand bemerkt: Ein CRLF im heruntergeladenen Archiv
+    sieht in keiner Anzeige anders aus als ein LF.
+    """
+    import io
+    import zipfile
+
+    schreibe_ndjson(kohorte, tmp_path)
+    archiv = zipfile.ZipFile(io.BytesIO(baue_archiv(kohorte)))
+
+    auf_platte = {
+        p.name: p.read_bytes() for p in tmp_path.glob(f"*{ENDUNG}")
+    }
+    im_archiv = {
+        n: archiv.read(n) for n in archiv.namelist() if n.endswith(ENDUNG)
+    }
+    assert auf_platte == im_archiv
+
+
+def test_archiv_ist_bei_gleichem_zeitpunkt_byteweise_gleich(kohorte):
+    """ADR-006 verspricht, dass gleiche Eingaben gleiche Ausgaben ergeben.
+
+    Ohne festen Zeitstempel je Eintrag unterschieden sich zwei Archive aus
+    denselben Daten — nicht im Inhalt, aber in jedem Byte des Zeitfelds.
+    Ein Prüfsummenvergleich wäre damit wertlos.
+    """
+    t = datetime(2026, 8, 30, 12, 0, tzinfo=timezone.utc)
+    assert baue_archiv(kohorte, zeitpunkt=t) == baue_archiv(kohorte, zeitpunkt=t)
+
+
+def test_archivmanifest_bleibt_bei_der_veroeffentlichten_fassung(kohorte):
+    """Dieselbe Auflage wie beim Manifest auf Platte, und sie steht hier,
+    weil genau an dieser Stelle schon einmal etwas eingesickert ist:
+    `outputFormat` und `fileSize` definiert erst der Continuous Build."""
+    import io
+    import zipfile
+
+    archiv = zipfile.ZipFile(io.BytesIO(baue_archiv(kohorte)))
+    manifest = json.loads(archiv.read(MANIFEST_NAME))
+    assert set(manifest) == {
+        "transactionTime", "request", "requiresAccessToken",
+        "output", "error", "extension",
+    }
+    for eintrag in manifest["output"]:
+        assert set(eintrag) == {"type", "url", "count"}
+        # Im Archiv ist der Eintragsname die richtige Adresse. Ein
+        # absoluter Pfad wäre der Pfad auf dem Server — für den Empfänger
+        # nutzlos und eine Auskunft, die ihn nichts angeht.
+        assert eintrag["url"] == f"{eintrag['type']}{ENDUNG}"
+        assert archiv.read(eintrag["url"])
+
+
+def test_archiv_ohne_ressourcen_wird_abgelehnt():
+    with pytest.raises(ExportFehler, match="Keine Ressourcen"):
+        baue_archiv([])
+
+
+def test_archiv_verlangt_eine_zeitzone(kohorte):
+    """Ohne Zeitzone deutete astimezone den Wert als Ortszeit und verschöbe
+    transactionTime still um den lokalen Versatz."""
+    with pytest.raises(ExportFehler, match="Zeitzone"):
+        baue_archiv(kohorte, zeitpunkt=datetime(2026, 8, 30, 12, 0))
+
+
+def test_archiv_haelt_die_ladereihenfolge(kohorte):
+    """Wer die Dateien der Reihe nach lädt, soll keine Verweise ins Leere
+    bekommen.
+
+    Im Archiv steht die Reihenfolge an zwei Stellen — als Eintragsfolge und
+    im Manifest. Beide müssen dieselbe sein, sonst folgt ein Werkzeug der
+    einen und ein Mensch der anderen.
+    """
+    import io
+    import zipfile
+
+    typen = [d.typ for d in baue_dateien(kohorte)]
+    assert typen.index("Patient") < typen.index("Condition")
+
+    archiv = zipfile.ZipFile(io.BytesIO(baue_archiv(kohorte)))
+    im_archiv = [
+        n[: -len(ENDUNG)] for n in archiv.namelist() if n.endswith(ENDUNG)
+    ]
+    assert im_archiv == typen
+    manifest = json.loads(archiv.read(MANIFEST_NAME))
+    assert [o["type"] for o in manifest["output"]] == typen

@@ -113,6 +113,14 @@ button {
 button:hover:not(:disabled) { filter: brightness(1.15); }
 button:disabled { opacity: .45; cursor: not-allowed; }
 
+/* Drei gleich laute Knöpfe nebeneinander stellen drei gleichwertige
+   Fragen. Das FHIR-Bundle ist aber die übliche Antwort; Archiv und
+   Aufzeichnung sind die selteneren. */
+button.zweitrangig {
+  color: var(--akzent);
+  background: transparent;
+}
+
 .zeile { display: flex; align-items: center; gap: 1rem; flex-wrap: wrap; }
 .hinweis { color: var(--tinte-leise); font-size: .87rem; }
 
