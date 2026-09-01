@@ -266,12 +266,62 @@ def test_keine_fehler_mehr(profilserver):
 
 def test_isik_con1_greift_nicht_mehr(profilserver):
     """Der Befund, der die Kohorte einmal gerettet hat — jetzt als
-    Regressionsschutz."""
+    Regressionsschutz.
+
+    Dieser Test allein sagt wenig: Er prüft eine **Abwesenheit**, und eine
+    Abwesenheit stellt sich auch ein, wenn gar nicht mehr richtig geprüft
+    wird. Er bliebe grün, wenn der Validator den Verstoss überhaupt nicht
+    mehr fände. Seine Aussage bekommt er erst durch den Test darunter.
+    """
     b = pruefe_gegen_profile(baue(), profilserver)
     alle = " ".join(
         f.meldung for e in b.ergebnisse for f in e.fehler + e.ungeprueft
     )
     assert "isik-con1" not in alle
+
+
+def test_isik_con1_wird_ueberhaupt_noch_gefunden(profilserver):
+    """Die Negativkontrolle. Sie hat gefehlt.
+
+    Seit ADR-009 ergänzt der Bauweg für jeden Patienten mit Diagnose
+    selbsttätig einen Kontakt (`templates.py`). Das ist richtig so — es war
+    der Fix. Die Folge ist aber, dass der Messaufbau **keine**
+    Konstellation mehr enthält, aus der `isik-con1` entstehen könnte: Der
+    dritte Patient der Referenzkohorte liefert in den Parametern keine
+    Begegnung, bekommt aber eine.
+
+    Damit misst der Aufbau nur noch Fälle, die ohnehin durchgehen — genau
+    das, wovor `docs/sondierung-isik.md` warnt. Ein Ausbleiben des Befundes
+    belegt dann nichts, solange niemand zeigt, dass der Befund überhaupt
+    noch auftreten **kann**.
+
+    Dieser Test zeigt es. Er nimmt eine gebaute Diagnose, entfernt genau
+    ein Feld und prüft dieselbe Ressource noch einmal. Der Unterschied ist
+    das Feld, sonst nichts.
+    """
+    res = baue()
+    diagnose = next(r for r in res if r["resourceType"] == "Condition")
+    assert "encounter" in diagnose, (
+        "der Bauweg setzt den Kontakt nicht mehr — dann prüft dieser Test "
+        "nicht das, wofür er da ist"
+    )
+
+    ohne_kontakt = {k: v for k, v in diagnose.items() if k != "encounter"}
+    b = pruefe_gegen_profile([ohne_kontakt], profilserver)
+    e = b.ergebnisse[0]
+
+    meldungen = " ".join(f.meldung for f in e.fehler)
+    assert "isik-con1" in meldungen, (
+        "der Validator meldet den Verstoss nicht mehr. Dann sagt auch sein "
+        "Ausbleiben in test_isik_con1_greift_nicht_mehr nichts aus — und "
+        "die ganze Profilmessung belegt weniger, als sie zu belegen scheint"
+    )
+    assert not e.konform
+
+    # Die Gegenprobe zur Gegenprobe: dieselbe Ressource, nur mit dem Feld.
+    # Ohne sie könnte der Befund auch an etwas anderem hängen.
+    mit = pruefe_gegen_profile([diagnose], profilserver).ergebnisse[0]
+    assert mit.konform, "dann liegt der Fehler nicht am fehlenden Kontakt"
 
 
 def test_bericht_ueberlebt_den_umweg_ueber_json(profilserver):
