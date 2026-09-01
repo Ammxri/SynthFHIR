@@ -7,6 +7,7 @@ Zusage des Produkts.
 
 from __future__ import annotations
 
+import json
 import re
 
 import pytest
@@ -22,6 +23,8 @@ from synthfhir.domain.codes import (
 from synthfhir.domain.identity import assign_ids
 from synthfhir.domain.integrity import check_resources
 from synthfhir.domain.templates import (
+    GRENZE_JE_PATIENT,
+    zaehle_ressourcen,
     Beanstandung,
     baue_aus_parametern,
     baue_bundle,
@@ -292,3 +295,188 @@ def test_jeder_messwertcode_baut_ohne_beanstandung(code):
         {"code": code, "wert": round((spec.low + spec.high) / 2, 2), "datum": "2024-01-01"}, 0, 0, b
     )
     assert not b
+
+
+# --- Die Mengengrenze ------------------------------------------------------
+#
+# Ein Patienteneintrag durfte beliebig viele Untereinträge tragen. Gemessen
+# ergab EIN Patient mit 20.000 Messwerten 20.001 Ressourcen, ohne eine
+# einzige Beanstandung.
+
+
+def _patient(**kw):
+    return {"vorname": "Käthe", "nachname": "Schäfer", "geschlecht": "female",
+            "geburtsdatum": "1970-01-01", **kw}
+
+
+def _messwerte(n):
+    return [{"code": "8867-4", "wert": 80, "datum": "2023-01-01"}] * n
+
+
+def test_die_vorzaehlung_stimmt_mit_dem_bau_ueberein():
+    """Der wichtigste Test dieser Datei.
+
+    `zaehle_je_patient` ist eine **Abschrift** der Zählweise von
+    `baue_aus_parametern` — die Sorte Duplizierung, gegen die dieses
+    Projekt sonst argumentiert. Sie ist nur zu verantworten, solange
+    dieser Test beide gegeneinander hält.
+
+    Entscheidend ist, was der Zufall erzeugt: Ein Test, der nur
+    **wohlgeformte** Einträge würfelt, bliebe grün und bewiese nichts.
+    Genau diese Falle hat sich das Projekt bei `katalog_pruefsumme` schon
+    einmal gestellt — dort übersah eine Handaufzählung `vital_sign`.
+    Deshalb kommen hier ausdrücklich Nicht-Objekte, falsch typisierte
+    Unterlisten und Diagnosen ohne Begegnung vor.
+    """
+    import random
+
+    wuerfel = random.Random(20260901)
+    muell = [0, "text", None, [], {}, 5, "kein array", True]
+
+    for lauf in range(500):
+        patienten = []
+        for _ in range(wuerfel.randint(0, 6)):
+            if wuerfel.random() < 0.15:
+                patienten.append(wuerfel.choice(muell))
+                continue
+            eintrag = _patient()
+            for feld in ("begegnungen", "diagnosen", "messwerte", "medikamente"):
+                wahl = wuerfel.random()
+                if wahl < 0.2:
+                    continue                        # Feld fehlt
+                if wahl < 0.35:
+                    eintrag[feld] = wuerfel.choice(muell)   # falscher Typ
+                    continue
+                eintrag[feld] = [{}] * wuerfel.randint(0, 4)
+            patienten.append(eintrag)
+        parameter = {"patienten": patienten}
+
+        gezaehlt = zaehle_ressourcen(parameter)
+        gebaut = len(baue_aus_parametern(parameter, {}).ressourcen)
+        assert gezaehlt == gebaut, f"Lauf {lauf}: {gezaehlt} gezählt, {gebaut} gebaut"
+
+
+def test_die_vorzaehlung_kennt_die_ersatzbegegnung():
+    """Der Fall, den eine naive Zählung übersieht: Eine Diagnose ohne
+    Begegnung erzeugt eine — das verlangt `isik-con1` (ADR-009)."""
+    ohne = {"patienten": [_patient(diagnosen=[{"code": "44054006"}])]}
+    assert zaehle_ressourcen(ohne) == 3        # Patient + Ersatzbegegnung + Diagnose
+    assert len(baue_aus_parametern(ohne, {}).ressourcen) == 3
+
+
+def test_die_grenze_je_patient_greift_und_meldet_sich():
+    bau = baue_aus_parametern({"patienten": [_patient(messwerte=_messwerte(20000))]}, {})
+    assert len(bau.ressourcen) == GRENZE_JE_PATIENT
+
+    grenze = [b for b in bau.beanstandungen if b.art == "mengengrenze_je_patient"]
+    assert len(grenze) == 1, "genau eine Sammelmeldung, nicht eine je Vorfall"
+    # Beide Zahlen gehören hinein: Ohne sie wäre es stilles Abschneiden
+    # mit einem Hinweis daneben.
+    assert "20001" in grenze[0].detail
+    assert str(GRENZE_JE_PATIENT) in grenze[0].detail
+    assert "19921" in grenze[0].detail
+
+
+def test_der_legitime_fall_bleibt_unberuehrt():
+    """Eine Quartalsmessreihe über zehn Jahre. Der nächstliegende echte
+    Anwendungsfall unterhalb der Grenze — geht er kaputt, ist die Zahl
+    falsch gewählt."""
+    reihe = {"patienten": [
+        _patient(diagnosen=[{"code": "44054006"}], messwerte=_messwerte(40))
+    ]}
+    bau = baue_aus_parametern(reihe, {})
+    assert len(bau.ressourcen) == 43
+    assert not any(b.art.startswith("mengengrenze") for b in bau.beanstandungen)
+
+
+def test_kappen_zerreisst_die_referenzintegritaet_nicht():
+    """Die naheliegende falsche Umsetzung wäre, nach dem Bau
+    abzuschneiden. Dann bliebe eine Diagnose ohne ihren Patienten stehen —
+    oder die Begegnung fiele weg, auf die `Condition.encounter` zeigt."""
+    from synthfhir.domain.identity import assign_ids
+    from synthfhir.domain.integrity import check_resources
+    from synthfhir.validation import pruefe_alle
+
+    formen = [
+        _patient(diagnosen=[{"code": "44054006"}] * 200, messwerte=_messwerte(200)),
+        _patient(begegnungen=[{"art": "AMB", "datum": "2023-01-01"}] * 200,
+                 diagnosen=[{"code": "44054006"}] * 200),
+        _patient(begegnungen=[{"art": "AMB", "datum": "2023-01-01"}],
+                 messwerte=_messwerte(20000)),
+    ]
+    for form in formen:
+        bau = baue_aus_parametern({"patienten": [form]}, {})
+        assert len(bau.ressourcen) == GRENZE_JE_PATIENT
+        res = assign_ids(bau.ressourcen).resources
+        bericht = check_resources(res)
+        assert bericht.ok, bericht.to_dict()
+        assert bericht.broken_reference_count == 0
+        assert not [p for p in pruefe_alle(res) if not p.valide]
+
+
+def test_die_kappung_faelscht_die_mengenabweichung_nicht():
+    """Gekappt wird NACH dem Sollvergleich.
+
+    Andersherum meldete die Beanstandung „79 Messwerte geliefert, 200
+    erwartet" — und behauptete damit etwas Falsches über das Modell:
+    Geliefert hat es 200, gekappt hat der eigene Code. Die Mengentreue
+    ist die Kennzahl aus Phase 0; sie darf nicht die eigene Grenze messen.
+    """
+    bau = baue_aus_parametern(
+        {"patienten": [_patient(messwerte=_messwerte(200))]},
+        {"patienten": 1, "messwerte_je_patient": 200},
+    )
+    abweichung = [b for b in bau.beanstandungen if b.art == "mengenabweichung"]
+    assert abweichung == [], [b.detail for b in abweichung]
+
+
+def test_die_kappung_veraendert_das_parameterobjekt_nicht():
+    """Sonst trüge die Aufzeichnung die gekappte Liste, und die
+    Wiedergabe meldete die Beanstandung nicht mehr — der Lauf sähe
+    rückblickend sauber aus."""
+    parameter = {"patienten": [_patient(messwerte=_messwerte(500))]}
+    baue_aus_parametern(parameter, {})
+    assert len(parameter["patienten"][0]["messwerte"]) == 500
+
+
+def test_die_kappung_ist_deterministisch():
+    """Ohne das wäre eine gekappte Kohorte nicht wiedergebbar."""
+    parameter = {"patienten": [_patient(messwerte=_messwerte(500))]}
+    erst = baue_aus_parametern(parameter, {}).ressourcen
+    zweit = baue_aus_parametern(parameter, {}).ressourcen
+    assert json.dumps(erst, sort_keys=True) == json.dumps(zweit, sort_keys=True)
+
+
+def test_unbrauchbare_messwerte_stuerzen_nicht_ab():
+    """Drei Werte, die den Bau oder das Ausliefern zum Absturz brachten.
+
+    Eine Ganzzahl mit 400 Stellen ist ein `int` und kam durch die
+    Typprüfung — `float()` warf darauf `OverflowError`. `Infinity` und
+    `NaN` wurden gebaut, und erst Starlettes Renderer (`allow_nan=False`)
+    scheiterte. Beides ergab HTTP 500.
+    """
+    for wert in (int("9" * 400), float("inf"), float("nan"), "keine Zahl"):
+        bau = baue_aus_parametern(
+            {"patienten": [_patient(
+                messwerte=[{"code": "8867-4", "wert": wert, "datum": "2023-01-01"}]
+            )]},
+            {},
+        )
+        assert len(bau.ressourcen) == 2
+        assert any(b.art == "ungueltiger_messwert" for b in bau.beanstandungen)
+        # Muss sich strikt serialisieren lassen — NaN und Infinity sind
+        # kein JSON, und der Renderer der API lehnt sie ab.
+        json.dumps(bau.ressourcen, allow_nan=False)
+
+
+def test_die_meldung_gibt_keinen_langen_aufruferwert_wieder():
+    """Der Wert stammt vom Aufrufer. Bei 400 Stellen stünden sonst 400
+    Stellen in der Beanstandung — und die wandert in Berichte."""
+    bau = baue_aus_parametern(
+        {"patienten": [_patient(
+            messwerte=[{"code": "8867-4", "wert": int("9" * 400)}]
+        )]},
+        {},
+    )
+    meldung = next(b for b in bau.beanstandungen if b.art == "ungueltiger_messwert")
+    assert len(meldung.detail) < 200, meldung.detail

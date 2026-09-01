@@ -95,12 +95,32 @@ zurückgäbe, lieferte die falsche Hälfte.
 Beschreibung der Schnittstelle: `/api/v1/docs`.
 
 Grenzen, die trotz „unbegrenzt" gelten: höchstens `25` Patienten je
-Anfrage, 2000 Zeichen Beschreibung, 64 KB Anfragekörper und vier
-gleichzeitige Läufe. Der letzte Punkt ist kein Ratenlimit, sondern der
-Schutz davor, dass ein Aufrufer alle Arbeitsplätze des einen Prozesses
-belegt und die Weboberfläche mitreißt. Und: Die Anbieter-URL ist die des
-Betreibers (Groq) — ein Schlüssel eines anderen Anbieters funktioniert
-daher nicht.
+Anfrage, 2000 Zeichen Beschreibung, 64 KB Anfragekörper, **80 Ressourcen
+je Patient** ([ADR-012](docs/adr-012-mengengrenze-und-wiedergabe.md)) und
+vier gleichzeitige Läufe. Der Deckel für gleichzeitige Läufe ist kein
+Ratenlimit, sondern der Schutz davor, dass ein Aufrufer alle
+Arbeitsplätze des einen Prozesses belegt und die Weboberfläche mitreißt.
+
+Und: Die Anbieter-URL ist die des Betreibers (Groq) — ein Schlüssel eines
+anderen Anbieters funktioniert daher nicht.
+
+### Wiedergabe: derselbe Lauf, ohne Modellaufruf
+
+`POST /api/v1/wiedergeben` rechnet eine Aufzeichnung nach. **Ohne jeden
+Modellaufruf** — der erste Lauf kostet Token, jede Wiederholung ist
+umsonst. Für eine Prüfkette ist das der eigentliche Wert des Zugangs: Er
+funktioniert auch dann, wenn beim Betreiber gar kein Anbieter erreichbar
+ist.
+
+Der Rumpf ist `{"aufzeichnung": …}` mit dem Objekt aus dem Feld
+`aufzeichnung` einer `/erzeugen`-Antwort. Die Antwort trägt `identisch`,
+`befund` und beide Prüfsummen. Sie antwortet mit **200 für jede
+Prüfsummenlage** — eine Abweichung ist ein Befund, kein Fehler.
+
+Grenzen: 512 KB Anfragekörper, höchstens 200 Teile, höchstens 5000
+Ressourcen, zwei gleichzeitige Läufe. Anders als sonst wird hier
+**abgelehnt und nicht gekürzt**: Eine gekürzte Wiedergabe träfe auf die
+Prüfsumme des Originals und meldete eine Abweichung, die keine ist.
 
 ### Große Kohorten von der Kommandozeile
 
@@ -350,6 +370,7 @@ in dieser Reihenfolge:
 | [ADR-009](docs/adr-009-isik-konformitaet.md) | ISiK-Basismodul erfüllen — und was daran nicht additiv war |
 | [ADR-010](docs/adr-010-ausgabewege-in-der-weboberflaeche.md) | Warum der NDJSON-Download ein Archiv ist und die Aufzeichnung nicht gesperrt wird |
 | [ADR-011](docs/adr-011-programmatischer-zugang.md) | Ein API-Zugang, der ausschließlich auf fremde Rechnung läuft |
+| [ADR-012](docs/adr-012-mengengrenze-und-wiedergabe.md) | Eine Mengengrenze gegen Verstärkung — und die Wiedergabe über das Netz |
 | [Konzepte](docs/konzepte.md) | Die FHIR-Grundlagen dahinter, ausführlich erklärt |
 
 ### Die tragenden Entscheidungen in drei Sätzen

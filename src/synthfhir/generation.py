@@ -103,6 +103,22 @@ class Ergebnis:
             and self.integritaet.ok
         )
 
+
+    @property
+    def mengengrenze_gegriffen(self) -> bool:
+        """Hat die Mengengrenze Ressourcen verworfen?
+
+        Ohne diese Eigenschaft wäre die Grenze **still**: `mengentreue`
+        zählt nur Patienten, `fertig` sieht Beanstandungen gar nicht an.
+        Ein Lauf, der 19.921 Messwerte verwirft, meldete sonst
+        „Mengentreue 100 %" und Rückgabewert 0.
+
+        Präfix statt Aufzählung — derselbe Grund wie bei
+        `erfundene_codes`: Mit `mengengrenze_bauaufruf` kam eine zweite
+        Art hinzu, und eine Aufzählung von Hand hätte sie übersehen.
+        """
+        return any(b.art.startswith("mengengrenze") for b in self.beanstandungen)
+
     @property
     def erfundene_codes(self) -> int:
         return sum(

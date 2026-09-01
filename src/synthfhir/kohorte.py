@@ -102,7 +102,32 @@ class TeilParameter:
 
     @classmethod
     def from_dict(cls, d: dict) -> "TeilParameter":
-        return cls(angefragt=int(d["angefragt"]), parameter=d["parameter"])
+        """Liest einen Teil und prüft dabei die Form.
+
+        Ohne diese Prüfung kam `{"angefragt": 1, "parameter": "hallo"}`
+        unbeanstandet durch und stürzte erst viel später in
+        `baue_aus_parametern` mit `AttributeError: 'str' object has no
+        attribute 'get'` ab — auf der Kommandozeile als Traceback, über
+        das Netz als HTTP 500 für sechzig Bytes Eingabe.
+
+        Die Meldungen nennen den empfangenen **Typ**, nie den Wert:
+        `int("GEHEIM-XY")` schrieb ihn wörtlich in die Ausnahme, und die
+        wandert bis in den Antwortkörper.
+        """
+        if not isinstance(d, dict):
+            raise ValueError(f"Teil ist kein Objekt, sondern {type(d).__name__}.")
+        parameter = d.get("parameter")
+        if not isinstance(parameter, dict):
+            raise ValueError(
+                f"'parameter' ist kein Objekt, sondern {type(parameter).__name__}."
+            )
+        angefragt = d.get("angefragt")
+        if isinstance(angefragt, bool) or not isinstance(angefragt, int):
+            raise ValueError(
+                f"'angefragt' ist keine ganze Zahl, sondern "
+                f"{type(angefragt).__name__}."
+            )
+        return cls(angefragt=angefragt, parameter=parameter)
 
 
 @dataclass
@@ -191,6 +216,22 @@ class Kohortenergebnis:
             if r.get("resourceType") == "Patient"
         ]
         return len(set(namen)) / len(namen) if namen else 0.0
+
+
+    @property
+    def mengengrenze_gegriffen(self) -> bool:
+        """Hat die Mengengrenze Ressourcen verworfen?
+
+        Ohne diese Eigenschaft wäre die Grenze **still**: `mengentreue`
+        zählt nur Patienten, `fertig` sieht Beanstandungen gar nicht an.
+        Ein Lauf, der 19.921 Messwerte verwirft, meldete sonst
+        „Mengentreue 100 %" und Rückgabewert 0.
+
+        Präfix statt Aufzählung — derselbe Grund wie bei
+        `erfundene_codes`: Mit `mengengrenze_bauaufruf` kam eine zweite
+        Art hinzu, und eine Aufzählung von Hand hätte sie übersehen.
+        """
+        return any(b.art.startswith("mengengrenze") for b in self.beanstandungen)
 
     @property
     def erfundene_codes(self) -> int:

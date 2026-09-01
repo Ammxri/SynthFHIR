@@ -38,6 +38,7 @@ ICD-10-GM nebeneinander, und die Anzeigetexte sind deutsch.
 
 from __future__ import annotations
 
+import math
 import re
 from dataclasses import dataclass, field
 
@@ -168,16 +169,49 @@ def _messwertcode(wert: object, index: int, beanstandungen: list[Beanstandung]) 
 
 
 def _messwert(wert: object, spec: ObservationCode, beanstandungen: list[Beanstandung]) -> float:
-    if isinstance(wert, bool) or not isinstance(wert, (int, float)):
-        mitte = round((spec.low + spec.high) / 2, 2)
+    """Ein Messwert, oder die Katalogmitte mit Beanstandung.
+
+    Geprüft wird nicht nur der **Typ**, sondern auch der **Wertebereich**.
+    Beides war nötig, und beides ist nachgemessen:
+
+    * Eine Ganzzahl mit 400 Stellen ist ein `int`, kommt also durch die
+      Typprüfung — und `float()` wirft darauf `OverflowError`. Der flog
+      durch `baue_aus_parametern`, `_verarbeite_teil` und `gib_wieder`
+      hindurch bis nach oben.
+    * `Infinity` und `NaN` sind `float` und kommen ebenfalls durch.
+      `json.loads` liest beide Literale voreingestellt ein, aber
+      Starlettes `JSONResponse` rendert mit `allow_nan=False` — die
+      Ressource entstand also und erst das Ausliefern scheiterte.
+
+    Beide ergaben HTTP 500 statt einer Beanstandung. Ein unbrauchbarer
+    Wert ist in diesem Projekt ein Befund, kein Absturz — dieselbe
+    Behandlung wie bei jeder anderen unbrauchbaren Angabe.
+    """
+    mitte = round((spec.low + spec.high) / 2, 2)
+
+    def verwerfen(grund: str) -> float:
+        # Der Wert stammt vom Aufrufer und wird gekürzt wiedergegeben:
+        # Bei 400 Stellen stünden sonst 400 Stellen in der Meldung.
+        gezeigt = repr(wert)
+        if len(gezeigt) > 40:
+            gezeigt = gezeigt[:37] + "..."
         beanstandungen.append(
             Beanstandung(
                 "ungueltiger_messwert",
-                f"Messwert {wert!r} für {spec.code} ist keine Zahl -> {mitte}",
+                f"Messwert {gezeigt} für {spec.code} {grund} -> {mitte}",
             )
         )
         return mitte
-    return round(float(wert), 2)
+
+    if isinstance(wert, bool) or not isinstance(wert, (int, float)):
+        return verwerfen("ist keine Zahl")
+    try:
+        als_zahl = float(wert)
+    except (OverflowError, ValueError):
+        return verwerfen("ist zu groß für eine Fließkommazahl")
+    if not math.isfinite(als_zahl):
+        return verwerfen("ist unendlich oder keine Zahl")
+    return round(als_zahl, 2)
 
 
 # --- Vorlagen --------------------------------------------------------------
@@ -440,6 +474,85 @@ def baue_medicationstatement(
     }
 
 
+# --- Mengengrenze ----------------------------------------------------------
+#
+# Ein Patienteneintrag durfte beliebig viele Untereinträge tragen, und aus
+# jedem wurde eine Ressource. Nachgemessen: EIN Patient mit 20.000
+# Messwerten ergab 20.001 Ressourcen, ohne eine einzige Beanstandung.
+# Über die Wiedergabe, wo der Aufrufer die Parameter selbst schreibt,
+# wurden daraus 21.810 Ressourcen aus 64 KB Anfragekörper — 20,9 Sekunden
+# Rechenzeit und 120 MB Speicherspitze auf einem 512-MB-Tarif.
+#
+# Die Grenze steht hier und nicht bei einem Aufrufer, weil dies der
+# Engpass ist, durch den alle drei Wege laufen: `generiere`,
+# `_verarbeite_teil` und die Referenzkohorte. Dasselbe Argument trägt
+# schon `kennzeichne_als_testdaten` am Ende dieser Funktion.
+#
+# **Die 80 ist hergeleitet, nicht gesetzt.** Nach oben begrenzt sie der
+# Katalog selbst: 25 Messwerte, 25 Diagnosen, 19 Medikamente und 4
+# Kontaktarten ergeben 73 verschiedene klinische Inhalte plus den
+# Patienten. Mehr Verschiedenes kann dieses Produkt gar nicht ausdrücken.
+# Nach unten die Belege: Der 200-Patienten-Lauf aus ADR-004 erreichte 5,1
+# Ressourcen je Patient, die Referenzkohorte höchstens 8. Eine
+# Quartalsmessreihe über zehn Jahre — 40 Messwerte — ergibt 43 Ressourcen
+# und geht durch. Eine monatliche über zehn Jahre nicht; das ist der
+# nächstliegende legitime Fall, der die Grenze spürt, und er ist in
+# ADR-012 benannt.
+GRENZE_JE_PATIENT = 80
+
+# Der Fangbalken. Er greift gegen den Fall, den die Grenze je Patient
+# nicht sieht: sehr viele Patienteneinträge in EINEM Aufruf. Vier Bytes
+# JSON (`{}`) genügen für einen vollständigen Patienten.
+#
+# Ehrlich benannt: Gegen einen 64-KB-Anfragekörper hilft er nicht, dort
+# liegen rund 21.800 Einträge und damit darunter. Wirksam ist er gegen
+# große lokale Dateien und gegen einen künftigen vierten Aufrufer. Der
+# Schutz des Netzwegs steht in `web/api.py` und lehnt ab, statt zu kappen.
+NOTAUS_JE_BAUAUFRUF = 50_000
+
+
+def zaehle_je_patient(eintrag: object) -> int:
+    """Wieviele Ressourcen dieser Eintrag ergäbe — ohne ihn zu bauen.
+
+    Für den Netzweg: Dort soll abgelehnt werden, bevor Arbeit entsteht,
+    und nicht gekappt. Eine Schätzung genügte dafür nicht, denn eine zu
+    kleine Zahl liesse den Angriff durch und eine zu grosse wiese
+    legitime Aufzeichnungen ab.
+
+    Diese Funktion ist eine **Abschrift** der Zählweise von
+    `baue_aus_parametern` und damit die Sorte Duplizierung, gegen die
+    dieses Projekt sonst argumentiert. Sie steht deshalb unmittelbar
+    daneben, und ein Zufallstest über 500 verunstaltete Parameterobjekte
+    hält beide gegeneinander. Ohne diesen Test wäre sie nicht zu
+    verantworten.
+    """
+    if not isinstance(eintrag, dict):
+        # Ergibt eine Beanstandung, aber keine Ressource.
+        return 0
+    anzahl = 1  # der Patient selbst
+
+    def liste(name: str) -> list:
+        wert = eintrag.get(name)
+        return wert if isinstance(wert, list) else []
+
+    begegnungen, diagnosen = liste("begegnungen"), liste("diagnosen")
+    # Die von ISiK erzwungene Ersatzbegegnung zählt mit: Sie entsteht,
+    # wenn es Diagnosen gibt, aber keine Begegnung.
+    anzahl += 1 if (not begegnungen and diagnosen) else len(begegnungen)
+    anzahl += len(diagnosen) + len(liste("messwerte")) + len(liste("medikamente"))
+    return anzahl
+
+
+def zaehle_ressourcen(parameter: object) -> int:
+    """Wieviele Ressourcen ein ganzes Parameterobjekt ergäbe."""
+    if not isinstance(parameter, dict):
+        return 0
+    patienten = parameter.get("patienten")
+    if not isinstance(patienten, list):
+        return 0
+    return sum(zaehle_je_patient(e) for e in patienten)
+
+
 def baue_aus_parametern(
     parameter: dict,
     erwartet: dict[str, int] | None = None,
@@ -489,13 +602,42 @@ def baue_aus_parametern(
     # auf eine Nicht-Patient-Ressource zeigte. Mit Encounter wurde er scharf.
     # Diese Form schließt ihn baulich aus statt ihn nur diesmal zu beheben.
     cond_index = obs_index = enc_index = med_index = 0
+    # Buchführung der Mengengrenze. Gemeldet wird EINMAL am Ende, nicht je
+    # Vorfall: 21.839 leere Einträge erzeugen sonst 43.678 Beanstandungen,
+    # und die Meldung wäre selbst der Verstärker.
+    ueberschritten = 0          # Einträge, bei denen die Grenze griff
+    verworfen = 0               # Ressourcen, die deshalb nicht entstanden
+    erster_ueber: int | None = None
+    groesster_wunsch = 0
+    notaus_ab: int | None = None
+
     for roh_index, roh in enumerate(patienten):
         p_index = index_versatz + roh_index
         if not isinstance(roh, dict):
             b.append(Beanstandung("fehlendes_feld", f"Patienteneintrag {p_index} ist kein Objekt."))
             continue
 
+        if len(ergebnis.ressourcen) >= NOTAUS_JE_BAUAUFRUF:
+            # Nicht `break`: Die Zahl der übersprungenen Einträge gehört in
+            # die Meldung, und dafür muss die Schleife zu Ende zählen.
+            if notaus_ab is None:
+                notaus_ab = p_index
+            continue
+
         ergebnis.ressourcen.append(baue_patient(roh, p_index, b))
+
+        # Das Budget dieses Eintrags, in Baureihenfolge verbraucht. Die
+        # Reihenfolge ist keine Geschmacksfrage: Begegnungen zuerst, damit
+        # ein gekappter Patient nie den Kontakt verliert, auf den seine
+        # Diagnosen zeigen (`isik-con1`).
+        budget = GRENZE_JE_PATIENT - 1
+        gewuenscht = zaehle_je_patient(roh)
+        if gewuenscht > GRENZE_JE_PATIENT:
+            ueberschritten += 1
+            verworfen += gewuenscht - GRENZE_JE_PATIENT
+            groesster_wunsch = max(groesster_wunsch, gewuenscht)
+            if erster_ueber is None:
+                erster_ueber = p_index
 
         # Begegnungen zuerst: Diagnosen und Messwerte dürfen auf sie
         # verweisen, und ein Verweis nach vorn ist leichter zu prüfen als
@@ -514,6 +656,11 @@ def baue_aus_parametern(
             # selbst betrifft: Eine Diagnose ohne Kontakt ist kein
             # unvollständiger Datensatz, sondern ein unzulässiger.
             begegnungen = [{"art": "AMB", "datum": _kontaktdatum(roh)}]
+        # `budget` ist hier mindestens 79 — die Ersatzbegegnung passt
+        # also immer hinein und wird nie geopfert.
+        begegnungen = begegnungen[:max(budget, 0)]
+        budget -= len(begegnungen)
+
         erste_begegnung: str | None = None
         for eintrag in begegnungen:
             ergebnis.ressourcen.append(
@@ -533,7 +680,11 @@ def baue_aus_parametern(
                     f"Patient {p_index}: {len(diagnosen)} Diagnosen geliefert, {soll_d} erwartet",
                 )
             )
-        for eintrag in diagnosen:
+        # NACH dem Sollvergleich gekappt, nicht davor. Andersherum meldete
+        # die Mengenabweichung "79 Diagnosen geliefert, 200 erwartet" und
+        # behauptete damit etwas Falsches über das Modell: Geliefert hat
+        # es 200, gekappt hat der eigene Code.
+        for eintrag in diagnosen[:max(budget, 0)]:
             cond = baue_condition(
                 eintrag if isinstance(eintrag, dict) else {}, p_index, cond_index,
                 b, index_versatz
@@ -546,6 +697,7 @@ def baue_aus_parametern(
                 cond["encounter"] = {"reference": erste_begegnung}
             ergebnis.ressourcen.append(cond)
             cond_index += 1
+            budget -= 1
 
         messwerte = roh.get("messwerte") if isinstance(roh.get("messwerte"), list) else []
         soll_m = erwartet.get("messwerte_je_patient")
@@ -556,7 +708,7 @@ def baue_aus_parametern(
                     f"Patient {p_index}: {len(messwerte)} Messwerte geliefert, {soll_m} erwartet",
                 )
             )
-        for eintrag in messwerte:
+        for eintrag in messwerte[:max(budget, 0)]:
             obs = baue_observation(
                 eintrag if isinstance(eintrag, dict) else {}, p_index, obs_index,
                 b, index_versatz
@@ -565,9 +717,10 @@ def baue_aus_parametern(
                 obs["encounter"] = {"reference": erste_begegnung}
             ergebnis.ressourcen.append(obs)
             obs_index += 1
+            budget -= 1
 
         medikamente = roh.get("medikamente") if isinstance(roh.get("medikamente"), list) else []
-        for eintrag in medikamente:
+        for eintrag in medikamente[:max(budget, 0)]:
             ergebnis.ressourcen.append(
                 baue_medicationstatement(
                     eintrag if isinstance(eintrag, dict) else {}, p_index, med_index,
@@ -575,6 +728,30 @@ def baue_aus_parametern(
                 )
             )
             med_index += 1
+            budget -= 1
+
+    # Eine Sammelmeldung je Bauaufruf, mit den vollständigen Zahlen. Das
+    # ist kein stilles Abschneiden: Wieviel verworfen wurde, steht darin.
+    if ueberschritten:
+        b.append(
+            Beanstandung(
+                "mengengrenze_je_patient",
+                f"{ueberschritten} Patienteneintrag/-einträge überschritten die "
+                f"Grenze von {GRENZE_JE_PATIENT} Ressourcen je Eintrag "
+                f"(erstmals Eintrag {erster_ueber} mit {groesster_wunsch} "
+                f"angefragten Ressourcen). {verworfen} Ressourcen wurden "
+                "verworfen.",
+            )
+        )
+    if notaus_ab is not None:
+        b.append(
+            Beanstandung(
+                "mengengrenze_bauaufruf",
+                f"Der Notaus von {NOTAUS_JE_BAUAUFRUF} Ressourcen je Bauaufruf "
+                f"hat gegriffen. Ab Patienteneintrag {notaus_ab} wurde nichts "
+                "mehr gebaut.",
+            )
+        )
 
     for r in ergebnis.ressourcen:
         kennzeichne_als_testdaten(r)

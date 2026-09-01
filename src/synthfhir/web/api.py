@@ -93,6 +93,13 @@ from ..llm import (
     LLMFehler,
     client_mit_fremdschluessel,
 )
+from ..aufzeichnung import (
+    FORMAT_VERSION,
+    Aufzeichnung,
+    AufzeichnungFehler,
+    gib_wieder,
+)
+from ..domain.templates import GRENZE_JE_PATIENT, zaehle_je_patient
 from ..ndjson import ExportFehler, baue_dateien
 from ..prompts import MAX_PATIENTEN
 
@@ -124,6 +131,46 @@ KOERPER_HOECHSTGROESSE = 64 * 1024
 # berühren. Das ist kein Ratenlimit: Wer wartet, kommt dran.
 GLEICHZEITIG = int(os.environ.get("SYNTHFHIR_API_GLEICHZEITIG", "4"))
 _plaetze = threading.BoundedSemaphore(GLEICHZEITIG)
+
+# --- Grenzen der Wiedergabe ------------------------------------------------
+#
+# Die Wiedergabe ist der einzige Weg, auf dem der Aufrufer die
+# Parameterobjekte SELBST schreibt. Bei `/erzeugen` kommen sie vom Modell
+# und sind durch `max_tokens` gedeckelt — hier deckelt nichts, und der
+# Anfragekörper ist die falsche Achse: Er begrenzt Bytes, nicht Arbeit.
+#
+# Nachgemessen am echten Bauweg: 64 KB Körper mit unförmigen Einträgen
+# ([0, 0, 0, …], zwei Bytes je Ressource) ergaben 21.810 Ressourcen,
+# 20,9 Sekunden Rechenzeit und 120 MB Speicherspitze. Bei vier
+# gleichzeitigen Aufrufen ist ein 512-MB-Tarif zu Ende.
+#
+# Deshalb wird hier **abgelehnt und nicht gekappt** — anders als in der
+# Domäne. Das hat einen zweiten, wichtigeren Grund als die Kosten: Eine
+# gekappte Wiedergabe träfe auf die Prüfsumme des Originals, meldete
+# ABWEICHUNG und schickte die Ursachensuche in die Irre. Kappung und
+# Prüfsummenurteil dürfen sich nie begegnen.
+WIEDERGABE_KOERPER = int(
+    os.environ.get("SYNTHFHIR_API_WIEDERGABE_KOERPER", str(512 * 1024))
+)
+# Gemessen: 200 Patienten ergeben 25 Teile, 500 Patienten 63. 200 ist das
+# Dreifache davon — und die Zahl, die den Angriff „2000 winzige Teile"
+# stoppt, gegen den jede Ressourcengrenze blind ist, weil jedes Teil für
+# sich harmlos aussieht.
+WIEDERGABE_TEILE = int(os.environ.get("SYNTHFHIR_API_WIEDERGABE_TEILE", "200"))
+# Und die Zahl gegen den umgekehrten Fall: sehr viele Patienteneinträge in
+# EINEM Teil. Vier Bytes JSON genügen für einen vollständigen Patienten.
+# 5000 ist das Vierfache des belegten 200-Patienten-Laufs (1200 Ressourcen)
+# und kostet gemessen rund 5 Sekunden.
+WIEDERGABE_RESSOURCEN = int(
+    os.environ.get("SYNTHFHIR_API_WIEDERGABE_RESSOURCEN", "5000")
+)
+# Ein eigener Deckel, nicht der von `/erzeugen`. Geteilt verdrängten die
+# billigen Wiedergaben die teuren Erzeugungen, und die 429 sagte nicht
+# mehr, welche Grenze griff.
+WIEDERGABE_GLEICHZEITIG = int(
+    os.environ.get("SYNTHFHIR_API_WIEDERGABE_GLEICHZEITIG", "2")
+)
+_wiedergabeplaetze = threading.BoundedSemaphore(WIEDERGABE_GLEICHZEITIG)
 
 class Anfrage(BaseModel):
     """Der Anfragekörper. Der Schlüssel steht bewusst nicht darin."""
@@ -421,29 +468,227 @@ async def erzeugen(
     )
 
 
-async def _lies_koerper(request: Request) -> dict:
+class Wiedergabeanfrage(BaseModel):
+    """Der Anfragekörper der Wiedergabe. Beschreibt nur, liest nicht."""
+
+    aufzeichnung: dict = Field(
+        description=(
+            "Wörtlich das Objekt aus dem Feld `aufzeichnung` einer Antwort "
+            "von /api/v1/erzeugen, oder der Inhalt einer mit "
+            "`synthfhir --aufzeichnen` geschriebenen Datei."
+        )
+    )
+
+
+@router.post(
+    "/wiedergeben",
+    summary="Eine Aufzeichnung ohne Modellaufruf nachrechnen",
+    openapi_extra={
+        "security": [{"SynthFHIR-LLM-Key": []}],
+        "requestBody": {
+            "required": True,
+            "content": {
+                "application/json": {
+                    "schema": Wiedergabeanfrage.model_json_schema()
+                }
+            },
+        },
+    },
+)
+async def wiedergeben(request: Request) -> JSONResponse:
+    """Spielt eine Aufzeichnung ab und vergleicht das Ergebnis.
+
+    **Ohne jeden Modellaufruf.** Der erste Lauf kostet Token, jede
+    Wiederholung ist umsonst — das ist der Grund, warum es diesen
+    Endpunkt gibt. Er funktioniert auch dann, wenn beim Betreiber gar
+    kein Anbieter erreichbar ist; ein 503 kommt hier nie vor.
+
+    **Pflichtkopf `X-SynthFHIR-LLM-Key`.** Ehrlich gesagt: Er wird hier
+    weder benutzt noch auf Gültigkeit geprüft — diese Route baut keinen
+    Client. Sie erbt die Prüfung vom Router, und das ist Absicht: Eine
+    Ausnahme wäre die Stelle, an der die nächste modellaufrufende Route
+    ohne Prüfung landet.
+
+    **Der Inhalt stammt vom Aufrufer, nicht von einem Modell.** Namen und
+    Beschreibungen aus der Aufzeichnung stehen unverändert im
+    zurückgegebenen Bundle. Wer es weiterverarbeitet, behandelt es als
+    Fremdeingabe.
+
+    Antwortet mit **200 für jede Prüfsummenlage** — identisch, abweichend
+    oder ohne Prüfsumme. Das Urteil steht in `identisch` und `befund`;
+    eine Abweichung ist ein Befund und kein Fehler.
+    """
+    roh = await _lies_koerper(request, WIEDERGABE_KOERPER)
+
+    aufz_roh = roh.get("aufzeichnung")
+    if not isinstance(aufz_roh, dict):
+        return _fehler(
+            400, "aufzeichnung_fehlt",
+            "Das Feld 'aufzeichnung' fehlt oder ist kein Objekt.", "aufrufer",
+        )
+
+    # Erst zählen, dann bauen. Die Zählung kostet gemessen 24 ms für 21.839
+    # Einträge — der Bau derselben Eingabe 20,9 Sekunden.
+    teile_roh = aufz_roh.get("teile")
+    if not isinstance(teile_roh, list) or not teile_roh:
+        return _fehler(
+            400, "aufzeichnung_unvollstaendig",
+            "Die Aufzeichnung enthält keine Teile.", "aufrufer",
+        )
+    if len(teile_roh) > WIEDERGABE_TEILE:
+        return _fehler(
+            413, "zu_viele_teile",
+            f"Die Aufzeichnung hat {len(teile_roh)} Teile; dieser Zugang "
+            f"nimmt höchstens {WIEDERGABE_TEILE}.",
+            "aufrufer",
+        )
+
+    gesamt = 0
+    for teil in teile_roh:
+        parameter = teil.get("parameter") if isinstance(teil, dict) else None
+        patienten = (
+            parameter.get("patienten") if isinstance(parameter, dict) else None
+        )
+        for eintrag in patienten if isinstance(patienten, list) else []:
+            je_eintrag = zaehle_je_patient(eintrag)
+            if je_eintrag > GRENZE_JE_PATIENT:
+                # Ablehnen statt kappen: Eine gekappte Wiedergabe träfe auf
+                # die Prüfsumme des Originals und meldete ABWEICHUNG.
+                return _fehler(
+                    413, "patient_zu_umfangreich",
+                    f"Ein Patienteneintrag ergäbe {je_eintrag} Ressourcen; "
+                    f"dieser Zugang baut höchstens {GRENZE_JE_PATIENT} je "
+                    "Eintrag.",
+                    "aufrufer",
+                )
+            gesamt += je_eintrag
+            if gesamt > WIEDERGABE_RESSOURCEN:
+                return _fehler(
+                    413, "zu_viele_ressourcen",
+                    f"Diese Aufzeichnung ergäbe mehr als "
+                    f"{WIEDERGABE_RESSOURCEN} Ressourcen; so viele baut "
+                    "dieser Zugang nicht.",
+                    "aufrufer",
+                )
+
+    try:
+        aufzeichnung = Aufzeichnung.from_dict(aufz_roh)
+    except AufzeichnungFehler:
+        # Kuratiert, ohne str(exc): Die Meldung von from_dict bettet den
+        # Text der auslösenden Ausnahme ein, und der trug schon
+        # Aufruferwerte.
+        return _fehler(
+            400, "aufzeichnung_unvollstaendig",
+            "Die Aufzeichnung ist unvollständig oder hat ein anderes "
+            f"Format als Version {FORMAT_VERSION}.",
+            "aufrufer",
+        )
+
+    if not _wiedergabeplaetze.acquire(blocking=False):
+        return _fehler(
+            429, "ausgelastet",
+            f"Es laufen bereits {WIEDERGABE_GLEICHZEITIG} Wiedergaben. "
+            "Diese Grenze schützt die Weboberfläche und gilt unabhängig "
+            "vom Schlüssel.",
+            "synthfhir",
+            **{"Retry-After": "15"},
+        )
+    try:
+        wieder = await run_in_threadpool(gib_wieder, aufzeichnung)
+    finally:
+        _wiedergabeplaetze.release()
+
+    return JSONResponse(content=_wiedergabeantwort(wieder))
+
+
+def _wiedergabeantwort(wieder) -> dict:
+    """Die Antwort der Wiedergabe — von Hand, nicht über `to_dict`.
+
+    Vier Dinge fehlen mit Absicht:
+
+    * **`dauer_s`.** Bei `/erzeugen` ist das im Wesentlichen die Wartezeit
+      auf ein Modell. Hier wäre es reine, vom Server gemessene Rechenzeit
+      über eine vom Aufrufer frei gewählte, konstante Last — also eine
+      Auslastungssonde, gratis und beliebig oft abfragbar.
+    * **`schluessel_herkunft`.** Es ist die prüfbare Form der Zusage
+      „niemals auf Rechnung des Betreibers". Hier entsteht kein Client;
+      das Feld auszugeben wäre eine Aussage über einen Modellaufruf, den
+      es nicht gab. Stattdessen `modellaufrufe: 0`.
+    * **`beschreibung`.** Kommt wörtlich vom Aufrufer.
+    * **die Meldungen der Validierung.** `Befund.meldung` trägt den Text
+      von pydantic beziehungsweise `fhir.resources` — Fremdtext, der laut
+      der Regel dieses Moduls den Antwortkörper nie erreicht. Der `pfad`
+      bleibt: Er stammt aus dem eigenen Modell und ist der brauchbare Teil.
+    """
+    e = wieder.ergebnis
+    ungueltig = [p for p in e.validierung if not p.valide]
+    aus: dict = {
+        "fertig": e.fertig,
+        "identisch": wieder.identisch,
+        "befund": wieder.befund(),
+        "hinweis": (
+            "Synthetische Testdaten. Nicht für klinische Nutzung, keine "
+            "echten Patientendaten."
+        ),
+        "pruefsummen": {
+            "erwartet": wieder.erwartet,
+            "erhalten": wieder.erhalten,
+            "katalog_erwartet": wieder.katalog_erwartet,
+            "katalog_erhalten": wieder.katalog_erhalten,
+            "katalog_geaendert": wieder.katalog_geaendert,
+        },
+        "ressourcen": e.anzahl_je_typ,
+        "patienten": e.patienten,
+        "angefragt": e.angefragt,
+        "mengentreue": round(e.mengentreue, 4),
+        "erfundene_codes": e.erfundene_codes,
+        "mengengrenze_gegriffen": e.mengengrenze_gegriffen,
+        "integritaet": e.integritaet.to_dict() if e.integritaet else None,
+        "beanstandungen": [
+            {"art": b.art, "detail": b.detail} for b in e.beanstandungen[:200]
+        ],
+        "beanstandungen_gesamt": len(e.beanstandungen),
+        "validierung_gesamt": len(e.validierung),
+        "validierung_ungueltig": [
+            {"ressourcentyp": p.ressourcentyp, "ressourcen_id": p.ressourcen_id,
+             "pfade": [f.pfad for f in p.befunde]}
+            for p in ungueltig
+        ],
+        "lauf": {"teile": len(e.teile), "modellaufrufe": 0},
+    }
+    aus["bundle" if e.fertig else "bundle_zurueckgehalten"] = e.bundle
+    return aus
+
+
+async def _lies_koerper(request: Request, hoechstens: int | None = None) -> dict:
     """Liest den Rumpf mit Größengrenze und ohne Rückspiegelung."""
+    hoechstens = KOERPER_HOECHSTGROESSE if hoechstens is None else hoechstens
     laenge = request.headers.get("content-length")
-    if laenge and laenge.isdigit() and int(laenge) > KOERPER_HOECHSTGROESSE:
+    if laenge and laenge.isdigit() and int(laenge) > hoechstens:
         raise _Abbruch(
             413,
             "koerper_zu_gross",
-            f"Der Anfragekörper überschreitet {KOERPER_HOECHSTGROESSE} Bytes.",
+            f"Der Anfragekörper überschreitet {hoechstens} Bytes.",
             "aufrufer",
         )
     # Auch ohne Content-Length messen: Bei `Transfer-Encoding: chunked`
     # fehlt die Kopfzeile, und dann wäre die Prüfung oben wirkungslos.
     rumpf = await request.body()
-    if len(rumpf) > KOERPER_HOECHSTGROESSE:
+    if len(rumpf) > hoechstens:
         raise _Abbruch(
             413,
             "koerper_zu_gross",
-            f"Der Anfragekörper überschreitet {KOERPER_HOECHSTGROESSE} Bytes.",
+            f"Der Anfragekörper überschreitet {hoechstens} Bytes.",
             "aufrufer",
         )
     try:
         geparst = json.loads(rumpf or b"{}")
-    except ValueError:
+    except (ValueError, RecursionError):
+        # `RecursionError` gehört ausdrücklich dazu: Ab rund 5000 Ebenen
+        # wirft der JSON-Leser ihn statt eines `ValueError`, und er ist
+        # kein Nachfahre davon. Nachgemessen ergaben 60 KB Klammern
+        # HTTP 500 — bei einer Route, die zusagt, nie einen Serverfehler
+        # für eine Aufrufereingabe zu liefern.
         raise _Abbruch(
             400, "koerper_unlesbar", "Der Anfragekörper ist kein gültiges JSON.",
             "aufrufer",
@@ -495,7 +740,18 @@ def _antwort(
             ergebnis.integritaet.to_dict() if ergebnis.integritaet else None
         ),
         "befunde": ergebnis.befunde_als_text(),
-        "grenzen_gegriffen": grenzen,
+        "grenzen_gegriffen": grenzen
+        + (
+            [
+                b.detail
+                for b in ergebnis.beanstandungen
+                if b.art.startswith("mengengrenze")
+            ]
+        ),
+        # Eigenes Feld neben der Liste: Ein Client soll die Frage „wurde
+        # gekürzt?" mit einem Blick beantworten können, ohne Sätze zu
+        # durchsuchen.
+        "mengengrenze_gegriffen": ergebnis.mengengrenze_gegriffen,
         "lauf": {
             "versuche": ergebnis.versuche,
             "eingabe_token": ergebnis.eingabe_token,

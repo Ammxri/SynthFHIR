@@ -177,7 +177,17 @@ def main(argv: list[str] | None = None) -> int:
 
     if not ergebnis.ressourcen:
         return 2
-    schluss = 0 if ergebnis.fertig and ergebnis.mengentreue == 1.0 else 1
+    # `mengengrenze_gegriffen` gehört mit hinein: Die Grenze verwirft
+    # Ressourcen, nicht Patienten, und `mengentreue` zählt nur Patienten.
+    # Ohne diesen Zusatz meldete ein Lauf, der 19.921 Messwerte verworfen
+    # hat, „Mengentreue 100,0 %" und Rückgabewert 0.
+    schluss = (
+        0
+        if ergebnis.fertig
+        and ergebnis.mengentreue == 1.0
+        and not ergebnis.mengengrenze_gegriffen
+        else 1
+    )
     # Eine Wiedergabe, die nicht dasselbe ergab, ist kein Erfolg — auch wenn
     # die Kohorte für sich vollständig und gültig ist. Sonst meldete der
     # Rückgabewert 0, während auf stderr ABWEICHUNG steht, und eine Prüfkette
@@ -367,6 +377,9 @@ def _zusammenfassung(e: Kohortenergebnis) -> str:
     ungueltig = [p for p in e.validierung if not p.valide]
     if ungueltig:
         zeilen.append(f"  UNGÜLTIG:       {len(ungueltig)} Ressourcen")
+    for beanstandung in e.beanstandungen:
+        if beanstandung.art.startswith("mengengrenze"):
+            zeilen.append(f"  MENGENGRENZE:   {beanstandung.detail}")
     for teil in e.teile:
         if not teil.erfolgreich:
             zeilen.append(f"  Teil {teil.nummer} ausgefallen: {teil.fehler}")
