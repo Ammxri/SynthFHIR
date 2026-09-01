@@ -264,3 +264,40 @@ def test_fehlendes_luecken_feld_ist_kein_fehler():
     e = generiere(FesterClient(_antwort([_patient()])), "Eine Patientin")
     assert e.fertig
     assert e.verstanden.nicht_abbildbar == []
+
+
+def test_fehlerart_eines_frueheren_versuchs_bleibt_nicht_stehen():
+    """Die API antwortete mit 429 auf einen Formatfehler.
+
+    In zwei Zweigen der Wiederholschleife wurde `letzter_fehler` gesetzt
+    und `letzte_art` vergessen: Der Wert des vorherigen Durchlaufs blieb
+    stehen. Endete Versuch 1 an der Ratengrenze und lieferte Versuch 2 eine
+    Antwort ohne `patienten`, stand am Ende `fehlerart = "kontingent"` neben
+    einer Meldung über ein fehlendes Feld — und `web/api.py` verwies den
+    Aufrufer auf „später erneut versuchen", obwohl das Modell Unsinn
+    geliefert hatte.
+    """
+    import json
+
+    from synthfhir.generation import generiere
+    from synthfhir.llm import LLMAntwort, LLMClient, LLMFehler
+
+    class ErstKontingentDannUnsinn(LLMClient):
+        def __init__(self) -> None:
+            self.aufrufe = 0
+
+        def frage(self, *, system: str, benutzer: str) -> LLMAntwort:
+            self.aufrufe += 1
+            if self.aufrufe == 1:
+                raise LLMFehler("Ratengrenze", art="kontingent")
+            text = json.dumps({"verstanden": {"anzahl_patienten": 1,
+                                              "kernkriterien": []}})
+            return LLMAntwort(text=text, modell="test", eingabe_token=10,
+                              ausgabe_token=10, dauer_s=0.0,
+                              abbruchgrund="end_turn")
+
+    e = generiere(ErstKontingentDannUnsinn(), "Eine Patientin", versuche=2)
+    assert e.fehler and "patienten" in e.fehler
+    assert e.fehlerart == "unbrauchbar", (
+        f"fehlerart = {e.fehlerart!r} — die Art des ersten Versuchs steht noch"
+    )

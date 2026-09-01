@@ -203,6 +203,24 @@ Warteschlange zu hängen), 64 KB Körpergröße, `MAX_PATIENTEN`, 2000 Zeichen
 Beschreibung, und für den API-Pfad kürzere Zeitgrenzen als in der
 Oberfläche: Dort wartet ein Mensch, der zusieht.
 
+> **Nachtrag vom 2026-09-01.** Dieser Absatz las sich allgemeiner, als er
+> war. Der Nachsatz hebt genau **eine** Grenze als API-spezifisch hervor —
+> die Zeitgrenzen — und liess die vier davorstehenden als allgemein
+> erscheinen. Im Code standen sie sämtlich in `web/api.py`. Die
+> Weboberfläche hatte keine davon: keine Längengrenze für die
+> Beschreibung, keine Körpergrenze, keinen Gleichzeitigkeitsdeckel.
+>
+> Damit kam ausgerechnet der Aufrufer ungebremst durch, für den dieser
+> Abschnitt den Deckel begründet: derselbe Mensch mit demselben gültigen
+> eigenen Schlüssel, nur über `/erzeugen` statt über `/api/v1/erzeugen`.
+>
+> Seit dem 2026-09-01 gelten Längengrenze, Körpergrenze und Deckel für
+> beide Pfade. Die Körpergrenze der Oberfläche liegt höher (8 MB), weil
+> `/export` rechtmässig ein ganzes Bundle trägt, und sie sitzt in einer
+> Middleware statt in der Route: FastAPI liest den Körper vollständig ein,
+> **bevor** es die Abhängigkeiten einer Route auflöst — eine Prüfung in
+> der Route käme zu spät, um das Buffern zu verhindern.
+
 Ausdrücklich **keine** Anfragen-je-Minute-Bremse. Die Auflage ist als hart
 formuliert, und diese Abweichung stünde nicht dem Entwickler zu.
 
@@ -290,7 +308,11 @@ zweiten Gegenversuch gar nicht mehr durch und ist ersetzt.
 - **Die Gesamtbremse sperrt im Zweifel alle anonymen Besucher.** Siehe
   oben; es ist die gewollte Reihenfolge der Zusagen.
 - **Ein API-Lauf kann die Weboberfläche verlangsamen.** Vier gleichzeitige
-  Läufe belegen vier der 40 Threadplätze.
+  Läufe belegen vier der 40 Threadplätze. *(Nachtrag 2026-09-01: Die
+  Gegenrichtung fehlte hier — und sie war die schlimmere. Läufe der
+  Oberfläche mit eigenem Schlüssel waren ungedeckelt und konnten dem
+  API-Pfad sämtliche Plätze nehmen. Seit dem 2026-09-01 teilen sich beide
+  Pfade denselben Deckel.)*
 - **Die Weboberfläche zeigt weiterhin `str(exc)`** bei
   Konfigurationsfehlern. Anbieter-URL und Modellname stehen ohnehin im
   Klartext in `render.yaml` eines öffentlichen Repositories — der
@@ -335,3 +357,81 @@ zweiten Gegenversuch gar nicht mehr durch und ist ersetzt.
   nachgemessen**, nur hergeleitet. Die Gesamtbremse hält unabhängig davon.
 - **Kein Gesamtzeitbudget je Anfrage**, nur kürzere Einzelzeitgrenzen. Ein
   Gegenüber, das langsam tropft, hält seinen Platz länger als gedacht.
+
+---
+
+## 7. Nachtrag vom 2026-09-01: Der Deckel gilt je Wachphase, nicht je Stunde
+
+Aus einer gegnerischen Durchsicht des Codes.
+
+### Was gefunden wurde
+
+Beide Bremsen halten ihre Zähler im Arbeitsspeicher. Das Moduldoc von
+`ratenbremse.py` nennt dazu zwei Folgen: „Ein Neustart setzt alle Zähler
+zurück" und „Bei mehreren Instanzen zählt jede für sich". Beides stimmt,
+und beides klingt nach einem seltenen Ereignis.
+
+Die dritte Folge stand dort nicht, und sie ist die schärfste:
+`render.yaml` betreibt den Dienst auf `plan: free`, und der legt ihn nach
+15 Minuten ohne Zugriff schlafen. Der Neustart ist damit kein Zufall,
+sondern **vorhersagbar und vom Aufrufer auslösbar**. Dreissig Anfragen
+absetzen, eine Viertelstunde nichts tun, eine Anfrage zum Aufwecken,
+wieder dreissig — beliebig oft.
+
+Der Deckel „30 Modellaufrufe je Stunde auf Betreiberrechnung" ist in
+Wirklichkeit „30 je Wachphase". Die Gesamtbremse ist in Abschnitt 3
+ausdrücklich als die eine Sicherung eingeführt, die nicht an einer
+fälschbaren Kopfzeile hängt. Sie hängt stattdessen am Betriebsmodus, und
+das war nirgends gesagt.
+
+### Entscheidung
+
+**Keine Persistenz.** Der Zähler bleibt im Arbeitsspeicher. Berichtigt wird
+die **Zusage**, nicht der Code: Der Deckel gilt je Wachphase, und das
+gehört dorthin, wo heute „je Stunde" steht.
+
+Die Entscheidung ist an einen Auslöser gebunden (siehe unten). Sie ist
+nicht „das ist schon in Ordnung", sondern „das trägt unter genau diesen
+Bedingungen".
+
+### Begründung
+
+**Das PRD schliesst Persistenz für den MVP aus** (Block 9). Für einen
+Demo-Zähler eine Datenbank einzuführen widerspräche einer dokumentierten
+Zuschnittsentscheidung. Eine Datei wäre keine Abhilfe: Auf dem Gratistarif
+überlebt das Dateisystem den Neustart ohnehin nicht — dieselbe Ursache,
+die den Zähler leert, löschte auch seine Datei.
+
+**Der Schaden ist heute Verfügbarkeit, nicht Geld.** Der Anbieter läuft im
+Gratistarif. Ist das Kontingent leer, ist die Demo aus; es entsteht keine
+unerwartete Rechnung. Das ist ein Ärgernis, aber ein anderes Kaliber als
+das, wogegen die Bremse gebaut wurde. Die Auflage des Betreibers lautet
+wörtlich „Mein kostenloses Ratenlimit soll für mich aufrechterhalten
+bleiben" — verletzt wird sie durch ein erschöpftes Kontingent, und das
+erschöpft sich auf einem Gratistarif ohne Bremse ohnehin.
+
+**Der dokumentierte Weg für Vielnutzer funktioniert.** Das PRD nennt den
+eigenen Schlüssel als Mitigation im Risikoregister, und dieser Weg ist seit
+diesem ADR gebaut, geprüft und seit dem 2026-09-01 zusätzlich gedeckelt.
+Wer mehr braucht, als die Demo hergibt, hat einen Weg, der niemanden
+sonst betrifft.
+
+### Wann diese Entscheidung neu zu treffen ist
+
+**Sobald der Dienst auf einen bezahlten Anbietertarif oder einen bezahlten
+Render-Plan wechselt.**
+
+Dann kippen beide Begründungen zugleich: Aus „das Kontingent ist leer"
+wird „die Rechnung wächst", und ein bezahlter Render-Plan schläft nicht
+mehr, wodurch der Zähler zwar länger hält — aber nicht mehr in dem Fall,
+der dann zählt, nämlich bei mehreren Instanzen. Ein Deckel im
+Arbeitsspeicher ist dann nicht mehr vertretbar.
+
+### Was noch nachzurechnen ist
+
+Wie viele Wachphasen passen in das **Tageskontingent** des Anbieters? Erst
+diese Zahl macht aus der berichtigten Aussage eine belastbare: Wenn
+30 Aufrufe je Wachphase mal der realistischen Zahl von Wachphasen unter dem
+Tageslimit bleiben, ist der Deckel wirksam, auch wenn er sich zurücksetzen
+lässt. Bleibt er es nicht, ist die Zahl 30 zu senken — nicht die Bauform zu
+ändern.

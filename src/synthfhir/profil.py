@@ -6,17 +6,24 @@ und schreibt das Ergebnis so auf, dass man es wiederholen und vergleichen
 kann.
 
 ===========================================================================
-WARUM DREI SPALTEN UND NICHT ZWEI
+WARUM VIER SPALTEN UND NICHT ZWEI
 ===========================================================================
 
 Die naheliegende Auswertung wäre „Fehler" gegen „keine Fehler". Sie wäre
 hier irreführend.
 
-Der Validator kann drei Dinge sagen, nicht zwei:
+Der Validator kann vier Dinge sagen, nicht zwei:
 
   **Fehler**      Das ist falsch.
   **Ungeprüft**   Das kann ich nicht entscheiden.
   **Warnung**     Das ist erlaubt, aber unüblich.
+  **Hinweis**     Das ist erlaubt und erwähnenswert.
+
+Die letzte Spalte gab es zuerst nicht, und ihr Fehlen war kein
+Schönheitsfehler: „Warnungen" war als „alles, was nicht Fehler und nicht
+ungeprüft ist" definiert und trug damit auch `information`. Im
+veröffentlichten Beleg waren 4 der 19 ausgewiesenen Warnungen solche
+Hinweise — und die 19 stand so in ADR-009 und in der Sondierung.
 
 Die mittlere Antwort ist bei diesem Projekt keine Randerscheinung, sondern
 der Regelfall. Das ISiK-Profil bindet `Condition.code` an ein
@@ -129,8 +136,43 @@ _NICHT_AUFLOESBAR = re.compile(
     r"|is ignored|not able to check|Unknown code system",
     re.IGNORECASE,
 )
-# Zu welchem ValueSet gehört ein Befund?
-_VALUESET = re.compile(r"(?:value set|ValueSet)[ :'\"]*([A-Za-z0-9:/._|-]+)")
+# Zu welchem ValueSet gehört ein Befund? Der Name steht in
+# Anführungszeichen — anders ist er vom umgebenden Satz nicht zu
+# unterscheiden.
+#
+# Zuvor stand hier
+#     (?:value set|ValueSet)[ :'"]*([A-Za-z0-9:/._|-]+)
+# und die Zeichenklasse verschluckte bei der kanonischen Klage
+#     "Unable to expand ValueSet: cannot apply filters ..."
+# das ": " und fing als Namen das Wort `cannot`. Die dokumentierte Regel
+# („nur wenn GENAU DIESES ValueSet nicht auflösbar war") verglich damit
+# einen Mülltoken und konnte per Namen nie zutreffen. Gemessen an den
+# echten HAPI-Meldungen lieferte die alte Fassung
+#     ['DiagnosesSCT', '/DiagnosesSCT|4.0.3', '.', 'https://…', 'cannot']
+# — der Name war nur der erste von fünf Treffern, und bei der reinen
+# Expansionsklage blieb `cannot` übrig.
+_VALUESET = re.compile(r"(?:value ?set)\s*['\"]([^'\"]+)['\"]", re.IGNORECASE)
+
+# Der Validator konnte das Profil selbst nicht laden. Gemessen gegen einen
+# HAPI ohne die ISiK-Pakete lautet die Meldung:
+#     "Invalid profile. Failed to retrieve profile with url=https://…"
+# Sie kommt als gewöhnlicher `error` herein und wäre damit von einem
+# echten Datenfehler nicht zu unterscheiden — ein Bericht über den
+# falschen Server läse sich wie ein Bericht über schlechte Daten. Das ist
+# aber keine Aussage über die Daten, sondern eine ungültige Messung.
+#
+# Absichtlich eng gefasst: Nur Wendungen, die zweifelsfrei heissen „ich
+# konnte das angeforderte Profil nicht laden". Das mitgelieferte „Invalid
+# profile." steht nicht darin — es ist bloss das Vorwort und käme auch bei
+# einem Profil vor, das der Server sehr wohl kennt. Ein Messaufbau, der
+# sich zu leicht für ungültig erklärt, ist so unbrauchbar wie einer, der
+# es nie tut.
+_PROFIL_UNBEKANNT = re.compile(
+    r"Failed to retrieve profile"
+    r"|Unable to (?:resolve|find) (?:the )?profile"
+    r"|Profile reference .*? (?:has not been checked|could not be resolved)",
+    re.IGNORECASE,
+)
 
 
 @dataclass
@@ -173,9 +215,39 @@ class Profilergebnis:
 
     @property
     def warnungen(self) -> list[Befund]:
+        """Nur `warning`.
+
+        Zuvor stand hier „alles, was nicht error/fatal und nicht ungeprüft
+        ist". Damit fielen auch `information` und `success` in diese
+        Spalte: Im veröffentlichten Beleg waren **4 der 19** ausgewiesenen
+        Warnungen vom Schweregrad `information` — die Slice-Hinweise zu
+        `Condition.onset`. Die Zahl 19 steht so in ADR-009 §3a und in der
+        Sondierung und bedeutete nicht, was die Spaltenüberschrift sagt.
+        """
         return [
             b for b in self.befunde
-            if b.schweregrad not in ("error", "fatal") and not b.ungeprueft
+            if b.schweregrad == "warning" and not b.ungeprueft
+        ]
+
+    @property
+    def informationen(self) -> list[Befund]:
+        """Hinweise des Validators, keine Beanstandungen.
+
+        Eine eigene Spalte, und nicht etwa weggelassen: Sie zu
+        verschweigen machte das Ergebnis besser, als es ist; sie unter die
+        Warnungen zu zählen schlechter. Beides wäre Schönfärberei mit
+        Zahlen — dieselbe Begründung, aus der es die Spalte „ungeprüft"
+        überhaupt gibt.
+
+        Definiert als der **Rest**, nicht als Aufzählung von
+        `information` und `success`: Ein Schweregrad, den niemand
+        vorhergesehen hat, soll auftauchen und nicht lautlos aus allen
+        vier Spalten fallen.
+        """
+        return [
+            b for b in self.befunde
+            if b.schweregrad not in ("error", "fatal", "warning")
+            and not b.ungeprueft
         ]
 
     @property
@@ -196,6 +268,7 @@ class Profilergebnis:
             "fehler": len(self.fehler),
             "ungeprueft": len(self.ungeprueft),
             "warnungen": len(self.warnungen),
+            "informationen": len(self.informationen),
             "befunde": [b.to_dict() for b in self.befunde],
         }
 
@@ -226,12 +299,14 @@ class Profilbericht:
         for e in self.ergebnisse:
             z = aus.setdefault(
                 e.ressourcentyp,
-                {"geprueft": 0, "fehler": 0, "ungeprueft": 0, "warnungen": 0},
+                {"geprueft": 0, "fehler": 0, "ungeprueft": 0,
+                 "warnungen": 0, "informationen": 0},
             )
             z["geprueft"] += 1
             z["fehler"] += len(e.fehler)
             z["ungeprueft"] += len(e.ungeprueft)
             z["warnungen"] += len(e.warnungen)
+            z["informationen"] += len(e.informationen)
         return aus
 
     def to_dict(self) -> dict:
@@ -252,6 +327,7 @@ class Profilbericht:
                 "fehler": self.summe("fehler"),
                 "ungeprueft": self.summe("ungeprueft"),
                 "warnungen": self.summe("warnungen"),
+                "informationen": self.summe("informationen"),
             },
             "je_typ": self.je_typ,
             "hinweise": self.hinweise,
@@ -274,7 +350,21 @@ def _valuesets_ohne_aufloesung(issues: list[dict]) -> set[str]:
         text = _text(i)
         if _NICHT_AUFLOESBAR.search(text):
             treffer = _VALUESET.search(text)
-            offen.add(treffer.group(1) if treffer else "*")
+            # Kein Name, kein Eintrag.
+            #
+            # Zuvor stand hier ein Platzhalter `"*"`, und der hob die Regel
+            # auf, die dieser Docstring verspricht: Sobald irgendeine
+            # Auflösungsklage ohne Namen auftrat, galt JEDER Befund des
+            # Laufs mit den Worten „value set" als ungeprüft — auch eine
+            # echte Bindungsverletzung gegen ein ValueSet, das der Server
+            # mühelos auflöst. Ausgelöst hätte das schon eine Meldung wie
+            # „Unknown code system …", und genau die dokumentiert codes.py
+            # für ICD-10-GM und ATC als Normalfall.
+            #
+            # Wer nicht sagen kann, WELCHES ValueSet unauflösbar war, kann
+            # auch nicht behaupten, es sei genau dieses gewesen.
+            if treffer:
+                offen.add(treffer.group(1))
     return offen
 
 
@@ -292,7 +382,7 @@ def _ort(issue: dict) -> str:
 
 
 def bewerte(issues: list[dict]) -> list[Befund]:
-    """Ordnet die Befunde des Validators den drei Spalten zu."""
+    """Ordnet die Befunde des Validators den vier Spalten zu."""
     offen = _valuesets_ohne_aufloesung(issues)
     befunde = []
     for i in issues:
@@ -302,7 +392,7 @@ def bewerte(issues: list[dict]) -> list[Befund]:
             # „nicht im ValueSet gefunden" zählt nur dann als ungeprüft,
             # wenn genau dieses ValueSet in diesem Lauf nicht auflösbar war.
             treffer = _VALUESET.search(text)
-            if treffer and ("*" in offen or treffer.group(1) in offen):
+            if treffer and treffer.group(1) in offen:
                 ungeprueft = True
         befunde.append(
             Befund(
@@ -388,7 +478,49 @@ def pruefe_gegen_profile(
             raise ProfilFehler(
                 f"{typ}/$validate lieferte kein JSON (HTTP {antwort.status_code})"
             ) from exc
-        issues = oo.get("issue", []) if oo.get("resourceType") == "OperationOutcome" else []
+        # Kein OperationOutcome heisst: nicht validiert.
+        #
+        # Zuvor stand hier ein stilles `else []`. Eine Antwort, die kein
+        # OperationOutcome war, ergab damit null Befunde — und die
+        # Ressource galt als GEPRÜFT, fehlerfrei und konform. Der
+        # HTTP-Status wurde dabei nie angesehen. Ein Gateway, das
+        # `$validate` mit 401 und einem JSON-Körper beantwortet, während
+        # es `/metadata` durchlässt, hätte so einen makellosen
+        # Konformitätsbericht über einen Lauf erzeugt, in dem nichts
+        # validiert wurde.
+        if oo.get("resourceType") != "OperationOutcome":
+            raise ProfilFehler(
+                f"{typ}/$validate antwortete mit HTTP {antwort.status_code} "
+                f"und keinem OperationOutcome (resourceType: "
+                f"{oo.get('resourceType') or 'fehlt'}). Damit wurde nichts "
+                "validiert. Das ist keine Aussage über die Daten, sondern "
+                "eine ungültige Messung."
+            )
+
+        issues = oo.get("issue", [])
+
+        # Der Server kennt das Profil nicht.
+        #
+        # Das kommt als gewöhnlicher `error` herein und wäre von einem
+        # echten Datenfehler nicht zu unterscheiden: Eine Messung gegen
+        # den Validierungsserver der CI läse sich als Bericht über
+        # schlechte Daten, obwohl gar nichts gegen ISiK geprüft wurde.
+        # Nachgemessen gegen einen HAPI ohne die Pakete lautet die
+        # Meldung „Invalid profile. Failed to retrieve profile with
+        # url=…", ein Fehler je Ressource.
+        #
+        # Damit hängt die Zusage „gemessen gegen PAKET PAKETVERSION" nicht
+        # mehr allein an zwei Konstanten in dieser Datei.
+        for i in issues:
+            if _PROFIL_UNBEKANNT.search(_text(i)):
+                raise ProfilFehler(
+                    f"Der Server {basis} kennt das Profil {profil} nicht: "
+                    f"{_text(i)[:200]}\n"
+                    "  Hat er die ISiK-Pakete geladen? Der Messaufbau ist "
+                    "docs/belege/docker-compose.isik.yml — nicht der "
+                    "Validierungsserver der CI."
+                )
+
         bericht.ergebnisse.append(
             Profilergebnis(
                 ressourcentyp=str(typ),

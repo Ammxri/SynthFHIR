@@ -28,7 +28,23 @@ DEFAULT_BASE_URL = "http://localhost:11434/v1"  # Ollama
 
 # OpenAI nennt den Abbruchgrund anders als Anthropic; vereinheitlicht, damit
 # der aufrufende Code nur eine Schreibweise kennen muss.
-FINISH_REASON = {"length": "max_tokens", "stop": "end_turn"}
+#
+# Zuvor war das ein exakter, kleinschreibungsempfindlicher Vergleich auf
+# `"length"`. Ein Anbieter, der `MAX_TOKENS` oder `model_length` meldet,
+# schaltete die Erkennung damit ab: `abgeschnitten` blieb False, und der
+# Fehlschlag wurde als „kein Feld 'patienten' — vermutlich ein Bruchstück"
+# verbucht. Der Betreiber suchte dann beim Modell statt bei `max_tokens` —
+# genau die Unterscheidung, die in Phase 0 eine ganze Messreihe gekostet
+# hat. Dieses Modul wirbt ausdrücklich mit Groq, OpenRouter, Mistral und
+# Google AI Studio; auf eine gemeinsame Schreibweise ist kein Verlass.
+FINISH_REASON = {
+    "length": "max_tokens",
+    "max_tokens": "max_tokens",
+    "model_length": "max_tokens",
+    "stop": "end_turn",
+    "end_turn": "end_turn",
+    "stop_sequence": "end_turn",
+}
 
 # Voreinstellung für die Antwortlänge. Der Wert MUSS zu dem Prompt passen,
 # den dieser Code ausliefert: Anbieter rechnen `max_tokens` in die
@@ -83,6 +99,10 @@ class LLMAntwort:
     ausgabe_token: int
     dauer_s: float
     abbruchgrund: str | None = None
+    # Die Grenze, gegen die dieser Aufruf lief. Für den Rückfall unten:
+    # Ohne sie hinge die Erkennung allein an der Schreibweise, die der
+    # Anbieter für „length" gewählt hat.
+    token_grenze: int | None = None
 
     @property
     def abgeschnitten(self) -> bool:
@@ -92,8 +112,18 @@ class LLMAntwort:
         unparsbar, aber die Ursache liegt in der Konfiguration, nicht beim
         Modell. Wer beides zusammenwirft, misst Konfigurationsfehler als
         Modellversagen.
+
+        Zwei Wege, und der zweite ist der Rückfall: Meldet ein Anbieter den
+        Abbruchgrund in einer Schreibweise, die `FINISH_REASON` nicht kennt,
+        bleibt immer noch die Zahl. Wer die Grenze ausgeschöpft hat, wurde
+        abgeschnitten — auch wenn er es anders nennt.
         """
-        return self.abbruchgrund == "max_tokens"
+        if self.abbruchgrund == "max_tokens":
+            return True
+        return (
+            self.token_grenze is not None
+            and self.ausgabe_token >= self.token_grenze > 0
+        )
 
 
 class LLMClient(ABC):
@@ -212,7 +242,10 @@ class OpenAIKompatiblerClient(LLMClient):
             eingabe_token=int(verbrauch.get("prompt_tokens") or 0),
             ausgabe_token=int(verbrauch.get("completion_tokens") or 0),
             dauer_s=dauer,
-            abbruchgrund=FINISH_REASON.get(str(grund), str(grund) if grund else None),
+            abbruchgrund=FINISH_REASON.get(
+                str(grund).strip().lower(), str(grund) if grund else None
+            ),
+            token_grenze=self.max_tokens,
         )
 
     # -- interne Hilfen -----------------------------------------------------
@@ -303,15 +336,55 @@ class OpenAIKompatiblerClient(LLMClient):
 class FesterClient(LLMClient):
     """Liefert vorgegebene Antworten — für Tests, nie für den Betrieb."""
 
-    def __init__(self, antworten: list[str] | str) -> None:
+    def __init__(
+        self,
+        antworten: list[str] | str,
+        *,
+        wiederhole_letzte: bool | None = None,
+    ) -> None:
         self.antworten = [antworten] if isinstance(antworten, str) else list(antworten)
         self.aufrufe: list[tuple[str, str]] = []
+        self._naechste = 0
+        # Eine EINZELNE Antwort ist die übliche Attrappe für „der Aufruf
+        # gelingt" und darf sich wiederholen. Eine LISTE ist dagegen eine
+        # Erwartung: genau diese Antworten, in dieser Reihenfolge.
+        self.wiederhole_letzte = (
+            len(self.antworten) == 1
+            if wiederhole_letzte is None
+            else wiederhole_letzte
+        )
 
     def frage(self, *, system: str, benutzer: str) -> LLMAntwort:
+        """Die nächste vorgegebene Antwort.
+
+        Zuvor stand hier
+
+            text = self.antworten.pop(0) if len(self.antworten) > 1 \\
+                   else self.antworten[0]
+
+        und damit ging die Liste nie aus: Beim letzten Eintrag hörte das
+        Entnehmen auf, und jeder weitere Aufruf bekam ihn erneut. Die
+        Schutzabfrage darüber (`if not self.antworten`) konnte nach der
+        Konstruktion nie feuern — toter Code.
+
+        Für ein Projekt, dessen Wiederholversuche und Teilaufrufe genau
+        daran hängen, ist das eine Messlücke im Werkzeug selbst: Ein Test,
+        der drei Antworten hinterlegt und fünf Aufrufe auslöst, konnte
+        „öfter gefragt als vorgesehen" grundsätzlich nicht bemerken.
+        """
         self.aufrufe.append((system, benutzer))
         if not self.antworten:
-            raise LLMFehler("Keine weitere vorgegebene Antwort vorhanden.")
-        text = self.antworten.pop(0) if len(self.antworten) > 1 else self.antworten[0]
+            raise LLMFehler("Keine vorgegebene Antwort vorhanden.")
+        if self._naechste >= len(self.antworten):
+            if not self.wiederhole_letzte:
+                raise LLMFehler(
+                    f"Der Code hat {len(self.aufrufe)} Mal gefragt, vorgegeben "
+                    f"sind {len(self.antworten)} Antworten."
+                )
+            text = self.antworten[-1]
+        else:
+            text = self.antworten[self._naechste]
+            self._naechste += 1
         return LLMAntwort(
             text=text,
             modell="fest",
@@ -320,6 +393,31 @@ class FesterClient(LLMClient):
             dauer_s=0.0,
             abbruchgrund="end_turn",
         )
+
+
+def _zahl_aus_umgebung(name: str, vorgabe: str, wandler):
+    """Liest eine Zahl aus der Umgebung — und scheitert wie alle anderen.
+
+    `int(os.environ.get(...))` warf bei einem unlesbaren Wert einen
+    `ValueError`. Alle Aufrufer fangen aber ausschliesslich `LLMFehler`
+    (`cli.py`, `web/oberflaeche.py`, `web/api.py`), also brach die
+    Kommandozeile mit einem Traceback ab und die Weboberfläche antwortete
+    mit 500 statt mit 503.
+
+    Das trifft keinen Sonderfall: `SYNTHFHIR_LLM_MAX_TOKENS` wird in
+    `.env.example` ausdrücklich als Stellschraube beworben, ist also zum
+    Verstellen gedacht — und `4.5k` ist eine naheliegende Schreibweise.
+    """
+    roh = os.environ.get(name)
+    if roh is None or not roh.strip():
+        roh = vorgabe
+    try:
+        return wandler(roh.strip())
+    except ValueError:
+        raise LLMFehler(
+            f"{name} ist auf {roh.strip()!r} gesetzt und ist keine Zahl.",
+            art="nicht_konfiguriert",
+        ) from None
 
 
 # Ein Schlüssel darf nur druckbare ASCII-Zeichen enthalten. Das ist keine
@@ -398,8 +496,8 @@ def client_mit_fremdschluessel(
         modell=gewaehlt,
         basis_url=basis_url,
         api_schluessel=roh,
-        max_tokens=int(
-            os.environ.get("SYNTHFHIR_LLM_MAX_TOKENS", str(STANDARD_MAX_TOKENS))
+        max_tokens=_zahl_aus_umgebung(
+            "SYNTHFHIR_LLM_MAX_TOKENS", str(STANDARD_MAX_TOKENS), int
         ),
         timeout_s=timeout_s,
         versuche=versuche,
@@ -423,9 +521,9 @@ def client_aus_umgebung() -> LLMClient:
     return OpenAIKompatiblerClient(
         modell=modell,
         basis_url=os.environ.get("SYNTHFHIR_LLM_BASE_URL") or None,
-        temperatur=float(os.environ.get("SYNTHFHIR_LLM_TEMPERATURE", "0.7")),
-        max_tokens=int(
-            os.environ.get("SYNTHFHIR_LLM_MAX_TOKENS", str(STANDARD_MAX_TOKENS))
+        temperatur=_zahl_aus_umgebung("SYNTHFHIR_LLM_TEMPERATURE", "0.7", float),
+        max_tokens=_zahl_aus_umgebung(
+            "SYNTHFHIR_LLM_MAX_TOKENS", str(STANDARD_MAX_TOKENS), int
         ),
     )
 

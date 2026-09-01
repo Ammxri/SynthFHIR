@@ -117,24 +117,29 @@ def _tabelle(b: Profilbericht) -> str:
         f"  Server:            {b.server} (FHIR {b.fhir_version})",
         f"  Terminologieserver: {b.terminologieserver}",
         "",
-        f"  {'Typ':<22}{'geprüft':>9}{'Fehler':>9}{'ungeprüft':>11}{'Warnungen':>11}",
-        f"  {'-' * 62}",
+        f"  {'Typ':<22}{'geprüft':>9}{'Fehler':>9}{'ungeprüft':>11}"
+        f"{'Warnungen':>11}{'Hinweise':>10}",
+        f"  {'-' * 72}",
     ]
     for typ, z in sorted(b.je_typ.items()):
         zeilen.append(
             f"  {typ:<22}{z['geprueft']:>9}{z['fehler']:>9}"
-            f"{z['ungeprueft']:>11}{z['warnungen']:>11}"
+            f"{z['ungeprueft']:>11}{z['warnungen']:>11}{z['informationen']:>10}"
         )
     zeilen.append(
         f"  {'SUMME':<22}{len(b.ergebnisse):>9}{b.summe('fehler'):>9}"
         f"{b.summe('ungeprueft'):>11}{b.summe('warnungen'):>11}"
+        f"{b.summe('informationen'):>10}"
     )
     for h in b.hinweise:
         zeilen.append(f"\n  Hinweis: {h}")
     zeilen.append(
         "\n  'ungeprüft' heißt: Der Validator konnte es nicht entscheiden —\n"
         "  nicht, dass es richtig ist. Ohne Terminologieserver bleibt jede\n"
-        "  Bindung an SNOMED, LOINC, ICD-10-GM und ATC in dieser Spalte."
+        "  Bindung an SNOMED, LOINC, ICD-10-GM und ATC in dieser Spalte.\n"
+        "\n  'Hinweise' sind Befunde vom Schweregrad 'information': erlaubt,\n"
+        "  erwähnenswert, keine Beanstandung. Sie standen zuvor unter den\n"
+        "  Warnungen und liessen deren Zahl grösser erscheinen, als sie ist."
     )
     return "\n".join(zeilen)
 

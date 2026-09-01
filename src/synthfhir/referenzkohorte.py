@@ -12,16 +12,33 @@ wichtigste:
      Normalfall.
   2. **Mehrfach** — zwei Begegnungen, zwei Diagnosen. Deckt die
      Kennungsvergabe über mehrere Ressourcen desselben Typs ab.
-  3. **Ohne Begegnung** — und genau deshalb dabei.
+  3. **Ohne Begegnung in den Parametern** — und genau deshalb dabei.
 
 Der dritte Fall ist der, den die erste Sondierung übersehen hat. ISiK
 verlangt über `isik-con1`, dass eine kodierte Diagnose auf den Kontakt
 verweist, in dem sie gestellt wurde. Eine Messkohorte, in der jeder Patient
-eine Begegnung hat, läuft daran vorbei und meldet eine Konformität, die es
-nicht gibt.
+eine Begegnung liefert, läuft daran vorbei und meldet eine Konformität, die
+es nicht gibt.
 
-Ein Messaufbau, der nur den Fall enthält, der ohnehin durchgeht, misst
-nichts. Dieser Fall gehört hierher, gerade **weil** er scheitert.
+**Seine Rolle hat sich seit ADR-009 gedreht.** Damals scheiterte er, und
+das war sein Zweck; hier stand deshalb einmal „Dieser Fall gehört hierher,
+gerade **weil** er scheitert." Heute ergänzt der Bauweg den Kontakt
+selbsttätig (`templates.py`), und derselbe Patient belegt die Zusage statt
+der Lücke: An ihm zeigt sich, dass der Code die strukturelle Zusage
+wirklich herstellt und nicht bloss dort konform ist, wo das Modell
+mitgespielt hat. Ihn zu entfernen, weil er jetzt durchgeht, hiesse die
+Messung um genau den Fall zu erleichtern, der sie einmal gerettet hat.
+
+Was er seither **nicht** mehr leistet: Er beweist nicht, dass der Validator
+den Verstoss überhaupt noch fände. Das kann eine Kohorte, in der jeder Fall
+durchgeht, grundsätzlich nicht — und ein Ausbleiben des Befundes belegt
+dann nichts. Ein Messaufbau, der nur Fälle enthält, die ohnehin durchgehen,
+misst nichts.
+
+Diesen Beweis führt deshalb die Negativkontrolle in
+`test_isik_con1_wird_ueberhaupt_noch_gefunden`: Sie nimmt eine gebaute
+Diagnose, entfernt genau den Kontakt und zeigt, dass der Befund dann
+auftritt. Erst zusammen sagen die beiden Tests etwas aus.
 """
 
 from __future__ import annotations
@@ -67,7 +84,11 @@ PARAMETER: dict = {
             "medikamente": [{"code": "C09AA05", "beginn": "2010-06-01"}],
         },
         {
-            # OHNE Begegnung — der Fall, an dem isik-con1 greift.
+            # OHNE Begegnung in den Parametern. Seit ADR-009 ergänzt der
+            # Bauweg sie — dieser Patient ist deshalb der Beleg dafür, dass
+            # er das wirklich tut, und nicht mehr der Fall, an dem
+            # isik-con1 greift. Dass der Befund überhaupt noch auftreten
+            # kann, zeigt die Negativkontrolle im Test.
             "vorname": "Ayşe",
             "nachname": "Öztürk",
             "geschlecht": "female",

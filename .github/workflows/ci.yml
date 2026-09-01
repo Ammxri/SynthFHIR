@@ -8,6 +8,17 @@
 # Deshalb setzt dieser Workflow SYNTHFHIR_REQUIRE_HAPI=1. Damit wird ein
 # nicht erreichbarer Server zum Fehlschlag statt zu einem stillen
 # Übersprung, und die Auflage kann nicht versehentlich verfallen.
+#
+# Seit ADR-017 gilt dasselbe für den ZWEITEN Server, den mit den
+# ISiK-Paketen. Er sichert die Zusage aus ADR-009 — die fünf Felder und
+# den Kontakt zu jeder kodierten Diagnose. Was er ausdrücklich NICHT
+# verspricht: dass SynthFHIR ISiK-konform ist. Das ist eine offene
+# Produktfrage; hier wird nur verhindert, dass eine getroffene
+# Entscheidung stillschweigend zurückgeht.
+#
+# Beide Server starten parallel. Gemessen am 2026-09-01: der einfache ist
+# nach 53,2 s bereit, der mit den vier Paketen nach 57,3 s — der Aufschlag
+# beträgt gut vier Sekunden, nicht die doppelte Wartezeit.
 
 name: CI
 
@@ -22,7 +33,7 @@ jobs:
 
     services:
       hapi:
-        image: hapiproject/hapi:latest
+        image: hapiproject/hapi:v8.10.0-3
         ports:
           - 8080:8080
         env:
@@ -30,11 +41,37 @@ jobs:
           hapi.fhir.allow_external_references: "true"
           hapi.fhir.enforce_referential_integrity_on_write: "false"
 
+      # Der Profilserver. Inhaltsgleich mit
+      # docs/belege/docker-compose.isik.yml — wer dort die Paketversionen
+      # ändert, muss es hier auch tun, sonst misst die CI etwas anderes als
+      # der Messaufbau.
+      hapi-isik:
+        image: hapiproject/hapi:v8.10.0-3
+        ports:
+          - 8090:8080
+        env:
+          hapi.fhir.fhir_version: R4
+          hapi.fhir.allow_external_references: "true"
+          hapi.fhir.enforce_referential_integrity_on_write: "false"
+          hapi.fhir.implementationguides.isik.name: de.gematik.isik-basismodul
+          hapi.fhir.implementationguides.isik.version: 4.0.3
+          # Die Module für Observation und MedicationStatement (ADR-014).
+          hapi.fhir.implementationguides.vital.name: de.gematik.isik-vitalparameter
+          hapi.fhir.implementationguides.vital.version: 4.0.2
+          hapi.fhir.implementationguides.medi.name: de.gematik.isik-medikation
+          hapi.fhir.implementationguides.medi.version: 4.0.3
+          hapi.fhir.implementationguides.basisprofil.name: de.basisprofil.r4
+          hapi.fhir.implementationguides.basisprofil.version: 1.5.3
+
     env:
       # Ohne diese Variable würden die HAPI-Tests übersprungen statt zu
       # scheitern - siehe tests/conftest.py.
       SYNTHFHIR_REQUIRE_HAPI: "1"
       SYNTHFHIR_FHIR_BASE_URL: http://localhost:8080/fhir
+      # Dasselbe für die Profilmessung, seit ADR-017. Ohne die Variable
+      # liefe in der CI weder die Messung noch ihre Negativkontrolle.
+      SYNTHFHIR_REQUIRE_PROFIL: "1"
+      SYNTHFHIR_PROFIL_URL: http://localhost:8090/fhir
 
     steps:
       - uses: actions/checkout@v4
@@ -47,19 +84,30 @@ jobs:
       - name: Abhängigkeiten installieren
         run: python -m pip install -e ".[dev]"
 
-      - name: Auf HAPI warten
+      - name: Auf beide Server warten
         # Der Java-Server braucht nach dem Containerstart noch ein bis drei
         # Minuten, bis /metadata antwortet.
+        #
+        # Nacheinander gewartet, aber parallel gestartet: Wenn 8080
+        # antwortet, hat 8090 dieselbe Zeit gehabt. Gemessen ist der
+        # Unterschied gut vier Sekunden, das Paketladen fällt also kaum
+        # ins Gewicht.
         run: |
-          for i in $(seq 1 60); do
-            if curl -sf http://localhost:8080/fhir/metadata > /dev/null; then
-              echo "HAPI bereit nach ca. $((i*5))s"
-              exit 0
+          for port in 8080 8090; do
+            bereit=""
+            for i in $(seq 1 60); do
+              if curl -sf "http://localhost:$port/fhir/metadata" > /dev/null; then
+                echo "Port $port bereit nach ca. $((i*5))s"
+                bereit=ja
+                break
+              fi
+              sleep 5
+            done
+            if [ -z "$bereit" ]; then
+              echo "Port $port wurde nicht rechtzeitig bereit"
+              exit 1
             fi
-            sleep 5
           done
-          echo "HAPI wurde nicht rechtzeitig bereit"
-          exit 1
 
       - name: Tests des Produkts
         run: python -m pytest tests -q

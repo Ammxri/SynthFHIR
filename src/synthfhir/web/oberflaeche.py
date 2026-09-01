@@ -31,8 +31,8 @@ from ..generation import Ergebnis, generiere
 from ..llm import (
     LLMClient,
     LLMFehler,
-    OpenAIKompatiblerClient,
     client_aus_umgebung,
+    client_mit_fremdschluessel,
 )
 from ..prompts import MAX_PATIENTEN
 from .. import szenarien as szen
@@ -94,6 +94,59 @@ GESAMTBREMSE = Ratenbremse(
 # Ein fester Name: Diese Bremse unterscheidet keine Aufrufer.
 GESAMT = "betreiberschluessel"
 
+# Zeitgrenzen des Oberflächenpfads. Sie sind bewusst weiter als die des
+# programmatischen Zugangs — hier wartet ein Mensch, der zusieht, dort ein
+# Programm. Sie stehen als benannte Werte hier, weil die Fabrik
+# `client_mit_fremdschluessel` die knapperen API-Werte vorgibt und diese
+# Seite sie ausdrücklich überschreibt, statt sie stillschweigend zu erben.
+EIGENER_TIMEOUT_S = 180.0
+EIGENER_VERSUCHE = 3
+
+# Grösse des Anfragekörpers. Starlette begrenzt nichts: Es sammelt
+# sämtliche Teile mit `b"".join(chunks)`, ohne je die Grösse zu prüfen.
+# `/export` nahm damit beliebig grosse Körper an, parste sie als JSON und
+# baute bei `art=ndjson` zusätzlich ein ZIP im Speicher — wenige
+# gleichzeitige Anfragen zu je 100 MB genügten, um die kostenlose Instanz
+# umzubringen. Keine Modellkosten, aber Ausfall.
+#
+# Die Grenze ist grosszügig, weil `/export` rechtmässig ein ganzes Bundle
+# trägt: 200 Patienten ergeben rund 1000 Ressourcen. 8 MB sind ein
+# Vielfaches davon und immer noch eine Grenze.
+#
+# Sie sitzt in einer Middleware und nicht in der Route, und das ist keine
+# Stilfrage: FastAPI liest den Körper vollständig ein, BEVOR es die
+# Abhängigkeiten einer Route auflöst. Eine Prüfung in der Route käme zu
+# spät — der Speicher wäre schon belegt.
+KOERPER_HOECHSTGROESSE = 8 * 1024 * 1024
+
+@app.middleware("http")
+async def begrenze_koerper(request: Request, call_next):
+    """Weist zu grosse Anfragekörper ab, bevor sie im Speicher landen.
+
+    Geprüft wird `Content-Length`, nicht der gelesene Körper — der Sinn
+    der Grenze ist ja gerade, ihn nicht zu lesen. Fehlt der Kopf, wird
+    nichts abgewiesen: Browser senden ihn bei Formularen immer, und ein
+    Abweisen ohne Kopf träfe nur redliche Sonderfälle.
+
+    Der programmatische Zugang hat seine eigene, viel engere Grenze von
+    64 KB. Diese hier ersetzt sie nicht, sie liegt darüber.
+    """
+    laenge = request.headers.get("content-length")
+    if laenge is not None:
+        try:
+            zu_gross = int(laenge) > KOERPER_HOECHSTGROESSE
+        except ValueError:
+            # Ein unlesbares Content-Length ist selbst schon ein Grund.
+            zu_gross = True
+        if zu_gross:
+            return PlainTextResponse(
+                f"Der Anfragekörper ist grösser als "
+                f"{KOERPER_HOECHSTGROESSE // (1024 * 1024)} MB.",
+                status_code=413,
+            )
+    return await call_next(request)
+
+
 BEISPIELE = [
     "Eine 68-jährige Patientin mit Diabetes Typ 2 und HbA1c-Verlauf über ein Jahr",
     "Drei Patienten mit chronischer Nierenkrankheit, je Kreatinin und eGFR",
@@ -127,6 +180,13 @@ def erzeugen(
     beschreibung: str = Form(""),
     eigener_schluessel: str = Form(""),
 ):
+    # Die Grenzen des programmatischen Zugangs. Lokal importiert, weil
+    # `api.py` nichts aus dieser Datei kennt und diese Richtung so bleiben
+    # soll — siehe `_haenge_api_ein` am Dateiende. Der lokale Import hat
+    # nebenbei den Vorzug, dass ein zur Laufzeit ersetzter Deckel auch
+    # hier gilt.
+    from .api import BESCHREIBUNG_HOECHSTLAENGE, GLEICHZEITIG, _plaetze
+
     kontext: dict = {
         "beispiele": BEISPIELE,
         "szenarien": szen.alle(),
@@ -135,21 +195,92 @@ def erzeugen(
         "demo_anfragen": BREMSE.anfragen,
     }
 
+    # Die Eingabe zuerst, und zwar VOR jeder Bremse.
+    #
+    # Zuvor verbuchten beide Bremsen ihren Platz, bevor irgendetwas geprüft
+    # war. 30 Anfragen mit leerer Beschreibung sperrten die Demo für den
+    # Rest des Zeitfensters für jeden anonymen Besucher — ohne dass ein
+    # einziger Token entstanden wäre, denn `generiere` bricht bei leerer
+    # Beschreibung ab, ohne je ein Modell zu fragen. `api.py` macht es
+    # ausdrücklich umgekehrt („Vor dem Modellaufruf, damit kein Kontingent
+    # verbrennt"); die Oberfläche hatte diese Prüfung nicht.
+    if not beschreibung.strip():
+        kontext["eingabefehler"] = "Die Beschreibung ist leer."
+        return vorlagen.TemplateResponse(
+            request, "index.html", kontext, status_code=400
+        )
+    if len(beschreibung) > BESCHREIBUNG_HOECHSTLAENGE:
+        # Ohne Grenze ging die Beschreibung ungeprüft in den Prompt — auf
+        # Rechnung des Betreibers. Die Bremse zählt Anfragen, nicht Token:
+        # Fünf erlaubte Anfragen einer Adresse konnten damit ein
+        # Vielfaches des angenommenen Verbrauchs auslösen. Der API-Pfad
+        # begrenzt seit ADR-011 auf denselben Wert, die Oberfläche nicht.
+        kontext["eingabefehler"] = (
+            f"Die Beschreibung ist länger als "
+            f"{BESCHREIBUNG_HOECHSTLAENGE} Zeichen."
+        )
+        # Nicht ungekürzt zurückschreiben: Sonst trüge die Antwort die
+        # ganze überlange Eingabe noch einmal aus.
+        kontext["beschreibung"] = beschreibung[:BESCHREIBUNG_HOECHSTLAENGE]
+        return vorlagen.TemplateResponse(
+            request, "index.html", kontext, status_code=400
+        )
+
     schluessel = eigener_schluessel.strip()
     # Der eigene Schlüssel wird ausschließlich für diesen einen Aufruf
     # benutzt: nicht gespeichert, nicht protokolliert und nicht in die Seite
     # zurückgeschrieben. Deshalb steht er auch nirgends im Kontext.
+    platz_belegt = False
     if schluessel:
         try:
-            client = OpenAIKompatiblerClient(
+            # Über die Fabrik, nicht am Konstruktor vorbei.
+            #
+            # Zuvor stand hier `OpenAIKompatiblerClient(...)` direkt, und
+            # das umging beide Riegel aus `llm.py`: die Musterprüfung auf
+            # druckbares ASCII und die Längengrenze. Die Folge war
+            # nachgemessen: `requests` wirft bei einem Zeilenumbruch im
+            # Kopfwert eine `InvalidHeader`, DEREN MELDUNG DEN WERT
+            # ENTHÄLT — `frage()` bettet sie mit `{exc}` in den `LLMFehler`
+            # ein, und von dort ging der fremde Schlüssel über
+            # `ergebnis.fehler` in genau die Seite, die der Kommentar
+            # darüber ausschliesst. Zweite Folge: 100 000 Zeichen gingen
+            # ungeprüft an den Anbieter hinaus.
+            #
+            # Die Fabrik verlangt zusätzlich eine gesetzte Basis-URL. Das
+            # ist kein Beiwerk, sondern ihr dritter Riegel: Ohne
+            # `SYNTHFHIR_LLM_BASE_URL` griff hier die Vorgabe, und die
+            # zeigt auf ein lokales Ollama — der Schlüssel eines Fremden
+            # wäre an einen Dienst gegangen, den niemand gemeint hat.
+            client = client_mit_fremdschluessel(
+                schluessel,
                 modell=os.environ.get("SYNTHFHIR_LLM_MODEL", "").strip()
                 or "openai/gpt-oss-120b",
-                basis_url=os.environ.get("SYNTHFHIR_LLM_BASE_URL") or None,
-                api_schluessel=schluessel,
+                timeout_s=EIGENER_TIMEOUT_S,
+                versuche=EIGENER_VERSUCHE,
             )
         except LLMFehler as exc:
             kontext["konfigurationsfehler"] = str(exc)
             return vorlagen.TemplateResponse(request, "index.html", kontext, status_code=503)
+
+        # Der Gleichzeitigkeitsdeckel, den bisher nur `/api/v1` hatte.
+        #
+        # Alle Routen dieser App sind synchron definiert, FastAPI führt sie
+        # also im Threadpool aus (Vorgabe 40 Plätze) — geteilt mit dem
+        # API-Pfad. Ein Lauf kann Minuten belegen. Die Begründung des
+        # Deckels in ADR-011 lautet wörtlich: „Ohne diesen Deckel könnte
+        # ein Aufrufer mit gültigem eigenem Schlüssel die Seite für alle
+        # anderen unbenutzbar machen." Das trifft auf diese Stelle genauso
+        # zu — nur stand der Deckel bisher nicht hier.
+        #
+        # Der Betreiberpfad braucht ihn nicht: Dort deckeln die Bremsen.
+        if not _plaetze.acquire(blocking=False):
+            kontext["ausgelastet"] = True
+            kontext["gleichzeitig"] = GLEICHZEITIG
+            return vorlagen.TemplateResponse(
+                request, "index.html", kontext, status_code=429,
+                headers={"Retry-After": "30"},
+            )
+        platz_belegt = True
     else:
         # Reihenfolge mit Absicht: Die Bremse je Adresse zuerst, denn nur
         # eine erlaubte Anfrage verbraucht dort einen Platz. Andersherum
@@ -172,7 +303,15 @@ def erzeugen(
             kontext["konfigurationsfehler"] = str(exc)
             return vorlagen.TemplateResponse(request, "index.html", kontext, status_code=503)
 
-    ergebnis = generiere(client, beschreibung)
+    try:
+        ergebnis = generiere(client, beschreibung)
+    finally:
+        # In jedem Fall zurückgeben, auch wenn `generiere` scheitert: Ein
+        # nicht freigegebener Platz wäre für die Laufzeit des Prozesses
+        # verloren, und vier davon legten den eigenen Schlüsselpfad still.
+        if platz_belegt:
+            _plaetze.release()
+
     kontext["ergebnis"] = ergebnis
     kontext["ansicht"] = _ansicht(ergebnis)
     kontext["bundle_json"] = (
@@ -270,7 +409,19 @@ def _sicherer_name(dateiname: str, endung: str) -> str:
         if roh.lower().endswith(bekannt):
             roh = roh[: -len(bekannt)]
             break
-    basis = "".join(c for c in roh if c.isalnum() or c in "-_")[:60]
+    # `isalnum()` allein ist unicode-bewusst und liess damit alles durch,
+    # was irgendwo auf der Welt ein Buchstabe oder eine Ziffer ist.
+    # Nachgemessen: `_sicherer_name("日本語", ".json")` ergab `日本語.json`,
+    # und Starlette schreibt Kopfzeilenwerte als latin-1 — die Antwort
+    # endete als Serverfehler statt als Datei oder als 400. Gleiches für
+    # arabisch-indische Ziffern (`٠١`) und `Ⅸ`.
+    #
+    # Der Schutz gegen Pfaddurchquerung war davon nicht betroffen und
+    # bleibt: Kein Steuerzeichen ist alphanumerisch, `../../etc/passwd`
+    # wird zu `etcpasswd`.
+    basis = "".join(
+        c for c in roh if (c.isascii() and c.isalnum()) or c in "-_"
+    )[:60]
     return f"{basis or 'synthfhir'}{endung}"
 
 

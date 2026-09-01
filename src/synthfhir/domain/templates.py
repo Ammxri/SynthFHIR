@@ -85,6 +85,17 @@ _DATE_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
 FALLBACK_VORNAME = "Unbekannt"
 FALLBACK_NACHNAME = "Testperson"
 
+# Das Rückfalldatum, wenn das Modell keines oder ein unlesbares liefert.
+#
+# EINE Konstante für das ganze Modul, und das ist keine Aufräumarbeit:
+# `baue_condition` fiel auf 2020-01-01 zurück, `_kontaktdatum` auf
+# 2024-01-01. Lieferte das Modell ein unbrauchbares Diagnosedatum — etwa
+# „01.03.2021" im deutschen Format —, entstand eine Diagnose von 2020 und
+# ein vom Code ergänzter Kontakt von 2024: vier Jahre nach der Diagnose,
+# die er dokumentieren soll. Kein Validierungsfehler, aber ein
+# unplausibler Datensatz, den keine Prüfschicht meldet.
+RUECKFALLDATUM = "2020-01-01"
+
 
 @dataclass
 class Beanstandung:
@@ -107,6 +118,15 @@ class Bauergebnis:
 
     ressourcen: list[dict] = field(default_factory=list)
     beanstandungen: list[Beanstandung] = field(default_factory=list)
+
+    # Wie viele Kennungsplätze dieser Aufruf verbraucht hat.
+    #
+    # Nicht dasselbe wie die Zahl der gebauten Patienten: Ein Eintrag, der
+    # kein Objekt ist, wird übersprungen, verbraucht aber seinen Platz —
+    # `p_index` zählt über `enumerate(patienten)`. Wer den Versatz des
+    # nächsten Teils aus der Zahl der GEBAUTEN Patienten fortschreibt,
+    # lässt beide Zähler auseinanderlaufen und vergibt Kennungen doppelt.
+    plaetze_belegt: int = 0
 
     @property
     def erfundene_codes(self) -> int:
@@ -265,7 +285,7 @@ def baue_condition(
     weiterhin gültiges FHIR.
     """
     spec = _diagnosecode(params.get("code"), index, beanstandungen)
-    beginn = _datum(params.get("beginn"), "2020-01-01", beanstandungen, "beginn")
+    beginn = _datum(params.get("beginn"), RUECKFALLDATUM, beanstandungen, "beginn")
 
     codings = [{"system": SNOMED_SYSTEM, "code": spec.code, "display": spec.display}]
     if spec.hat_icd:
@@ -367,7 +387,7 @@ def baue_observation(
             "text": spec.display_de,
         },
         "subject": {"reference": f"Patient/tmp-pat-{patient_index}"},
-        "effectiveDateTime": _datum(params.get("datum"), "2024-01-01", beanstandungen, "datum"),
+        "effectiveDateTime": _datum(params.get("datum"), RUECKFALLDATUM, beanstandungen, "datum"),
         "valueQuantity": {
             "value": wert,
             "unit": spec.unit,       # menschenlesbar
@@ -535,12 +555,13 @@ def _kontaktdatum(patient: dict) -> str:
                 wert = e.get(schluessel) if isinstance(e, dict) else None
                 if isinstance(wert, str) and _DATE_RE.match(wert.strip()):
                     return wert.strip()
-    return "2024-01-01"
+    return RUECKFALLDATUM
 
 
 def baue_encounter(
     params: dict, patient_index: int, index: int,
-    beanstandungen: list[Beanstandung], teil: int = 0
+    beanstandungen: list[Beanstandung], teil: int = 0,
+    nummer_beim_patienten: int = 0,
 ) -> dict:
     """Encounter. Nur `status` und `class` sind Pflicht (je 1..1).
 
@@ -555,13 +576,17 @@ def baue_encounter(
     'coding'". Der Unterschied ist im JSON unsichtbar und im Editor
     unauffällig.
 
-    `type` bleibt leer. Es wäre schmückend, verlangte aber SNOMED-Codes für
-    Begegnungsarten — und jeder davon müsste einzeln an der Primärquelle
-    geprüft werden. Ein ungeprüfter Code ist teurer als ein fehlendes
-    optionales Feld.
+    `type` blieb bis ADR-009 leer: Es wäre schmückend gewesen, verlangte
+    aber Codes für Begegnungsarten, und jeder davon müsste einzeln an der
+    Primärquelle geprüft werden. Ein ungeprüfter Code ist teurer als ein
+    fehlendes optionales Feld. Seit ADR-009 steht es doch da — nicht als
+    Schmuck, sondern weil ISiK den Slice `type:Kontaktebene` verlangt, und
+    mit **einem** Code aus `http://fhir.de/CodeSystem/Kontaktebene`, der an
+    der Quelle geprüft ist. Der Absatz stand hier noch unverändert und sagte
+    das Gegenteil dessen, was sechs Zeilen weiter unten geschieht.
     """
     art = _begegnungsart(params.get("art"), beanstandungen)
-    datum = _datum(params.get("datum"), "2024-01-01", beanstandungen, "datum")
+    datum = _datum(params.get("datum"), RUECKFALLDATUM, beanstandungen, "datum")
     return {
         "resourceType": "Encounter",
         "id": f"tmp-enc-{teil}-{index}",
@@ -570,11 +595,30 @@ def baue_encounter(
         # Die Fallnummer. ISiK verlangt mindestens einen Identifier, und die
         # Typkodierung `VN` ist dort ein 1..1-Slice — ein Identifier ohne sie
         # erfüllt die Vorgabe nicht.
+        #
+        # Hier stand `FALL-{index + 1:04d}`, und `index` ist der
+        # TEIL-LOKALE Zähler: Er beginnt in jedem Teil wieder bei null.
+        # Damit vergab jeder Teil erneut FALL-0001, FALL-0002, … Bei 200
+        # Patienten und `TEILGROESSE = 8` war jede Fallnummer 25-fach
+        # vergeben. Die Patientennummer daneben war korrekt, weil sie am
+        # globalen `patient_index` hängt — der Unterschied war
+        # unauffällig, weil beide Zeilen gleich aussehen.
+        #
+        # Keine Prüfschicht schlug an: `assign_ids` macht die technische
+        # `id` über den Teilkenner eindeutig, und `check_resources` prüft
+        # `resourceType/id` — den fachlichen Identifier sah niemand an.
+        #
+        # Jetzt aus dem globalen Patientenzähler und der Nummer des
+        # Kontakts BEI DIESEM PATIENTEN. Das ist zugleich die Bedeutung,
+        # die eine Fallnummer im Haus hat: der wievielte Fall dieses
+        # Patienten. Ein teilübergreifend fortlaufender Zähler stünde hier
+        # nicht zur Verfügung — der Versatz wächst nur um die Zahl der
+        # Patienten, nicht der Kontakte.
         "identifier": [
             {
                 "type": {"coding": [{"system": V2_0203_SYSTEM, "code": "VN"}]},
                 "system": FALL_IDENTIFIER_SYSTEM,
-                "value": f"FALL-{index + 1:04d}",
+                "value": f"FALL-{patient_index + 1:04d}-{nummer_beim_patienten + 1}",
             }
         ],
         # Die Kontaktebene. Nicht zu verwechseln mit `class`: `class` sagt,
@@ -738,6 +782,9 @@ def baue_aus_parametern(
         b.append(Beanstandung("fehlendes_feld", "Parameterobjekt enthält keine Liste 'patienten'."))
         return ergebnis
 
+    # Jeder Eintrag verbraucht seinen Kennungsplatz, auch ein übersprungener.
+    ergebnis.plaetze_belegt = len(patienten)
+
     soll_p = erwartet.get("patienten")
     if soll_p is not None and len(patienten) != soll_p:
         b.append(
@@ -817,10 +864,11 @@ def baue_aus_parametern(
         budget -= len(begegnungen)
 
         erste_begegnung: str | None = None
-        for eintrag in begegnungen:
+        for k, eintrag in enumerate(begegnungen):
             ergebnis.ressourcen.append(
                 baue_encounter(eintrag if isinstance(eintrag, dict) else {},
-                               p_index, enc_index, b, index_versatz)
+                               p_index, enc_index, b, index_versatz,
+                               nummer_beim_patienten=k)
             )
             if erste_begegnung is None:
                 erste_begegnung = f"Encounter/tmp-enc-{index_versatz}-{enc_index}"

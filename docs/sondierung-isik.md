@@ -196,12 +196,31 @@ Patienten, ohne Modellaufruf, deterministisch. Das ist die Voraussetzung
 für einen Vergleich: Eine vom Modell erzeugte Kohorte ändert sich bei jedem
 Lauf, und dann misst man das Modell statt der Profilkonformität.
 
-Der dritte Patient hat **keine Begegnung** — absichtlich. Er ist der Fall,
-den die erste Messung übersehen hat, und der einzige, an dem `isik-con1`
-greift. Ein Messaufbau, der nur den Fall enthält, der ohnehin durchgeht,
-misst nichts.
+Der dritte Patient liefert **keine Begegnung** — absichtlich. Er ist der
+Fall, den die erste Messung übersehen hat. Ein Messaufbau, der nur den Fall
+enthält, der ohnehin durchgeht, misst nichts.
 
-### Stand am 2026-08-30
+> **Nachtrag vom 2026-09-01.** Hier stand weiter: „…und der einzige, an dem
+> `isik-con1` greift." Das trifft seit ADR-009 nicht mehr zu. Der Bauweg
+> ergänzt den Kontakt inzwischen selbst, und damit enthält der Messaufbau
+> **keinen** Fall mehr, an dem die Zwangsbedingung greifen könnte — also
+> genau den Zustand, vor dem der Satz davor warnt. Dieses Dokument
+> beschrieb sich selbst.
+>
+> Der Patient bleibt, aber in anderer Rolle: An ihm zeigt sich, dass der
+> Code die strukturelle Zusage herstellt. Dass der Validator den Verstoss
+> überhaupt noch **fände**, beweist er nicht — eine Kohorte, in der jeder
+> Fall durchgeht, kann das grundsätzlich nicht.
+>
+> Diesen Beweis führt seit dem 2026-09-01 eine Negativkontrolle
+> (`test_isik_con1_wird_ueberhaupt_noch_gefunden`): Sie entfernt den
+> Kontakt aus einer gebauten Diagnose und prüft, dass der Befund dann
+> auftritt — 1 Fehler statt 0, bei einem Feld Unterschied. Gemessen gegen
+> einen Server ohne die ISiK-Pakete wird sie rot, während der blosse
+> Abwesenheitstest daneben grün bliebe: Dort meldeten 11 Fehler, dass gar
+> nichts geprüft wurde, und „`isik-con1` kommt nicht vor" traf trotzdem zu.
+
+### Stand am 2026-08-30, vor ADR-009
 
 `de.gematik.isik-basismodul` 4.0.3, HAPI FHIR 4.0.1, **kein**
 Terminologieserver:
@@ -217,7 +236,60 @@ Observation und MedicationStatement sind nicht geprüft — das Basismodul
 kennt für sie kein Profil. Der Bericht weist das aus, statt sie
 stillschweigend zu überspringen.
 
-### Warum drei Spalten und nicht zwei
+### Stand am 2026-09-01
+
+Die Überschrift darüber lautete bis zum 2026-09-01 schlicht „Stand am
+2026-08-30" — und meinte damit den älteren von **zwei Ständen desselben
+Tages**, ohne es zu sagen. ADR-009 hat die 25 Fehler noch am selben Tag
+geschlossen, und der Beleg `docs/belege/isik-profilbericht.json` vom
+2026-08-30, 21:37 Uhr wies bereits 0 aus. Dieses Dokument hat es nicht
+mitgeteilt, und das README schickte die Leser für die Einordnung hierher.
+Sechs von acht Zahlen der Tabelle waren zu diesem Zeitpunkt überholt.
+
+Gemessen gegen denselben Aufbau, mit dem am 2026-09-01 berichtigten
+Messcode:
+
+| Typ | geprüft | Fehler | ungeprüft | Warnungen | Hinweise |
+|---|---|---|---|---|---|
+| Patient | 3 | 0 | 0 | 3 | 0 |
+| Encounter | 4 | 0 | 0 | 8 | 0 |
+| Condition | 4 | 0 | 8 | 4 | 4 |
+| **Summe** | **11** | **0** | **8** | **15** | **4** |
+
+Drei Unterschiede, und sie gehören auseinandergehalten — **einer betrifft
+die Ausgabe, zwei die Messung**:
+
+* **Encounter 3 → 4** *(Ausgabe)*. Der vierte ist der Kontakt, den der
+  Code seit ADR-009 für den Patienten ohne Begegnung ergänzt. Hier hat
+  sich wirklich etwas an den erzeugten Daten geändert.
+* **Warnungen 26 → 15 + 4 Hinweise** *(Messung)*. Die Spalte „Warnungen"
+  war als „alles, was nicht Fehler und nicht ungeprüft ist" definiert und
+  enthielt damit auch Befunde vom Schweregrad `information`. An der
+  Ausgabe hat sich nichts geändert, nur an der Zählung.
+* **Die Fehlerspalte ist belastbarer geworden** *(Messung)*. Siehe den
+  Nachtrag im nächsten Abschnitt: Der Zähler dahinter konnte zu niedrig
+  zählen. Dass er es hier nicht tat, war Zufall.
+
+> **Zum Zuschnitt dieser Tabelle.** Sie misst gegen **ein** Paket, das
+> ISiK-Basismodul, und deckt damit drei der fünf Ressourcentypen ab —
+> Observation und MedicationStatement waren zu diesem Zeitpunkt
+> unprofiliert, so wie es der Abschnitt „Was die Messung sonst noch
+> ergeben hat" beschreibt.
+>
+> Seit ADR-014 lädt der Messaufbau drei Module (Basismodul,
+> Vitalparameter, Medikation), und derselbe Befehl misst dann 14 statt 11
+> Ressourcen: **0 Fehler, 13 ungeprüft, 19 Warnungen, 14 Hinweise.** Die
+> Zahl der ungeprüften Befunde steigt, weil mehr geprüft wird — nicht,
+> weil etwas schlechter geworden wäre. Und sie ist seit ADR-013 auflösbar:
+> Der Referenzvalidator gegen einen Terminologieserver meldet für dieselbe
+> Kohorte 14 geprüft, 0 Fehler und **nichts ungeprüft**.
+>
+> Diese Tabelle bleibt trotzdem stehen. Sie ist der Stand, auf den sich
+> die Abwägung dieses Dokuments bezieht, und ein Stand ohne sein Datum und
+> seinen Zuschnitt ist keiner — das war der Fehler, den der Abschnitt
+> darüber beschreibt.
+
+### Warum vier Spalten und nicht zwei
 
 `ungeprüft` heißt: **Der Validator konnte es nicht entscheiden.** Nicht,
 dass es richtig ist.
@@ -236,7 +308,43 @@ Lauf** erklärt hat, dass er genau dieses ValueSet nicht auflösen kann.
 Ohne diese Klage bleibt es ein Fehler — sonst liesse sich jede
 Bindungsverletzung wegdeuten.
 
+> **Nachtrag vom 2026-09-01.** Die Regel stand hier scharf. Der Code hielt
+> sie nicht.
+>
+> Fand er zu einer Auflösungsklage keinen ValueSet-Namen, trug er einen
+> Platzhalter `"*"` ein — und danach galt **jeder** Befund des Laufs mit
+> den Worten „value set" als ungeprüft, auch eine echte
+> Bindungsverletzung gegen ein ValueSet, das der Server mühelos auflöst.
+> Ausgelöst hätte das schon eine Meldung wie „Unknown code system …", und
+> genau die ist für ICD-10-GM und ATC der dokumentierte Normalfall. Dazu
+> fing die Namenserkennung bei der kanonischen Klage „Unable to expand
+> ValueSet: cannot apply filters …" nicht den Namen, sondern das Wort
+> `cannot`: Der Abgleich „genau dieses ValueSet" verglich einen Mülltoken
+> und konnte per Namen nie zutreffen.
+>
+> **Die Zahlen dieser Seite waren davon nicht betroffen** — und das ist
+> Zufall, kein Verdienst. HAPI wiederholt die Expansionsklage wörtlich im
+> angehängten `error message = …`, sodass die acht Befunde schon an der
+> ersten Regel hängenbleiben und den Platzhalter nie brauchten. Hätte HAPI
+> diese Verschachtelung geändert, wäre der Bericht mitgewandert, ohne dass
+> es jemand bemerkt hätte.
+>
+> Ein dritter Fall stand hier nie: Antwortete der Server auf `$validate`
+> mit etwas anderem als einem `OperationOutcome`, zählte der Code null
+> Befunde, und die Ressource galt als geprüft, fehlerfrei und konform —
+> der HTTP-Status wurde nie angesehen. Und kannte der Server das Profil
+> nicht, meldete er das als gewöhnlichen `error`, ununterscheidbar von
+> einem Datenfehler; eine Messung gegen den falschen Server las sich als
+> Bericht über schlechte Daten.
+>
+> Alles drei ist am 2026-09-01 berichtigt. Wer nicht sagen kann,
+> **welches** ValueSet unauflösbar war, kann nicht behaupten, es sei genau
+> dieses gewesen; und wo nichts validiert wurde, wird jetzt abgebrochen
+> statt gezählt.
+
 ### Der Satz, der daraus folgt
+
+Der Stand **vor** ADR-009:
 
 > Gegen `de.gematik.isik-basismodul 4.0.3`, HAPI FHIR 4.0.1, ohne
 > Terminologieserver, Stand 2026-08-30: Patient 3 Fehler, Encounter 9,
@@ -244,7 +352,26 @@ Bindungsverletzung wegdeuten.
 > von 10 profilierten Ressourcen. Observation und MedicationStatement sind
 > im Basismodul nicht profiliert.
 
-Das ist ein Satz, den man nicht zurücknehmen muss.
+Das ist ein Satz, den man nicht zurücknehmen muss — er trägt sein Datum.
+Zurückzunehmen war nur, ihn ohne dieses Datum stehen zu lassen, während er
+längst überholt war. Ein Satz, den man nicht zurücknehmen muss, wird
+dadurch nicht zu einem, den man nicht fortschreiben muss.
+
+Der Stand seit dem 2026-09-01:
+
+> Gegen `de.gematik.isik-basismodul 4.0.3`, HAPI FHIR 4.0.1, ohne
+> Terminologieserver, Stand 2026-09-01: 0 Fehler und 8 ungeprüfte Befunde
+> über eine Referenzkohorte von 11 profilierten Ressourcen, dazu 15
+> Warnungen und 4 Hinweise. Observation und MedicationStatement sind im
+> Basismodul nicht profiliert.
+
+Und die Fussnote, die dazugehört, weil sie sonst niemand mitliest: „0
+Fehler" heisst genauer, dass `bewerte()` aus dem, was
+`pruefe_gegen_profile` als Befunde erkannt hat, keinen der Fehlerspalte
+zugeordnet hat. Das ist eine Aussage über die Daten **und** über den
+Messcode. Seit dem 2026-09-01 bricht dieser Code ab, statt zu zählen, wenn
+der Server nichts validiert hat oder das Profil nicht kennt — vorher hätte
+er in beiden Fällen eine Zahl geliefert.
 
 ## Offene Frage an die Entscheidung
 

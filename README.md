@@ -307,19 +307,22 @@ synthfhir-profil -o docs/belege/isik-profilbericht.json
 ```
 
 ```
-Typ                     geprüft   Fehler  ungeprüft  Warnungen
-Condition                     4        0          8          8
-Encounter                     4        0          0          8
-Patient                       3        0          0          3
-SUMME                        11        0          8         19
+Typ                     geprüft   Fehler  ungeprüft  Warnungen  Hinweise
+Condition                     4        0          8          4         4
+Encounter                     4        0          0          8         0
+MedicationStatement           2        0          2          2         6
+Observation                   1        0          3          2         4
+Patient                       3        0          0          3         0
+SUMME                        14        0         13         19        14
 ```
 
 Bei der ersten Messung waren es **25 Fehler**; [ADR-009](docs/adr-009-isik-konformitaet.md)
 hat sie geschlossen. **„0 Fehler" heißt aber nicht „ISiK-konform"** — die
-acht ungeprüften Befunde bleiben, solange kein Terminologieserver die
-SNOMED-Bindung entscheiden kann.
+dreizehn ungeprüften Befunde bleiben, solange kein Terminologieserver die
+Bindungen entscheiden kann. Genau das leisten die beiden nächsten
+Abschnitte.
 
-**Drei Spalten, nicht zwei.** `ungeprüft` heißt: Der Validator konnte es
+**Vier Spalten, nicht zwei.** `ungeprüft` heißt: Der Validator konnte es
 nicht entscheiden — nicht, dass es richtig ist. Ohne Terminologieserver
 bleibt jede Bindung an SNOMED, LOINC, ICD-10-GM und ATC in dieser Spalte.
 
@@ -386,11 +389,21 @@ unter `docs/belege/`.
 Näheres in [ADR-013](docs/adr-013-terminologienachweis.md).
 Solche Befunde als Fehler zu zählen machte das Ergebnis schlechter, als es
 ist; sie zu verschweigen besser. Beides wäre Schönfärberei mit Zahlen.
+`Hinweise` sind Befunde vom Schweregrad `information` — erlaubt,
+erwähnenswert, keine Beanstandung. Sie standen bis zum 2026-09-01 unter
+den Warnungen und liessen deren Zahl grösser erscheinen, als sie ist: Von
+den damals ausgewiesenen 19 waren 4 Hinweise.
 
 Gemessen wird eine feste Referenzkohorte ohne Modellaufruf — sonst
-verglichen zwei Läufe verschiedene Daten. Einer der drei Patienten hat
-**keine** Begegnung: Er ist der Fall, an dem `isik-con1` greift, und er
-gehört dazu, *weil* er scheitert.
+verglichen zwei Läufe verschiedene Daten. Einer der drei Patienten liefert
+**keine** Begegnung: Er war der Fall, an dem `isik-con1` scheiterte, und
+seit ADR-009 ergänzt der Code den Kontakt selbst. Er bleibt in der Kohorte,
+weil sich an ihm zeigt, dass der Code diese Zusage wirklich herstellt.
+
+Dass der Validator den Verstoss überhaupt noch findet, beweist das nicht —
+eine Kohorte, in der jeder Fall durchgeht, kann das grundsätzlich nicht.
+Dafür gibt es eine Negativkontrolle: Sie entfernt den Kontakt aus einer
+gebauten Diagnose und prüft, dass `isik-con1` dann gemeldet wird.
 
 Einordnung und offene Entscheidung in
 [docs/sondierung-isik.md](docs/sondierung-isik.md).
@@ -509,6 +522,7 @@ in dieser Reihenfolge:
 | [ADR-014](docs/adr-014-isik-module.md) | Die ISiK-Module für Observation und MedicationStatement |
 | [ADR-015](docs/adr-015-isik-labor.md) | ISiK Labor — was geht, und warum Konformität nicht geht |
 | [ADR-016](docs/adr-016-szenario-bibliothek.md) | Die Szenario-Bibliothek — Vorlagen statt Modellaufrufe |
+| [ADR-017](docs/adr-017-profilmessung-in-der-ci.md) | Die Profilmessung als Auflage der CI — und was sie nicht verspricht |
 | [Konzepte](docs/konzepte.md) | Die FHIR-Grundlagen dahinter, ausführlich erklärt |
 
 ### Die tragenden Entscheidungen in drei Sätzen

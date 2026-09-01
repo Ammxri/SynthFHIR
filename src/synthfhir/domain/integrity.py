@@ -40,11 +40,25 @@ Geprüft wird:
       selben Bundle existiert?
   (b) Sind alle IDs innerhalb des Bundles eindeutig?
   (c) Gibt es irgendwo im Baum Verweise auf nicht existierende Ressourcen?
+  (d) Sind die fachlichen Identifier eindeutig?
 
 Punkt (c) ist bewusst weiter gefasst als (a): Verweise stecken nicht nur in
 `subject`, sondern können überall auftauchen (encounter, performer,
 hasMember, derivedFrom …). Deshalb wird der komplette Baum durchlaufen und
 nicht nur ein bekanntes Feld abgefragt.
+
+Punkt (d) kam spät dazu, und sein Fehlen hatte Folgen. Die technische `id`
+und der fachliche Identifier sind zwei verschiedene Dinge: Die `id` ist die
+Adresse innerhalb des Bundles, der Identifier ist die Nummer, unter der ein
+Fall oder ein Patient im Haus geführt wird. Sie können unabhängig
+voneinander kaputtgehen — und genau das geschah: Die Fallnummer hing am
+teil-lokalen Zähler und wiederholte sich in jedem Teil, während die `id`
+über den Teilkenner eindeutig blieb. Bei 200 Patienten war jede Fallnummer
+25-fach vergeben, und `ok` stand auf `True`, weil (b) nur die `id` ansah.
+
+Seit ADR-009 wiegt das schwerer als vorher: Die Fallnummer erfüllt dort den
+ISiK-Slice `Encounter.identifier:Aufnahmenummer`. Eine Aufnahmenummer, die
+es 25-mal gibt, erfüllt ihn dem Buchstaben nach und dem Sinn nach nicht.
 """
 
 from __future__ import annotations
@@ -94,12 +108,18 @@ class IntegrityReport:
     total_references: int = 0
     broken_references: list[ReferenceFinding] = field(default_factory=list)
     duplicate_ids: list[str] = field(default_factory=list)
+    duplicate_identifiers: list[str] = field(default_factory=list)
     missing_patient_link: list[str] = field(default_factory=list)
     resources_checked: int = 0
 
     @property
     def ok(self) -> bool:
-        return not (self.broken_references or self.duplicate_ids or self.missing_patient_link)
+        return not (
+            self.broken_references
+            or self.duplicate_ids
+            or self.duplicate_identifiers
+            or self.missing_patient_link
+        )
 
     @property
     def broken_reference_count(self) -> int:
@@ -113,6 +133,7 @@ class IntegrityReport:
             "broken_reference_count": self.broken_reference_count,
             "broken_references": [f.to_dict() for f in self.broken_references],
             "duplicate_ids": self.duplicate_ids,
+            "duplicate_identifiers": self.duplicate_identifiers,
             "missing_patient_link": self.missing_patient_link,
         }
 
@@ -133,6 +154,26 @@ def check_resources(resources: list[dict]) -> IntegrityReport:
         seen_counts[key] = seen_counts.get(key, 0) + 1
         known.add(key)
     report.duplicate_ids = sorted(key for key, count in seen_counts.items() if count > 1)
+
+    # --- (d) Fachliche Identifier eindeutig? -------------------------------
+    #
+    # Nach (system, value) und nicht je Ressourcentyp: Ein Identifier ist in
+    # FHIR innerhalb seines Systems eindeutig, und genau das ist die Zusage,
+    # die ein Empfänger liest. Identifier ohne System oder ohne Wert bleiben
+    # aussen vor — sie behaupten nichts, was sich verletzen liesse.
+    identifier_counts: dict[str, int] = {}
+    for resource in resources:
+        for eintrag in resource.get("identifier") or []:
+            if not isinstance(eintrag, dict):
+                continue
+            system, value = eintrag.get("system"), eintrag.get("value")
+            if not system or not value:
+                continue
+            schluessel = f"{system}|{value}"
+            identifier_counts[schluessel] = identifier_counts.get(schluessel, 0) + 1
+    report.duplicate_identifiers = sorted(
+        key for key, count in identifier_counts.items() if count > 1
+    )
 
     # --- (a) + (c) Verweise prüfen ----------------------------------------
     for resource in resources:

@@ -219,7 +219,7 @@ def befrage_ziel(url: str, token: str | None = None) -> Zielbefund:
     try:
         antwort = s.get(f"{basis}/metadata", timeout=TIMEOUT_S)
     except requests.exceptions.RequestException as exc:
-        befund.hinweise.append(f"nicht erreichbar: {_ohne_token(str(exc))}")
+        befund.hinweise.append(f"nicht erreichbar: {_ohne_token(str(exc), token)}")
         return befund
 
     if antwort.status_code >= 400:
@@ -298,16 +298,28 @@ def _zaehle(s: requests.Session, basis: str, zusatz: dict) -> int | None:
         return None
 
 
-def _ohne_token(text: str) -> str:
+def _ohne_token(text: str, token: str | None = None) -> str:
     """Entfernt ein etwaiges Token aus einer Meldung.
 
     Fehlermeldungen von `requests` können die vollständige Anfrage
     enthalten. Ein Token, das einmal in einem Bericht oder einem Protokoll
     steht, ist nicht mehr geheim.
+
+    Geschwärzt wird das **benutzte** Token, nicht nur das aus der Umgebung.
+    Zuvor las diese Funktion ausschliesslich `os.environ[TOKEN_VARIABLE]`:
+    Ein über den öffentlich dokumentierten Parameter `pushe(..., token=…)`
+    oder `befrage_ziel(url, token)` übergebenes Token stand damit
+    unverändert in `Pushergebnis.fehler` — und von dort in `to_dict()`, in
+    jede `--bericht`-Datei und auf stderr. Der Kommentar versprach das
+    Gegenteil.
+
+    Das Umgebungstoken bleibt zusätzlich abgedeckt: Wer über die
+    Kommandozeile pusht, benutzt genau dieses.
     """
-    token = os.environ.get(TOKEN_VARIABLE, "").strip()
-    if token and token in text:
-        text = text.replace(token, "<Token entfernt>")
+    for geheim in (token, os.environ.get(TOKEN_VARIABLE)):
+        wert = (geheim or "").strip()
+        if wert and wert in text:
+            text = text.replace(wert, "<Token entfernt>")
     return text
 
 
@@ -445,12 +457,12 @@ def pushe(
         try:
             antwort = s.post(befund.url, data=rumpf, timeout=TIMEOUT_S)
         except requests.exceptions.RequestException as exc:
-            ergebnis.fehler.append(f"Paket {nummer}: {_ohne_token(str(exc))}")
+            ergebnis.fehler.append(f"Paket {nummer}: {_ohne_token(str(exc), token)}")
             break
         if antwort.status_code >= 400:
             ergebnis.fehler.append(
                 f"Paket {nummer}: HTTP {antwort.status_code} — "
-                f"{_ohne_token(antwort.text[:200])}"
+                f"{_ohne_token(antwort.text[:200], token)}"
             )
             # Die Transaktion ist atomar: Dieses Paket ist vollständig
             # zurückgerollt. Abbrechen statt weiterzumachen — sonst

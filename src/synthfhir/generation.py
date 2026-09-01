@@ -288,10 +288,21 @@ def _hole_parameter(
             letzte_art = "unbrauchbar"
             continue
 
+        # `letzte_art` gehört in JEDEN dieser Zweige. In den beiden
+        # folgenden fehlte sie, und der Wert des vorherigen Durchlaufs blieb
+        # stehen: Endete Versuch 1 an der Ratengrenze (`kontingent`) und
+        # lieferte Versuch 2 eine Antwort ohne `patienten`, stand am Ende
+        # `fehler` = „kein Feld 'patienten'" neben `fehlerart` =
+        # „kontingent". `web/api.py` bildet daraus über `_ZUORDNUNG` HTTP
+        # 429 mit „Der Anbieter hat die Anfrage wegen seiner Ratengrenze
+        # abgewiesen" — im selben JSON-Rumpf wie die widersprechende
+        # Meldung. Der Aufrufer wurde auf „später erneut versuchen"
+        # verwiesen, obwohl das Modell Unsinn geliefert hatte.
         if not isinstance(geparst, dict):
             letzter_fehler = (
                 f"Erwartet wurde ein Parameterobjekt, geliefert wurde {type(geparst).__name__}."
             )
+            letzte_art = "unbrauchbar"
             continue
 
         # Zweite Absicherung gegen ein herausgelöstes Bruchstück: Ohne den
@@ -302,6 +313,7 @@ def _hole_parameter(
                 "Die Antwort enthält kein Feld 'patienten'. Vermutlich wurde nur ein "
                 "Bruchstück der Antwort übertragen."
             )
+            letzte_art = "unbrauchbar"
             continue
 
         return geparst

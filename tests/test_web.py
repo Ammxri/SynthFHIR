@@ -26,8 +26,14 @@ def bremse_zuruecksetzen():
     prompt passiert ist.
     """
     app_modul.BREMSE.zuruecksetzen()
+    # Die Gesamtbremse blieb zuvor über die ganze Datei stehen. Sie zählt
+    # 30 je Zeitfenster, die Datei hat inzwischen genug erfolgreiche POSTs,
+    # dass ein weiterer Test die Grenze hätte kippen können — und der
+    # Fehlschlag träfe dann irgendeinen Test, nicht den verursachenden.
+    app_modul.GESAMTBREMSE.zuruecksetzen()
     yield
     app_modul.BREMSE.zuruecksetzen()
+    app_modul.GESAMTBREMSE.zuruecksetzen()
 
 
 @pytest.fixture
@@ -61,6 +67,33 @@ def _antwort(patienten: list[dict] | None = None, luecken: list[str] | None = No
 
 def _mit_fester_antwort(monkeypatch, text: str) -> None:
     monkeypatch.setattr(app_modul, "client_aus_umgebung", lambda: FesterClient(text))
+
+
+def _mit_eigenem_schluessel(monkeypatch, gebaute: list | None = None) -> None:
+    """Ersetzt den Client, den die FABRIK baut — nicht die Fabrik selbst.
+
+    Der frühere Aufbau ersetzte `OpenAIKompatiblerClient` im Modul der
+    Oberfläche, und das war blind: Die Attrappe validierte in ihrem
+    `__init__` nichts, der echte Konstruktor lief im Test also nie — und
+    genau dort sitzen die Prüfungen, um die es geht.
+
+    Ersetzt wird deshalb der Konstruktor im Modul `llm`. Die drei Riegel
+    von `client_mit_fremdschluessel` laufen dann wirklich, und nur der
+    Netzzugriff dahinter entfällt.
+    """
+    import synthfhir.llm as llm_modul
+
+    class Attrappe(FesterClient):
+        def __init__(self, *a, api_schluessel="", **kw):
+            super().__init__(_antwort())
+            if gebaute is not None:
+                gebaute.append(api_schluessel)
+
+    # Die Fabrik verlangt beides — ohne Basis-URL ginge ein fremder
+    # Schlüssel an die Vorgabe, und die zeigt auf ein lokales Ollama.
+    monkeypatch.setenv("SYNTHFHIR_LLM_BASE_URL", "https://example.invalid/v1")
+    monkeypatch.setenv("SYNTHFHIR_LLM_MODEL", "test-modell")
+    monkeypatch.setattr(llm_modul, "OpenAIKompatiblerClient", Attrappe)
 
 
 # --- Startseite ------------------------------------------------------------
@@ -251,13 +284,7 @@ def test_eigener_schluessel_umgeht_die_bremse(klient, monkeypatch):
     """Der vorgesehene Weg für alle, die mehr brauchen - genau die
     Mitigation aus dem Risikoregister des PRD."""
     gebaute: list[str] = []
-
-    class Attrappe(FesterClient):
-        def __init__(self, *a, api_schluessel="", **kw):
-            super().__init__(_antwort())
-            gebaute.append(api_schluessel)
-
-    monkeypatch.setattr(app_modul, "OpenAIKompatiblerClient", Attrappe)
+    _mit_eigenem_schluessel(monkeypatch, gebaute)
     app_modul.BREMSE.zuruecksetzen()
     for _ in range(app_modul.BREMSE.anfragen + 3):
         antwort = klient.post(
@@ -272,12 +299,7 @@ def test_eigener_schluessel_erscheint_nirgends_in_der_antwort(klient, monkeypatc
     """Er wird nicht gespeichert, nicht protokolliert und nicht in die Seite
     zurückgeschrieben - anders als die Beschreibung, die absichtlich stehen
     bleibt."""
-
-    class Attrappe(FesterClient):
-        def __init__(self, *a, api_schluessel="", **kw):
-            super().__init__(_antwort())
-
-    monkeypatch.setattr(app_modul, "OpenAIKompatiblerClient", Attrappe)
+    _mit_eigenem_schluessel(monkeypatch)
     antwort = klient.post(
         "/erzeugen",
         data={"beschreibung": "Eine Patientin", "eigener_schluessel": "gsk_streng_geheim"},
@@ -286,11 +308,115 @@ def test_eigener_schluessel_erscheint_nirgends_in_der_antwort(klient, monkeypatc
     assert "Eine Patientin" in antwort.text, "Die Beschreibung soll dagegen stehen bleiben"
 
 
+def test_unzulaessiger_schluessel_wird_abgewiesen_und_nicht_gezeigt(klient, monkeypatch):
+    """Der Fall, an dem der Schlüssel tatsächlich in die Seite geriet.
+
+    Die Oberfläche baute den Client direkt und umging damit die
+    Musterprüfung der Fabrik. `requests` wirft bei einem Zeilenumbruch im
+    Kopfwert eine `InvalidHeader`, **deren Meldung den Wert enthält**;
+    `frage()` bettet sie mit `{exc}` in den `LLMFehler` ein, und von dort
+    ging der fremde Schlüssel über `ergebnis.fehler` in die gerenderte
+    Seite und in jede `--bericht`-Datei.
+
+    Der Test daneben konnte das nicht bemerken: Sein Schlüssel ist rein
+    alphanumerisch, also genau der, der ohnehin durchgeht.
+    """
+    _mit_eigenem_schluessel(monkeypatch)
+    geheim = "gsk_streng_geheim"
+    antwort = klient.post(
+        "/erzeugen",
+        data={
+            "beschreibung": "Eine Patientin",
+            "eigener_schluessel": f"{geheim}\nX-Boes: 1",
+        },
+    )
+    assert antwort.status_code == 503
+    assert geheim not in antwort.text, "der Schlüssel steht in der ausgelieferten Seite"
+
+
+def test_zu_langer_schluessel_geht_nicht_hinaus(klient, monkeypatch):
+    """Zweite Folge desselben Umgehens: 100 000 Zeichen gingen ungeprüft
+    an den Anbieter hinaus."""
+    gebaute: list[str] = []
+    _mit_eigenem_schluessel(monkeypatch, gebaute)
+    antwort = klient.post(
+        "/erzeugen",
+        data={"beschreibung": "Eine Patientin", "eigener_schluessel": "g" * 100_000},
+    )
+    assert antwort.status_code == 503
+    assert gebaute == [], "es wurde trotzdem ein Client gebaut"
+
+
 def test_schluesselfeld_ist_ein_passwortfeld(klient):
     text = klient.get("/").text
     assert 'type="password"' in text
     assert 'name="eigener_schluessel"' in text
     assert "nicht gespeichert" in text
+
+
+# --- Grenzen, die bisher nur der API-Pfad hatte ----------------------------
+
+
+def test_leere_beschreibung_verbraucht_keinen_platz_in_der_bremse(klient, monkeypatch):
+    """Beide Bremsen verbuchten ihren Platz, bevor irgendetwas geprüft war.
+
+    Damit konnte ein Aufrufer die Demo mit Anfragen sperren, die garantiert
+    nichts kosten: `generiere` bricht bei leerer Beschreibung ab, ohne je
+    ein Modell zu fragen. `api.py` prüft ausdrücklich vorher — „damit kein
+    Kontingent verbrennt"; die Oberfläche hatte diese Prüfung nicht.
+    """
+    _mit_fester_antwort(monkeypatch, _antwort())
+    for _ in range(app_modul.BREMSE.anfragen + 5):
+        assert klient.post("/erzeugen", data={"beschreibung": "   "}).status_code == 400
+
+    # Die entscheidende Zusicherung: Danach ist noch Platz für eine
+    # richtige Anfrage. Zuvor war das Kontingent hier längst leer.
+    assert klient.post("/erzeugen", data={"beschreibung": "Test"}).status_code == 200
+
+
+def test_zu_lange_beschreibung_wird_abgewiesen(klient, monkeypatch):
+    """Ohne Grenze ging die Beschreibung ungeprüft in den Prompt — auf
+    Rechnung des Betreibers. Die Bremse zählt Anfragen, nicht Token."""
+    from synthfhir.web.api import BESCHREIBUNG_HOECHSTLAENGE
+
+    def _darf_nicht():
+        raise AssertionError("Es wurde ein Client gebaut, obwohl die Eingabe zu lang ist")
+
+    monkeypatch.setattr(app_modul, "client_aus_umgebung", _darf_nicht)
+    antwort = klient.post(
+        "/erzeugen", data={"beschreibung": "x" * (BESCHREIBUNG_HOECHSTLAENGE + 1)}
+    )
+    assert antwort.status_code == 400
+    assert "länger als" in antwort.text
+
+
+def test_zu_grosser_koerper_wird_abgewiesen(klient, monkeypatch):
+    """`/export` nahm beliebig grosse Körper an, parste sie als JSON und
+    baute bei `art=ndjson` zusätzlich ein ZIP im Speicher — ohne Grenze,
+    ohne Bremse, ohne Authentifizierung. Starlette selbst begrenzt nichts.
+    """
+    monkeypatch.setattr(app_modul, "KOERPER_HOECHSTGROESSE", 1024)
+    antwort = klient.post("/export", data={"bundle": "x" * 4096})
+    assert antwort.status_code == 413
+
+
+def test_eigener_schluessel_hat_jetzt_auch_einen_deckel(klient, monkeypatch):
+    """ADR-011 begründet den Gleichzeitigkeitsdeckel wörtlich damit, dass
+    ein Aufrufer mit gültigem eigenem Schlüssel „die Seite für alle anderen
+    unbenutzbar machen" könnte — er stand aber nur an `/api/v1`. Über die
+    Oberfläche kam derselbe Aufrufer mit demselben Schlüssel ohne Deckel
+    und ohne Bremse durch.
+    """
+    import synthfhir.web.api as api_modul
+
+    _mit_eigenem_schluessel(monkeypatch)
+    monkeypatch.setattr(api_modul._plaetze, "acquire", lambda blocking=True: False)
+    antwort = klient.post(
+        "/erzeugen",
+        data={"beschreibung": "Test", "eigener_schluessel": "gsk_geheim"},
+    )
+    assert antwort.status_code == 429
+    assert antwort.headers["Retry-After"] == "30"
 
 
 # --- Die drei Ausgabewege --------------------------------------------------
@@ -533,7 +659,17 @@ def test_szenario_laeuft_ohne_jeden_modellaufruf(klient, monkeypatch):
         raise AssertionError("Ein Szenariolauf hat das Modell angefasst.")
 
     monkeypatch.setattr(app_modul, "client_aus_umgebung", verboten)
-    monkeypatch.setattr(app_modul, "OpenAIKompatiblerClient", verboten)
+    # Zuvor stand hier `OpenAIKompatiblerClient`. Den Namen kennt dieses
+    # Modul nicht mehr: Die Oberfläche baut den Client für einen eigenen
+    # Schlüssel seit der Durchsicht über die Fabrik
+    # `client_mit_fremdschluessel`, weil der direkte Konstruktor beide
+    # Riegel aus `llm.py` umging und ein Schlüssel mit Zeilenumbruch so in
+    # die gerenderte Seite geriet.
+    #
+    # Die Zusage dieses Tests ist unverändert — nur der Name, den man
+    # verbieten muss, ist ein anderer. Beide Wege sind gesperrt, also kann
+    # der Szenariopfad auf keinem davon einen Client bauen.
+    monkeypatch.setattr(app_modul, "client_mit_fremdschluessel", verboten)
     for name in ("diabetes-ambulanz", "blutdruck-kontrolle",
                  "labor-grundprofil", "mehrere-kontakte", "ohne-kontakt"):
         assert klient.get(f"/szenario/{name}").status_code == 200
@@ -615,3 +751,32 @@ def test_die_bibliothek_zaehlt_sich_selbst(klient):
 
     text = klient.get("/").text
     assert f"Diese {len(alle())} sind kuratiert" in text
+def test_dateiname_mit_nicht_ascii_wird_gefiltert_statt_zu_scheitern(klient):
+    """`c.isalnum()` ist unicode-bewusst und liess alles durch, was
+    irgendwo ein Buchstabe ist.
+
+    Nachgemessen: `dateiname=日本語` ergab `日本語.json`, und Starlette
+    schreibt Kopfzeilenwerte als latin-1 — die Antwort endete als
+    Serverfehler statt als Datei. Der Pfaddurchquerungsschutz war davon
+    nicht betroffen und bleibt.
+    """
+    antwort = klient.post(
+        "/export",
+        data={"bundle": '{"resourceType":"Bundle","entry":[]}',
+              "art": "json", "dateiname": "日本語"},
+    )
+    assert antwort.status_code == 200
+    zuordnung = antwort.headers["content-disposition"]
+    assert "日本語" not in zuordnung
+    assert "synthfhir" in zuordnung, "ohne brauchbare Zeichen greift die Vorgabe"
+
+
+def test_pfaddurchquerung_im_dateinamen_bleibt_wirkungslos(klient):
+    antwort = klient.post(
+        "/export",
+        data={"bundle": '{"resourceType":"Bundle","entry":[]}',
+              "art": "json", "dateiname": "../../etc/passwd"},
+    )
+    assert antwort.status_code == 200
+    zuordnung = antwort.headers["content-disposition"]
+    assert ".." not in zuordnung and "/" not in zuordnung.split("filename=")[1]

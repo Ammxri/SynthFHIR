@@ -241,6 +241,21 @@ def schreibe_ndjson(
             "ausdrücklich überschreiben."
         )
 
+    # Die Zeitzonenprüfung gehört VOR das erste Schreiben.
+    #
+    # Sie stand allein in `_schreibe_manifest`, also nach sämtlichen
+    # NDJSON-Dateien und ausserhalb der Rücknahme. Ein `zeitpunkt` ohne
+    # Zeitzone erzeugte damit genau den Zustand, den ADR-005 als behoben
+    # führt: geschriebene Dateien, kein Manifest — für einen Empfänger von
+    # einem vollständigen Export nicht zu unterscheiden. `baue_archiv`
+    # prüft seit jeher vorab; die beiden Ausgabewege waren nicht gleich
+    # streng.
+    if zeitpunkt is not None and zeitpunkt.tzinfo is None:
+        raise ExportFehler(
+            "zeitpunkt braucht eine Zeitzone (z. B. timezone.utc); "
+            "ohne sie verschöbe sich transactionTime um den lokalen Versatz."
+        )
+
     ziel.mkdir(parents=True, exist_ok=True)
     ergebnis = Exportergebnis(verzeichnis=ziel)
 
@@ -283,6 +298,18 @@ def schreibe_ndjson(
             d.pfad.unlink(missing_ok=True)
         if angefangen is not None:
             angefangen.unlink(missing_ok=True)
+        # Und das Manifest des VORLAUFS.
+        #
+        # Es stand weiter oben unter `behalten`, weil dieser Lauf es
+        # „gleich überschreibt" — was nach einem Abbruch nie geschieht. Die
+        # Rücknahme nahm bisher alle Datendateien weg und liess es stehen:
+        # zurück blieb ein Verzeichnis mit nichts als einem Manifest, das
+        # zwei `output`-Einträge und zwei `file:`-URLs behauptet, die auf
+        # nichts mehr zeigen. Genau das lügende Manifest, das ADR-005 als
+        # behobenen Fehler führt — nur über den Weg des Abbruchs statt über
+        # `manifest=False`.
+        if manifest:
+            (ziel / MANIFEST_NAME).unlink(missing_ok=True)
         raise ExportFehler(
             f"Export abgebrochen: {exc}. Angefangene Dateien wurden "
             "entfernt, damit kein halber Export zurückbleibt."

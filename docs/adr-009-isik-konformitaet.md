@@ -128,6 +128,24 @@ Referenzkohorte:
 Vorher: 25 Fehler. Die Referenzkohorte ist um einen Encounter gewachsen —
 den, den der Code für den Patienten ohne Begegnung ergänzt.
 
+> **Nachtrag vom 2026-09-01.** Die Spalte „Warnungen" war als „alles, was
+> nicht Fehler und nicht ungeprüft ist" definiert und enthielt damit auch
+> Befunde vom Schweregrad `information`. Von den 19 waren **4** solche
+> Hinweise — die Slice-Hinweise zu `Condition.onset`. Die Messung ist
+> unverändert, die Zählung berichtigt:
+>
+> | Typ | geprüft | Fehler | ungeprüft | Warnungen | Hinweise |
+> |---|---|---|---|---|---|
+> | Patient | 3 | **0** | 0 | 3 | 0 |
+> | Encounter | 4 | **0** | 0 | 8 | 0 |
+> | Condition | 4 | **0** | 8 | 4 | 4 |
+> | **Summe** | **11** | **0** | **8** | **15** | **4** |
+>
+> Gemessen gegen **ein** Paket — das Basismodul —, wie diese Entscheidung
+> es festlegt. Seit ADR-014 lädt der Messaufbau drei Module, und dieselbe
+> Kohorte ergibt dann 14 geprüfte Ressourcen. Die Zahlen hier bleiben der
+> Nachweis **dieser** Entscheidung und sind nicht der heutige Stand.
+
 Zusätzlich: **17 von 17** Ressourcen weiterhin gültig gegen normales
 FHIR R4 ohne Profile. Die Ergänzungen brechen also nichts.
 
@@ -137,6 +155,27 @@ FHIR R4 ohne Profile. Die Ergänzungen brechen also nichts.
 `Condition.code` an ein SNOMED-ValueSet mit `is-a`-Filtern, und ohne
 Terminologieserver lässt sich die Zugehörigkeit weder bestätigen noch
 widerlegen. Der Validator sagt das selbst.
+
+**Und nicht „der Messcode ist über jeden Zweifel erhaben".** *(Nachtrag vom
+2026-09-01.)* „0 Fehler" heißt genauer: `bewerte()` hat aus dem, was
+`pruefe_gegen_profile` als Befunde erkannt hat, keinen der Fehlerspalte
+zugeordnet. Das ist eine Aussage über die Daten **und** über den Messcode.
+
+Am 2026-09-01 wurden drei Wege gefunden, auf denen dieser Code zu niedrig
+zählen konnte: ein Platzhalter, der eine einzige unbenannte
+Auflösungsklage genügen liess, um jede Bindungsverletzung des Laufs zu
+entschuldigen; eine Namenserkennung, die statt des ValueSet-Namens das
+Wort `cannot` fing und deshalb nie zutraf; und eine Antwort ohne
+`OperationOutcome`, die als „geprüft, fehlerfrei, konform" durchging, ohne
+dass der HTTP-Status je angesehen wurde. Die Zahl oben war davon nicht
+betroffen — nachgemessen, nicht angenommen —, aber sie hing daran.
+Einzelheiten im Nachtrag von [docs/sondierung-isik.md](sondierung-isik.md).
+
+**Und nicht „der Messaufbau würde einen Verstoß noch bemerken".** Seit
+dieser Entscheidung ergänzt der Bauweg den Kontakt selbst; die
+Referenzkohorte enthält damit keinen Fall mehr, an dem `isik-con1` greifen
+könnte. Dass der Validator den Verstoß findet, belegt seit dem 2026-09-01
+eine eigene Negativkontrolle — nicht mehr die Kohorte.
 
 Die belastbare Aussage lautet daher:
 

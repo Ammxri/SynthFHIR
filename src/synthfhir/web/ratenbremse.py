@@ -110,10 +110,27 @@ class Ratenbremse:
 
 
 # Wie viele Proxys zwischen Aufrufer und Anwendung stehen, deren Angaben
-# man glauben darf. Bei Render ist es genau einer. Steht hier eine zu hohe
-# Zahl, greift die Bremse wieder auf ein vom Aufrufer geschriebenes Glied
-# zu — deshalb ist die Vorgabe die kleinstmögliche.
-VERTRAUTE_PROXYS = int(os.environ.get("SYNTHFHIR_VERTRAUTE_PROXYS", "1"))
+# man glauben darf. Bei Render ist es genau einer, und `render.yaml` setzt
+# die Variable dort ausdrücklich auf 1.
+#
+# Die Vorgabe war 1, und der Kommentar behauptete, das sei die
+# kleinstmögliche. Das war falsch, und der Unterschied ist keine
+# Wortklauberei: Steht **kein** Proxy davor, ist die Kette genau ein Glied
+# lang, dieses Glied hat der Aufrufer selbst geschrieben, und
+# `glieder[-min(1, 1)]` gibt genau es zurück. Wer `X-Forwarded-For`
+# rotieren liess, bekam damit bei jeder Anfrage eine neue Kennung — also
+# wieder die Lücke, die das Zählen von rechts gerade schliessen sollte,
+# nur eine Ebene tiefer. Betroffen war jeder Betrieb ohne Reverse-Proxy:
+# `docker run -p 8000:8000`, `synthfhir-web`, eigenes Hosting. Das
+# Dockerfile bindet uvicorn direkt, ohne dass ein Proxy Teil des Abbilds
+# wäre.
+#
+# 0 heisst: keiner Kopfzeile glauben, die Verbindung zählt. Das ist die
+# einzige Vorgabe, die ohne Kenntnis der Umgebung sicher ist. Sie ist im
+# Zweifel zu streng — hinter einem Proxy teilen sich dann alle Besucher
+# eine Kennung —, und das ist die richtige Richtung für einen Fehler, der
+# über fremde Abrechnung entscheidet. Wer einen Proxy davor hat, sagt es.
+VERTRAUTE_PROXYS = int(os.environ.get("SYNTHFHIR_VERTRAUTE_PROXYS", "0"))
 
 
 def kennung_aus_anfrage(request, vertraute_proxys: int | None = None) -> str:
@@ -130,11 +147,26 @@ def kennung_aus_anfrage(request, vertraute_proxys: int | None = None) -> str:
     30 Aufrufe, kein 429.
     """
     hops = VERTRAUTE_PROXYS if vertraute_proxys is None else vertraute_proxys
-    glieder = [
-        g.strip()
-        for g in request.headers.get("x-forwarded-for", "").split(",")
-        if g.strip()
-    ]
+
+    # Mehrfach gesendete Kopfzeilen zusammenführen, statt still die erste zu
+    # nehmen. Starlettes `Headers` ist ein Multidict, und `.get()` liefert
+    # dort das erste Vorkommen. `api.py` liest den Schlüsselkopf aus genau
+    # diesem Grund über `getlist` und begründet es dort: „Bei einer Frage,
+    # die über fremde Abrechnung entscheidet, ist ‚still den ersten nehmen'
+    # die falsche Vorgabe." Für die Bremse gilt dieselbe Frage, hier stand
+    # aber `get`.
+    #
+    # Zusammengeführt und nicht bloss ersetzt: Hängt ein Proxy die echte
+    # Adresse als ZWEITE Kopfzeile an, statt sie in die erste einzureihen,
+    # stünde sie sonst nirgends — und gezählt würde ausschliesslich die
+    # gefälschte.
+    kopfzeilen = request.headers
+    if hasattr(kopfzeilen, "getlist"):
+        roh = ", ".join(kopfzeilen.getlist("x-forwarded-for"))
+    else:
+        roh = kopfzeilen.get("x-forwarded-for", "")
+
+    glieder = [g.strip() for g in roh.split(",") if g.strip()]
     if glieder and hops > 0:
         # min(): Sind weniger Glieder da als erwartet, ist das linkeste das
         # beste, was zu haben ist — und nicht etwa ein Griff ins Leere.
