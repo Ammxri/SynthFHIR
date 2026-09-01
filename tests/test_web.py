@@ -902,56 +902,54 @@ def _tief(n):
     return x
 
 
-def test_export_weist_die_json_bombe_ab(klient):
-    """EINE anonyme Anfrage unter 1 MB darf keine GB-Ausgabe erzeugen.
+def _bombe():
+    """Eine Eingabe, deren eingerueckte Ausgabe die 16-MB-Grenze
+    DETERMINISTISCH sprengt - unabhaengig vom Stack.
 
-    `json.dumps(indent=2)` blaeht tief verschachtelte Eingabe linear mit
-    der Tiefe auf - gemessen 1,6 KB rein, 1,3 MB raus. Auf der 512-MB-
-    Instanz ist das ein OOM aus einer einzigen Anfrage. Der Schutz sitzt
-    auf der Ausgabe, weil der Verstaerkungsfaktor jede Eingabegrenze
-    aushebelt.
-    """
-    import json as _json
+    Wichtig: NICHT ueber RecursionError. Die Rekursionsgrenze haengt an
+    der Stackgroesse und ist damit nicht portabel - eine Tiefe, die unter
+    Windows RecursionError wirft (und 413 gibt), laeuft unter Linux/CI mit
+    groesserem Stack durch und liefert 200. Genau daran ist die CI einmal
+    gescheitert.
 
-    ein = _json.dumps(_tief(2000))
-    a = klient.post("/export", data={"bundle": ein, "art": "json"})
-    assert a.status_code == 413
-    assert len(a.content) < 2000, "die Bombe darf keine grosse Antwort erzeugen"
-
-
-def test_export_grenze_greift_ohne_recursionerror(klient):
-    """Die Gegenprobe zur Tiefe, die WIRKLICH die Ausgabegrenze trifft.
-
-    Nachgemessen: `[tief(800)]*N` laeuft in Wahrheit in den
-    RecursionError des Encoders (Tiefe 801) und beweist die Ausgabegrenze
-    NICHT. Hier ist die Tiefe klein (51, weit unter der Encoder-Grenze),
-    aber die Breite gross: 704 KiB Eingabe, 36 MiB Ausgabe. Nur die
-    Ausgabegrenze kann das fangen — der Test wird gruen, wenn man sie
-    aufweicht, ist also die richtige Wache.
+    Tiefe 200 liegt weit unter jeder Encoder-Rekursionsgrenze, also kein
+    RecursionError auf keiner Plattform. 500 Kopien treiben die
+    eingerueckte Ausgabe auf ~38 MB - nur die Ausgabegrenze kann das
+    fangen. Die Eingabe bleibt urlencoded unter Starlettes 1-MB-Feldgrenze.
     """
     import json as _json
     import urllib.parse as _up
 
-    # Tiefe 200: weit unter der Encoder-Rekursionsgrenze, also KEIN
-    # RecursionError — nachgemessen: mit aufgeweichter Grenze liefert
-    # genau diese Eingabe 200 mit 40 MB Ausgabe. Nur die Ausgabegrenze
-    # fangt es. 500 Kopien treiben die eingerueckte Ausgabe auf ~38 MB.
-    breit = [_tief(200)] * 500
-    ein = _json.dumps(breit)
-    # Der Wert wird urlencoded uebertragen; die vielen Klammern verdreifachen
-    # ihn. Er muss auch dann unter Starlettes 1-MB-Feldgrenze bleiben, sonst
-    # misst der Test die Feldgrenze statt der Ausgabegrenze.
-    assert len(_up.quote_plus(ein)) < 1024 * 1024
-    a = klient.post("/export", data={"bundle": ein, "art": "json"})
+    ein = _json.dumps([_tief(200)] * 500)
+    assert len(_up.quote_plus(ein)) < 1024 * 1024, "Eingabe ueber der Feldgrenze"
+    return ein
+
+
+def test_export_weist_die_json_bombe_ab(klient):
+    """EINE anonyme Anfrage unter 1 MB darf keine GB-Ausgabe erzeugen.
+
+    `json.dumps(indent=2)` blaeht tief verschachtelte Eingabe linear mit
+    der Tiefe auf - auf der 512-MB-Instanz ein OOM aus einer einzigen
+    Anfrage. Der Schutz sitzt auf der AUSGABE, weil der Verstaerkungsfaktor
+    jede Eingabegrenze aushebelt. Der Test wird gruen, wenn man die Grenze
+    aufweicht, ist also die richtige Wache.
+    """
+    a = klient.post("/export", data={"bundle": _bombe(), "art": "json"})
     assert a.status_code == 413
+    assert len(a.content) < 2000, "die Bombe darf keine grosse Antwort erzeugen"
 
 
-def test_export_sehr_tiefe_eingabe_ist_400_kein_500(klient):
-    """Ab rund 5000 Ebenen wirft schon der Parser RecursionError. Das ist
-    ein Eingabefehler (400), kein Serverfehler (500)."""
+def test_export_sehr_tiefe_eingabe_ist_kein_serverfehler(klient):
+    """Eine extrem tief verschachtelte Eingabe darf nie 500 ergeben.
+
+    Je nach Stack faengt sie ein anderer Riegel: der Parser-RecursionError
+    (400), der Encoder-RecursionError oder die Ausgabegrenze (beide 413).
+    Auf welchen es trifft, ist plattformabhaengig - dass es NIE ein
+    Serverfehler ist, nicht.
+    """
     tief = "[" * 9000 + "0" + "]" * 9000
     a = klient.post("/export", data={"bundle": tief, "art": "json"})
-    assert a.status_code == 400
+    assert a.status_code in (400, 413), f"unerwartet {a.status_code}"
 
 
 def test_export_meldung_zeigt_die_eingabe_nicht(klient):
@@ -960,7 +958,9 @@ def test_export_meldung_zeigt_die_eingabe_nicht(klient):
     import json as _json
 
     marke = "GEHEIM-MARKER-9998"
-    obj = {"resourceType": marke, "tief": _tief(2000)}
+    # Die Marke tief in der Bombe, damit sie NUR in einer vollen Ausgabe
+    # erschiene - die 413-Meldung darf sie nicht tragen.
+    obj = [{"resourceType": marke, "t": _tief(200)}] * 500
     a = klient.post("/export", data={"bundle": _json.dumps(obj), "art": "json"})
     assert a.status_code == 413
     assert marke not in a.text
