@@ -263,3 +263,76 @@ def test_jedes_profil_der_zuordnung_wird_auch_benutzt():
     bekannt = set(OBSERVATION_CODES) | {BLUTDRUCK_PANEL}
     unbenutzbar = [c for c in VITALPROFILE if c not in bekannt]
     assert not unbenutzbar, f"Profil ohne passenden Katalogcode: {unbenutzbar}"
+
+
+# --- Was der Katalog anbietet und ISiK nicht annimmt -----------------------
+
+
+# Gemessen am 2026-09-01 gegen `EncounterClassDE` (de.basisprofil.r4 1.5.3),
+# an das ISiK `Encounter.class` bindet. Die Liste enthaelt genau sechs
+# Codes: AMB, HH, SS, VR, IMP, PRENC.
+#
+# Unser Katalog fuehrt vier, davon drei aus dieser Liste. EMER steht NICHT
+# darin — obwohl es ein gueltiger v3-ActCode ist und unsere Daten damit
+# gueltiges FHIR bleiben. Das ist eine offene Katalogfrage (ADR-016) und
+# keine Eigenschaft, die dieser Test gutheisst.
+ISIK_KONTAKTARTEN = {"AMB", "IMP", "VR"}
+NICHT_IN_ENCOUNTERCLASSDE = {"EMER"}
+
+
+def _encounter_mit(art: str) -> list[dict]:
+    from synthfhir.generation import Ergebnis, baue_und_pruefe
+
+    e = baue_und_pruefe({"patienten": [{
+        "vorname": "A", "nachname": "B", "geschlecht": "male",
+        "geburtsdatum": "1980-01-01",
+        "begegnungen": [{"art": art, "datum": "2024-01-01"}],
+        "diagnosen": [{"code": "44054006", "beginn": "2020-01-01"}]}]},
+        Ergebnis(beschreibung="x"))
+    return [r for r in e.ressourcen if r["resourceType"] == "Encounter"]
+
+
+def test_der_katalog_der_kontaktarten_ist_vollstaendig_vermessen(profilserver):
+    """Keine Kontaktart darf unvermessen bleiben.
+
+    Ohne diesen Test wuchs der Katalog, und ob eine neue Art ISiK genuegt,
+    stellte sich erst beim Nutzer heraus. Genau so blieb EMER unbemerkt:
+    Die feste Testkohorte benutzt es nicht.
+    """
+    from synthfhir.domain.codes import ENCOUNTER_CLASSES
+
+    assert set(ENCOUNTER_CLASSES) == ISIK_KONTAKTARTEN | NICHT_IN_ENCOUNTERCLASSDE
+
+
+@pytest.mark.parametrize("art", sorted(ISIK_KONTAKTARTEN))
+def test_diese_kontaktarten_genuegen_isik(art, profilserver):
+    b = pruefe_gegen_profile(_encounter_mit(art), profilserver)
+    fehler = [f.meldung for e in b.ergebnisse for f in e.fehler]
+    assert fehler == [], fehler
+
+
+@pytest.mark.parametrize("art", sorted(NICHT_IN_ENCOUNTERCLASSDE))
+def test_diese_kontaktart_genuegt_isik_nicht(art, profilserver):
+    """Ein Test, der einen BEFUND festhaelt, kein Sollverhalten.
+
+    Er steht hier, damit zwei Dinge auffallen: dass der Befund noch gilt
+    (dann bleibt er gruen) und dass er behoben ist (dann wird er rot und
+    gehoert geloescht). Ohne ihn verschwaende die Messung.
+    """
+    b = pruefe_gegen_profile(_encounter_mit(art), profilserver)
+    fehler = " ".join(f.meldung for e in b.ergebnisse for f in e.fehler)
+    assert "EncounterClassDE" in fehler, (
+        f"{art} genuegt ISiK jetzt — Befund behoben, diesen Test loeschen."
+    )
+
+
+def test_kein_szenario_liefert_einen_profilfehler(profilserver):
+    """Eine kuratierte Vorlage mit bekanntem Profilfehler waere ein
+    Pflegefehler. Gefunden genau so: `mehrere-kontakte` benutzte EMER."""
+    from synthfhir.szenarien import alle, baue
+
+    for s in alle():
+        b = pruefe_gegen_profile(baue(s).ressourcen, profilserver)
+        fehler = [(s.name, e.ressourcentyp, f.meldung)
+                  for e in b.ergebnisse for f in e.fehler]
+        assert fehler == [], fehler

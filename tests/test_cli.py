@@ -460,3 +460,149 @@ def _stub_push(res, url, gesendet, **kw):
     if kw.get("ausfuehren"):
         e.geschrieben = len(res)
     return e
+
+
+# --- Szenarien (ADR-016) ---------------------------------------------------
+#
+# Die Tests hier laufen OHNE `stub`: Genau das ist die Zusage. Faellt ein
+# Modellaufruf hinein, schlaegt `client_aus_umgebung` fehl oder verbraucht
+# Kontingent - beides faellt auf.
+
+
+def test_kein_szenarioweg_ruehrt_das_modell_an(monkeypatch, tmp_path, capsys):
+    """Die eigentliche Zusage von ADR-016, und die einzige, die sich nicht
+    aus dem Augenschein ergibt.
+
+    `--szenario` LAEUFT auch ohne Schluessel - das sieht man. Ob dabei
+    trotzdem irgendwo ein Client gebaut wird, sieht man nicht. Hier wird
+    jeder Weg dorthin vermint.
+    """
+    def verboten(*a, **k):
+        raise AssertionError("Ein Szenariolauf hat das Modell angefasst.")
+
+    monkeypatch.setattr(cli, "client_aus_umgebung", verboten)
+    monkeypatch.setattr("synthfhir.llm.client_aus_umgebung", verboten)
+    monkeypatch.setattr("synthfhir.llm.client_mit_fremdschluessel", verboten)
+    monkeypatch.delenv("SYNTHFHIR_LLM_API_KEY", raising=False)
+
+    assert cli.main(["--szenarien"]) == 0
+    for name in ("diabetes-ambulanz", "blutdruck-kontrolle",
+                 "labor-grundprofil", "mehrere-kontakte", "ohne-kontakt"):
+        assert cli.main(["--szenario", name, "-o",
+                         str(tmp_path / f"{name}.json"), "--still"]) == 0
+
+
+def test_szenarien_listet_ohne_modell(capsys):
+    assert cli.main(["--szenarien"]) == 0
+    aus = capsys.readouterr().out
+    assert "diabetes-ambulanz" in aus
+    assert "ohne-kontakt" in aus
+    assert "ohne Modellaufruf" in aus
+
+
+def test_szenario_baut_ohne_modellaufruf(tmp_path, capsys):
+    """Der ganze Zweck: eine vollstaendige Kohorte ohne jeden Aufruf."""
+    ziel = tmp_path / "b.json"
+    assert cli.main(["--szenario", "diabetes-ambulanz", "-o", str(ziel)]) == 0
+    bundle = json.loads(ziel.read_text(encoding="utf-8"))
+    typen = [e["resource"]["resourceType"] for e in bundle["entry"]]
+    assert typen.count("Patient") == 3
+    assert set(typen) == {"Patient", "Encounter", "Condition", "Observation",
+                          "MedicationStatement"}
+    assert "0 ein / 0 aus" in capsys.readouterr().err
+
+
+def test_szenario_zeigt_titel_und_begruendung(capsys):
+    assert cli.main(["--szenario", "blutdruck-kontrolle"]) == 0
+    err = capsys.readouterr().err
+    assert "Blutdruck-Kontrolle" in err
+    assert "kein Modellaufruf" in err
+
+
+def test_szenario_haelt_sich_an_still(capsys):
+    """`--still` gilt auch hier - sonst waere der Szenariozweig der eine
+    Weg, der in einer Prueferkette dazwischenredet."""
+    assert cli.main(["--szenario", "ohne-kontakt", "--still"]) == 0
+    assert capsys.readouterr().err == ""
+
+
+def test_unbekanntes_szenario_bricht_ab_und_nennt_die_bekannten(capsys):
+    assert cli.main(["--szenario", "diabetes-ambluanz"]) == 2
+    err = capsys.readouterr().err
+    assert "diabetes-ambulanz" in err, "die Liste hilft beim Tippfehler"
+
+
+def test_szenario_aus_datei(tmp_path, capsys):
+    datei = tmp_path / "meins.json"
+    datei.write_text(json.dumps({
+        "name": "meins", "titel": "Eigenes", "beschreibung": "x",
+        "zeigt": "Ein geteiltes Szenario.",
+        "parameter": {"patienten": [{
+            "vorname": "Anna", "nachname": "Berg", "geschlecht": "female",
+            "geburtsdatum": "1980-01-01",
+            "diagnosen": [{"code": "195967001", "beginn": "2020-01-01"}]}]},
+    }, ensure_ascii=False), encoding="utf-8")
+    ziel = tmp_path / "b.json"
+    assert cli.main(["--szenario", str(datei), "-o", str(ziel)]) == 0
+    assert "Anna" in ziel.read_text(encoding="utf-8")
+
+
+def test_kaputte_szenariodatei_bricht_sauber_ab(tmp_path, capsys):
+    datei = tmp_path / "kaputt.json"
+    datei.write_text("{ kein json", encoding="utf-8")
+    assert cli.main(["--szenario", str(datei)]) == 2
+    assert "Fehler:" in capsys.readouterr().err
+
+
+def test_fremde_codes_werden_vorgezogen_gemeldet(tmp_path, capsys):
+    """Bei einer FREMDEN Datei ist das die wichtigste Nachricht: Was du
+    bekommst, ist nicht, was in der Datei stand."""
+    datei = tmp_path / "fremd.json"
+    datei.write_text(json.dumps({
+        "name": "fremd", "titel": "x", "beschreibung": "x", "zeigt": "x",
+        "parameter": {"patienten": [{
+            "vorname": "A", "nachname": "B", "geschlecht": "male",
+            "geburtsdatum": "1980-01-01",
+            "diagnosen": [{"code": "999999999", "beginn": "2020-01-01"}]}]},
+    }), encoding="utf-8")
+    cli.main(["--szenario", str(datei), "-o", str(tmp_path / "b.json")])
+    err = capsys.readouterr().err
+    assert "ACHTUNG" in err and "999999999" in err
+
+
+def test_szenario_und_wiedergeben_schliessen_sich_aus(capsys):
+    """Im ersten Entwurf gewann `--szenario` stillschweigend."""
+    assert cli.main(["--szenario", "ohne-kontakt",
+                     "--wiedergeben", "irgendwas.json"]) == 2
+    assert "schliessen sich aus" in capsys.readouterr().err
+
+
+def test_aufzeichnen_bei_szenario_wird_gemeldet_nicht_verschwiegen(
+    tmp_path, capsys
+):
+    """Eine angeforderte Datei, die nicht entsteht, braucht eine Erklaerung."""
+    a = tmp_path / "a.json"
+    assert cli.main(["--szenario", "ohne-kontakt", "--aufzeichnen", str(a),
+                     "--still"]) == 0
+    assert not a.exists()
+    assert "uebergangen" in capsys.readouterr().err
+
+
+def test_bericht_nennt_den_szenariolauf(tmp_path):
+    """Sonst beschriebe der Bericht einen Modellaufruf, den es nie gab."""
+    b = tmp_path / "b.json"
+    assert cli.main(["--szenario", "diabetes-ambulanz", "--bericht", str(b),
+                     "--still"]) == 0
+    d = json.loads(b.read_text(encoding="utf-8"))
+    assert d["szenario"] == "diabetes-ambulanz"
+    assert d["eingabe_token"] == 0 and d["ausgabe_token"] == 0
+
+
+def test_manifest_nennt_den_szenariolauf(tmp_path, capsys):
+    """Ohne das stuende im Manifest die leere Beschreibung eines
+    Modelllaufs, der nie stattgefunden hat."""
+    ziel = tmp_path / "export"
+    assert cli.main(["--szenario", "labor-grundprofil", "--ndjson",
+                     str(ziel), "--still"]) == 0
+    manifest = json.loads((ziel / "manifest.json").read_text(encoding="utf-8"))
+    assert manifest["request"] == "synthfhir --szenario labor-grundprofil"

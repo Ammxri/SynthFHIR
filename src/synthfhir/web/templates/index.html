@@ -48,6 +48,13 @@
   </div>
   {% endif %}
 
+  {% if szenario_fehler %}
+  <div class="kasten fehler">
+    <h2>Dieses Szenario gibt es nicht</h2>
+    <p>{{ szenario_fehler }}</p>
+  </div>
+  {% endif %}
+
   {% if konfigurationsfehler %}
   <div class="kasten fehler">
     <h2>Der Dienst ist nicht einsatzbereit</h2>
@@ -90,12 +97,38 @@
     </details>
 
     <details class="beispiele">
-      <summary>Beispiele</summary>
+      <summary>Beispielformulierungen</summary>
       <ul>
         {% for b in beispiele %}<li>{{ b }}</li>{% endfor %}
       </ul>
     </details>
   </form>
+
+  {# Die Bibliothek steht NACH dem Formular und nicht davor: Wer herkommt,
+     soll zuerst das sehen, was das Werkzeug ausmacht. Sie steht aber auf
+     jeder Ansicht, weil sie der einzige Weg ist, der auch dann noch etwas
+     zeigt, wenn das Kontingent leer oder der Anbieter ausgefallen ist. #}
+  <section class="szenarien" aria-labelledby="szenarien-titel">
+    <h2 id="szenarien-titel">Fertige Kohorten — ohne Wartezeit</h2>
+    {# Gezaehlt statt geschrieben: „Diese fuenf" stand hier, und eine
+       sechste Vorlage haette den Satz zur Falschaussage gemacht. Solche
+       Handzaehlungen haben dieses Projekt schon fuenfmal eingeholt. #}
+    <p class="hinweis">
+      Diese {{ szenarien|length }} sind kuratiert und werden aus dem Katalog
+      gebaut, nicht vom Sprachmodell erzeugt. Sie kosten kein Kontingent,
+      sind immer gleich und funktionieren auch dann, wenn oben gerade nichts
+      geht.
+    </p>
+    <ul class="szenarioliste">
+      {% for s in szenarien %}
+      <li{% if szenario and szenario.name == s.name %} class="aktiv"{% endif %}>
+        <a href="/szenario/{{ s.name }}">{{ s.titel }}</a>
+        <span class="hinweis">{{ s.patienten }} {{ "Patient" if s.patienten == 1 else "Patienten" }}</span>
+        <p>{{ s.zeigt }}</p>
+      </li>
+      {% endfor %}
+    </ul>
+  </section>
 
   {% if ergebnis %}
   {% if ergebnis.fehler %}
@@ -148,6 +181,22 @@
     </p>
   </div>
 
+  {# An der Stelle, an der bei einem Modelllauf „So wurde deine Anfrage
+     gelesen" steht. Ohne diesen Kasten saehe ein Szenariolauf aus wie ein
+     Modelllauf, dessen Ruecklesung fehlt — und niemand koennte beides
+     auseinanderhalten. #}
+  {% if szenario %}
+  <section class="kasten verstanden">
+    <h2>Szenario: {{ szenario.titel }}</h2>
+    <p>{{ szenario.beschreibung }}</p>
+    <p class="hinweis">
+      Aus einer kuratierten Vorlage gebaut — <strong>kein Sprachmodell
+      beteiligt</strong>. Dieselbe Kohorte auf der Kommandozeile:
+      <code>synthfhir --szenario {{ szenario.name }}</code>
+    </p>
+  </section>
+  {% endif %}
+
   {% if ergebnis.verstanden %}
   <section class="kasten verstanden">
     <h2>So wurde deine Anfrage gelesen</h2>
@@ -174,7 +223,10 @@
 
   {% if ansicht %}
   <section class="vorschau">
-    <h2>Vorschau — {{ ansicht|length }} Patienten</h2>
+    {# „1 Patienten" stand hier seit Phase 1 unbemerkt: Ein Modelllauf
+       liefert selten genau einen. Zwei der fuenf Szenarien tun es. #}
+    <h2>Vorschau — {{ ansicht|length }}
+        {{ "Patient" if ansicht|length == 1 else "Patienten" }}</h2>
     {% for p in ansicht %}
     <article class="patient">
       <h3>{{ p.name }} <span class="kennung">{{ p.id }}</span></h3>

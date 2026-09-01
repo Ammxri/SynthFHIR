@@ -90,6 +90,11 @@ class Ergebnis:
     # Die Sollmenge, gegen die geprüft wurde. 0 heisst: keine — das Modell
     # hat keine Patientenzahl zurückgelesen.
     angefragt: int = 0
+    # Der Name des Szenarios, falls die Daten aus einer Vorlage stammen
+    # und nicht aus einer Beschreibung. Ohne dieses Feld sähe ein
+    # Szenariolauf aus wie ein Modelllauf — und ein Nutzer könnte beides
+    # nicht auseinanderhalten (ADR-016).
+    szenario: str | None = None
 
     # -- die Zusage ---------------------------------------------------------
     @property
@@ -163,6 +168,9 @@ class Ergebnis:
         return {
             "beschreibung": self.beschreibung,
             "fertig": self.fertig,
+            # Immer dabei, auch als null: Ein fehlendes Feld liesse offen,
+            # ob der Lauf keins hatte oder ob die Fassung es nicht kennt.
+            "szenario": self.szenario,
             "verstanden": self.verstanden.to_dict() if self.verstanden else None,
             "ressourcen": self.anzahl_je_typ,
             "erfundene_codes": self.erfundene_codes,
@@ -204,7 +212,21 @@ def generiere(
         ergebnis.beanstandungen.append(Beanstandung("nicht_abbildbar", luecke))
     _setze_obergrenze_durch(parameter, max_patienten, ergebnis.beanstandungen)
 
-    bau: Bauergebnis = baue_aus_parametern(parameter, _erwartungen(ergebnis.verstanden))
+    return baue_und_pruefe(parameter, ergebnis, _erwartungen(ergebnis.verstanden))
+
+
+def baue_und_pruefe(
+    parameter: dict, ergebnis: Ergebnis, erwartet: dict[str, int] | None = None
+) -> Ergebnis:
+    """Der Weg von Parametern zum geprüften Bundle.
+
+    Herausgelöst, weil ihn zwei Wege gehen: der Modelllauf und der
+    Szenariolauf (ADR-016). Eine zweite Abschrift liefe auseinander, und
+    zwar an der unangenehmsten Stelle — ein Szenario, das die
+    Integritätsprüfung überspringt, lieferte ungeprüfte Daten unter
+    demselben Namen wie ein geprüfter Lauf.
+    """
+    bau: Bauergebnis = baue_aus_parametern(parameter, erwartet or {})
     ergebnis.beanstandungen.extend(bau.beanstandungen)
     if not bau.ressourcen:
         ergebnis.fehler = "Aus den Parametern ließ sich keine einzige Ressource bauen."

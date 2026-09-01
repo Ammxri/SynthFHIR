@@ -45,6 +45,7 @@ src/      das Produkt (Phase 1)
     profil.py     Messung gegen ISiK-Profile (Phase 3)
     referenzkohorte.py  feste Kohorte für wiederholbare Messungen
     aufzeichnung.py  Läufe aufzeichnen und wiedergeben (Phase 2)
+    szenarien.py  fertige Kohortenvorlagen ohne Modellaufruf (Phase 3)
     cli.py        Kommandozeile
     web/          Oberfläche (FastAPI, serverseitig gerendert)
 tests/    Tests des Produkts
@@ -64,6 +65,30 @@ Die Oberfläche gibt dreierlei heraus ([ADR-010](docs/adr-010-ausgabewege-in-der
 ein **FHIR-Bundle**, ein **ZIP-Archiv** mit je einer NDJSON-Datei pro
 Ressourcentyp samt Manifest, und die **Aufzeichnung** des Laufs, die sich
 mit `synthfhir --wiedergeben` ohne neuen Modellaufruf abspielen lässt.
+
+### Fertige Kohorten ohne Modellaufruf
+
+Fünf kuratierte Vorlagen stehen auf jeder Ansicht bereit und bauen
+**sofort, kostenlos und immer gleich** — auch dann, wenn das Kontingent
+leer oder der Anbieter ausgefallen ist
+([ADR-016](docs/adr-016-szenario-bibliothek.md)).
+
+| Szenario | zeigt |
+|---|---|
+| `diabetes-ambulanz` | alle fünf Ressourcentypen im Zusammenspiel |
+| `blutdruck-kontrolle` | das Panel: eine Observation mit zwei Komponenten |
+| `labor-grundprofil` | viele Observations mit UCUM-Einheiten |
+| `mehrere-kontakte` | mehrere Encounter je Patient |
+| `ohne-kontakt` | Diagnose ohne Kontakt — `isik-con1` ergänzt ihn |
+
+Jede hat eine eigene Adresse und ist damit verlinkbar:
+<https://synthfhir.onrender.com/szenario/blutdruck-kontrolle>
+
+Ein Szenario ist **keine Aufzeichnung**: Es verspricht *eine
+Diabetes-Kohorte*, nicht *dasselbe Ergebnis wie damals*. Ändert sich der
+Katalog, liefert es die neue Ausgabe, statt eine Abweichung zu melden.
+Deshalb trägt es keine Prüfsummen — dafür halten Tests jeden seiner Codes
+gegen den Katalog.
 
 ### Programmatischer Zugang
 
@@ -123,6 +148,21 @@ Ressourcen, zwei gleichzeitige Läufe. Anders als sonst wird hier
 **abgelehnt und nicht gekürzt**: Eine gekürzte Wiedergabe träfe auf die
 Prüfsumme des Originals und meldete eine Abweichung, die keine ist.
 
+### Szenarien über HTTP
+
+`GET /api/v1/szenarien` listet die Vorlagen, `GET /api/v1/szenarien/{name}`
+baut eine. **Beides ohne Schlüssel und ohne Modellaufruf** — der Inhalt
+kommt aus dem Katalog, nicht aus dem Anfragekörper.
+
+```bash
+curl https://synthfhir.onrender.com/api/v1/szenarien
+curl https://synthfhir.onrender.com/api/v1/szenarien/diabetes-ambulanz
+```
+
+Die Antwort trägt `bundle`, `ressourcen`, `integritaet`, die
+Beanstandungen und `lauf.modellaufrufe: 0`. Keine Prüfsummen: Ein Szenario
+sagt zu, *was* für eine Kohorte kommt, nicht *welche Bytes*.
+
 ### Große Kohorten von der Kommandozeile
 
 Die Weboberfläche bleibt bei 25 Patienten je Anfrage: Ein Lauf über Hunderte
@@ -153,6 +193,8 @@ saubere Datei.
 | `--pause` | Wartezeit zwischen den Teilen, in Sekunden |
 | `--aufzeichnen` | den Beitrag des Modells mitschreiben |
 | `--wiedergeben` | eine Aufzeichnung abspielen statt das Modell zu fragen |
+| `--szenario` | eine fertige Vorlage bauen — Name oder Pfad zu einer `.json` |
+| `--szenarien` | die eingebauten Vorlagen auflisten |
 | `--ndjson` | zusätzlich als NDJSON in ein Verzeichnis schreiben |
 | `--push` | in einen FHIR-Server laden — **schreibt nichts ohne `--push-ausfuehren`** |
 | `--push-ausfuehren` | den Push wirklich ausführen |
@@ -224,6 +266,35 @@ ist, muss auch der maschinenlesbare Kanal sagen, nicht nur stderr.
 
 Begründung und die Grenzen der Zusage in
 [ADR-006](docs/adr-006-reproduzierbarkeit.md).
+
+### Ohne Modell und ohne Aufzeichnung: Szenarien
+
+```bash
+synthfhir --szenarien
+synthfhir --szenario diabetes-ambulanz -o kohorte.json
+synthfhir --szenario blutdruck-kontrolle --ndjson ./export
+```
+
+Kein Netz, kein Schlüssel, kein Kontingent — und bei gleichem Namen immer
+dasselbe. Eine eigene Vorlage geht als Datei:
+
+```bash
+synthfhir --szenario meins.json -o kohorte.json
+```
+
+Nennt sie einen Code, den dieser Katalog nicht führt, wird sie **nicht
+abgewiesen** — der Katalog des Empfängers darf ein anderer sein —, aber
+die Ersetzung steht vorgezogen auf stderr:
+
+```
+  ACHTUNG: 1 Code(s) stehen nicht in diesem Katalog und werden ersetzt:
+    diagnosen: 999999999
+```
+
+Unterschied zur Aufzeichnung: Ein Szenario verspricht *eine
+Diabetes-Kohorte*, eine Aufzeichnung *dasselbe Ergebnis wie damals*.
+Deshalb wird `--aufzeichnen` bei `--szenario` übergangen (mit Hinweis) und
+`--wiedergeben` zusammen mit `--szenario` abgewiesen.
 
 ### Wie weit ist die Ausgabe von ISiK entfernt?
 
@@ -437,6 +508,7 @@ in dieser Reihenfolge:
 | [ADR-013](docs/adr-013-terminologienachweis.md) | Die SNOMED-Bindung entscheiden — und beweisen, dass entschieden wurde |
 | [ADR-014](docs/adr-014-isik-module.md) | Die ISiK-Module für Observation und MedicationStatement |
 | [ADR-015](docs/adr-015-isik-labor.md) | ISiK Labor — was geht, und warum Konformität nicht geht |
+| [ADR-016](docs/adr-016-szenario-bibliothek.md) | Die Szenario-Bibliothek — Vorlagen statt Modellaufrufe |
 | [Konzepte](docs/konzepte.md) | Die FHIR-Grundlagen dahinter, ausführlich erklärt |
 
 ### Die tragenden Entscheidungen in drei Sätzen

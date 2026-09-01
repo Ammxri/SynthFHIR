@@ -88,6 +88,7 @@ from pydantic import BaseModel, Field
 from starlette.concurrency import run_in_threadpool
 
 from ..generation import Ergebnis, generiere
+from .. import szenarien as szen
 from ..llm import (
     SCHLUESSEL_HOECHSTLAENGE,
     LLMFehler,
@@ -623,6 +624,122 @@ async def wiedergeben(request: Request) -> JSONResponse:
         _wiedergabeplaetze.release()
 
     return JSONResponse(content=_wiedergabeantwort(wieder))
+
+
+# --- Szenarien (ADR-016) ---------------------------------------------------
+#
+# Beides GET und beides auf `router_offen`: Ein Szenario ruft kein Modell
+# auf, beruehrt kein Kontingent und aendert nichts. Ein Schluessel waere
+# hier dieselbe Eintrittskarte ohne Kontrolleur wie bei /wiedergeben.
+#
+# KEINE Gleichzeitigkeitsgrenze, anders als dort. Bei /wiedergeben kommt
+# die Last aus dem Anfragekoerper und ist nach oben offen; hier steht sie
+# fest: fuenf Vorlagen, hoechstens 17 Ressourcen. Gemessen 3,1 ms je Bau
+# und 12,8 KiB groesste Antwort. Eine Bremse davor kostete den Zweck und
+# braechte nichts.
+
+
+@router_offen.get(
+    "/szenarien",
+    summary="Die eingebauten Szenarien auflisten",
+    openapi_extra={"security": []},
+)
+def szenarien_liste() -> JSONResponse:
+    """Die Kohortenvorlagen dieses Dienstes.
+
+    **Kein Schlüssel nötig, kein Modellaufruf, kein Kontingent.** Jedes
+    Szenario ist ein kuratierter Parametersatz, der aus dem Katalog
+    gebaut wird — dieselbe Prüfkette wie ein Modelllauf, nur ohne den
+    einen Schritt, der Geld kostet und nicht deterministisch ist.
+
+    Der Bau liegt unter `GET /api/v1/szenarien/{name}`.
+    """
+    return JSONResponse(content={
+        "szenarien": [s.to_dict() for s in szen.alle()],
+        "hinweis": (
+            "Synthetische Testdaten. Nicht für klinische Nutzung, keine "
+            "echten Patientendaten."
+        ),
+    })
+
+
+@router_offen.get(
+    "/szenarien/{name}",
+    summary="Ein Szenario bauen — ohne Modellaufruf",
+    openapi_extra={"security": []},
+)
+async def szenario_bauen(name: str) -> JSONResponse:
+    """Baut die Kohorte eines Szenarios und gibt sie geprüft zurück.
+
+    **Ohne jeden Modellaufruf.** Anders als `/erzeugen` kostet dieser Weg
+    nichts und liefert bei gleichem Namen immer dasselbe. Er funktioniert
+    auch dann, wenn beim Betreiber kein Anbieter erreichbar ist; ein 503
+    kommt hier nie vor.
+
+    **Der Inhalt stammt aus dem Katalog, nicht vom Aufrufer.** Das ist der
+    Unterschied zu `/wiedergeben`, wo Namen und Beschreibungen aus dem
+    Anfragekörper kommen und als Fremdeingabe zu behandeln sind. Hier
+    entscheidet allein der Name in der URL, und ein unbekannter Name
+    ergibt 404.
+
+    Antwortet mit **404** für einen unbekannten Namen — mit der Liste der
+    bekannten, aber ohne den empfangenen Namen zu wiederholen.
+    """
+    try:
+        s = szen.hole(name)
+    except szen.SzenarioFehler:
+        return _fehler(
+            404, "unbekanntes_szenario",
+            "Unbekanntes Szenario. Bekannt sind: "
+            + ", ".join(sorted(szen.SZENARIEN))
+            + ". Die Liste steht unter GET /api/v1/szenarien.",
+            "aufrufer",
+        )
+    ergebnis = await run_in_threadpool(szen.baue, s)
+    return JSONResponse(content=_szenarioantwort(s, ergebnis))
+
+
+def _szenarioantwort(s, e) -> dict:
+    """Die Antwort eines Szenariolaufs.
+
+    Nahe an `_wiedergabeantwort`, mit denselben bewussten Luecken:
+    kein `dauer_s` (waere eine gratis abfragbare Auslastungssonde ueber
+    konstante Last), kein `schluessel_herkunft` (es entsteht kein Client),
+    und die Meldungen der Validierung bleiben draussen. Was hier
+    zusaetzlich steht, ist `szenario` — sonst saehe die Antwort aus wie
+    die eines Modelllaufs.
+
+    Kein Feld `pruefsummen`: Ein Szenario verspricht eine KohortenART,
+    keine bestimmte Ausgabe. Eine Pruefsumme hier waere die Zusage einer
+    Aufzeichnung unter falschem Namen.
+    """
+    ungueltig = [p for p in e.validierung if not p.valide]
+    aus: dict = {
+        "fertig": e.fertig,
+        "szenario": s.to_dict(),
+        "hinweis": (
+            "Synthetische Testdaten. Nicht für klinische Nutzung, keine "
+            "echten Patientendaten."
+        ),
+        "ressourcen": e.anzahl_je_typ,
+        "patienten": e.anzahl_je_typ.get("Patient", 0),
+        "erfundene_codes": e.erfundene_codes,
+        "mengengrenze_gegriffen": e.mengengrenze_gegriffen,
+        "integritaet": e.integritaet.to_dict() if e.integritaet else None,
+        "beanstandungen": [
+            {"art": b.art, "detail": b.detail} for b in e.beanstandungen[:200]
+        ],
+        "beanstandungen_gesamt": len(e.beanstandungen),
+        "validierung_gesamt": len(e.validierung),
+        "validierung_ungueltig": [
+            {"ressourcentyp": p.ressourcentyp, "ressourcen_id": p.ressourcen_id,
+             "pfade": [f.pfad for f in p.befunde]}
+            for p in ungueltig
+        ],
+        "lauf": {"modellaufrufe": 0},
+    }
+    aus["bundle" if e.fertig else "bundle_zurueckgehalten"] = e.bundle
+    return aus
 
 
 def _wiedergabeantwort(wieder) -> dict:

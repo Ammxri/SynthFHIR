@@ -804,3 +804,105 @@ def test_der_gleichzeitigkeitsdeckel_der_wiedergabe_ist_ein_eigener(klient, monk
     assert antwort.status_code == 429
     assert antwort.json()["quelle"] == "synthfhir"
     assert antwort.headers.get("Retry-After")
+
+
+# --- Szenarien (ADR-016) ---------------------------------------------------
+#
+# Wie /wiedergeben ohne Schluessel, aber mit einem entscheidenden
+# Unterschied: Der Inhalt kommt aus dem KATALOG, nicht aus dem
+# Anfragekoerper. Deshalb fehlen hier die Grenzen, die dort noetig sind -
+# und das gehoert belegt, nicht behauptet.
+
+
+def test_szenarienliste_laeuft_ohne_schluessel(klient, draht):
+    a = klient.get("/api/v1/szenarien")
+    assert a.status_code == 200
+    namen = [s["name"] for s in a.json()["szenarien"]]
+    assert "diabetes-ambulanz" in namen
+    assert draht.anfragen == [], "keine einzige Anfrage ging hinaus"
+
+
+def test_szenarienliste_nennt_was_zur_auswahl_noetig_ist(klient):
+    """Ohne `zeigt` und `patienten` muesste man jedes bauen, um zu
+    erfahren, was drinsteht."""
+    for s in klient.get("/api/v1/szenarien").json()["szenarien"]:
+        assert set(s) == {"name", "titel", "beschreibung", "zeigt", "patienten"}
+        assert s["zeigt"] and isinstance(s["patienten"], int)
+
+
+def test_szenario_baut_ohne_schluessel_und_ohne_modell(klient, draht):
+    """Der ganze Zweck: eine geprüfte Kohorte, die niemanden etwas kostet."""
+    a = klient.get("/api/v1/szenarien/diabetes-ambulanz")
+    assert a.status_code == 200
+    d = a.json()
+    assert d["fertig"] is True
+    assert d["ressourcen"]["Patient"] == 3
+    assert d["lauf"]["modellaufrufe"] == 0
+    assert d["bundle"]["resourceType"] == "Bundle"
+    assert draht.anfragen == []
+
+
+def test_szenario_nennt_sich_in_der_antwort(klient):
+    """Sonst saehe sie aus wie die eines Modelllaufs."""
+    d = klient.get("/api/v1/szenarien/ohne-kontakt").json()
+    assert d["szenario"]["name"] == "ohne-kontakt"
+    assert d["szenario"]["zeigt"]
+
+
+def test_szenarioantwort_traegt_keine_pruefsumme(klient):
+    """Eine Prüfsumme ist die Zusage einer Aufzeichnung („dasselbe wie
+    damals"). Ein Szenario sagt „eine Diabetes-Kohorte" — es soll nach
+    einer Katalogverbesserung die NEUE Ausgabe liefern."""
+    d = klient.get("/api/v1/szenarien/diabetes-ambulanz").json()
+    assert "pruefsummen" not in d
+    assert "identisch" not in d
+
+
+def test_szenarioantwort_gibt_keine_fremdtexte_zurueck(klient):
+    """Dieselbe Regel wie ueberall in diesem Modul: Meldungen von pydantic
+    und `fhir.resources` erreichen den Antwortkoerper nie."""
+    d = klient.get("/api/v1/szenarien/labor-grundprofil").json()
+    for eintrag in d["validierung_ungueltig"]:
+        assert set(eintrag) == {"ressourcentyp", "ressourcen_id", "pfade"}
+    assert "dauer_s" not in d
+    assert "schluessel_herkunft" not in d
+
+
+def test_unbekanntes_szenario_gibt_404_ohne_den_namen(klient):
+    a = klient.get("/api/v1/szenarien/GEHEIM-XYZ-MARKER")
+    assert a.status_code == 404
+    assert a.json()["fehlerart"] == "unbekanntes_szenario"
+    assert a.json()["quelle"] == "aufrufer"
+    assert "GEHEIM" not in a.text and "MARKER" not in a.text
+    assert "diabetes-ambulanz" in a.text, "die bekannten Namen helfen weiter"
+
+
+def test_szenario_gibt_bei_gleichem_namen_immer_dasselbe(klient):
+    """Ohne das waere es keine Vorlage."""
+    a = klient.get("/api/v1/szenarien/blutdruck-kontrolle").json()["bundle"]
+    b = klient.get("/api/v1/szenarien/blutdruck-kontrolle").json()["bundle"]
+    assert json.dumps(a, sort_keys=True) == json.dumps(b, sort_keys=True)
+
+
+def test_szenarien_stehen_im_schema_als_schluessellos(klient):
+    """Ohne `security: []` erbten sie die Angabe der App und behaupteten
+    einen Schluessel, den sie nicht verlangen."""
+    pfade = klient.get("/api/v1/openapi.json").json()["paths"]
+    for pfad in ("/api/v1/szenarien", "/api/v1/szenarien/{name}"):
+        assert pfade[pfad]["get"]["security"] == [], pfad
+
+
+def test_die_ui_route_bleibt_aus_dem_schema(klient):
+    """`/szenario/{name}` gehoert der Weboberflaeche. Sie liefert HTML und
+    hat im Schema des programmatischen Zugangs nichts zu suchen."""
+    pfade = list(klient.get("/api/v1/openapi.json").json()["paths"])
+    assert not [p for p in pfade if p.startswith("/szenario")]
+
+
+def test_jedes_szenario_ist_ueber_die_api_baubar(klient):
+    """Die Liste und der Bau duerfen nicht auseinanderlaufen: Ein Name in
+    der Liste, der 404 gibt, waere schlimmer als ein fehlender."""
+    for s in klient.get("/api/v1/szenarien").json()["szenarien"]:
+        a = klient.get(f"/api/v1/szenarien/{s['name']}")
+        assert a.status_code == 200, s["name"]
+        assert a.json()["ressourcen"]["Patient"] == s["patienten"]

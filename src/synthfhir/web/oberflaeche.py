@@ -35,6 +35,7 @@ from ..llm import (
     client_aus_umgebung,
 )
 from ..prompts import MAX_PATIENTEN
+from .. import szenarien as szen
 from .ratenbremse import Ratenbremse, kennung_aus_anfrage
 
 # Die App liest ihre Konfiguration selbst ein, statt sich auf den
@@ -113,6 +114,7 @@ def startseite(request: Request):
         "index.html",
         {
             "beispiele": BEISPIELE,
+            "szenarien": szen.alle(),
             "max_patienten": MAX_PATIENTEN,
             "demo_anfragen": BREMSE.anfragen,
         },
@@ -127,6 +129,7 @@ def erzeugen(
 ):
     kontext: dict = {
         "beispiele": BEISPIELE,
+        "szenarien": szen.alle(),
         "max_patienten": MAX_PATIENTEN,
         "beschreibung": beschreibung,
         "demo_anfragen": BREMSE.anfragen,
@@ -176,6 +179,49 @@ def erzeugen(
         json.dumps(ergebnis.bundle, indent=2, ensure_ascii=False) if ergebnis.bundle else ""
     )
     kontext["aufzeichnung_json"] = _aufzeichnung_json(ergebnis, client)
+    return vorlagen.TemplateResponse(request, "index.html", kontext)
+
+
+# GET und nicht POST, mit dem Namen im Pfad: Das Ergebnis haengt an
+# nichts als dem Namen, ist beliebig oft wiederholbar und aendert nichts.
+# Damit ist es verlinkbar — /szenario/diabetes-ambulanz laesst sich in eine
+# Bewerbung schreiben, ein POST-Ergebnis nicht.
+#
+# KEINE Bremse. Die Bremsen dieser Seite schuetzen ein Gratiskontingent
+# beim Modellanbieter; hier gibt es keinen Anbieter. Was bleibt, ist etwas
+# Rechenzeit fuer hoechstens 17 Ressourcen aus einer festen Liste von
+# fuenf — gemessen 3,1 ms je Bau. Eine Bremse davor kostete den Zweck (die
+# Seite soll auch dann etwas zeigen, wenn das Kontingent leer ist) und
+# braechte nichts.
+@app.get("/szenario/{name}", response_class=HTMLResponse, include_in_schema=False)
+def szenario(request: Request, name: str):
+    kontext: dict = {
+        "beispiele": BEISPIELE,
+        "szenarien": szen.alle(),
+        "max_patienten": MAX_PATIENTEN,
+        "demo_anfragen": BREMSE.anfragen,
+    }
+    try:
+        s = szen.hole(name)
+    except szen.SzenarioFehler as exc:
+        # `hole` gibt den empfangenen Namen NICHT zurueck: Er kaeme aus dem
+        # Pfad und stuende sonst in der Seite. Die Meldung nennt nur die
+        # bekannten Namen.
+        kontext["szenario_fehler"] = str(exc)
+        return vorlagen.TemplateResponse(request, "index.html", kontext,
+                                         status_code=404)
+
+    ergebnis = szen.baue(s)
+    kontext["szenario"] = s
+    kontext["ergebnis"] = ergebnis
+    kontext["ansicht"] = _ansicht(ergebnis)
+    kontext["bundle_json"] = (
+        json.dumps(ergebnis.bundle, indent=2, ensure_ascii=False)
+        if ergebnis.bundle else ""
+    )
+    # Kein `aufzeichnung_json`: Eine Aufzeichnung haelt den Beitrag des
+    # Modells fest, und den gibt es hier nicht. Die Vorlage blendet den
+    # Knopf dann von selbst aus.
     return vorlagen.TemplateResponse(request, "index.html", kontext)
 
 
@@ -436,17 +482,50 @@ def _ansicht(ergebnis: Ergebnis) -> list[dict]:
                 }
             )
         else:
-            menge = r.get("valueQuantity") or {}
             eintrag["messwerte"].append(
                 {
                     "text": (r.get("code") or {}).get("text", "—"),
-                    "wert": f"{menge.get('value', '—')} {menge.get('unit', '')}".strip(),
+                    "wert": _messwerttext(r),
                     "datum": r.get("effectiveDateTime", "—"),
                     "code": (r.get("code") or {}).get("coding", [{}])[0].get("code", ""),
                 }
             )
 
     return list(patienten.values())
+
+
+def _messwerttext(r: dict) -> str:
+    """Der Messwert als Text — auch wenn er in Komponenten steckt.
+
+    Seit ADR-014 ist der Blutdruck EINE Observation mit zwei Komponenten
+    und **ohne** `valueQuantity`. Die Vorschau las nur `valueQuantity` und
+    zeigte deshalb ausgerechnet beim Blutdruck einen Gedankenstrich —
+    aufgefallen an dem Szenario, das den Blutdruck vorführen soll.
+
+    Kein Sonderfall für 85354-9: Gelesen wird, was da ist. Käme ein
+    zweites Panel hinzu, zeigte es sich von selbst.
+    """
+    menge = r.get("valueQuantity")
+    if isinstance(menge, dict) and menge.get("value") is not None:
+        return f"{menge['value']} {menge.get('unit', '')}".strip()
+
+    # Ohne Beschriftung der Komponenten: „158 / 96 mmHg" ist die uebliche
+    # Schreibweise des Blutdrucks und braucht keine. Die Reihenfolge kommt
+    # aus `_teile_blutdruck` und ist dort systolisch zuerst — dieselbe
+    # Reihenfolge, die jeder Leser erwartet. Die Einheit steht einmal am
+    # Ende, weil beide Komponenten dieselbe tragen.
+    werte, einheit = [], ""
+    for k in r.get("component") or []:
+        if not isinstance(k, dict):
+            continue
+        m = k.get("valueQuantity") or {}
+        if m.get("value") is None:
+            continue
+        werte.append(str(m["value"]))
+        einheit = einheit or str(m.get("unit") or "")
+    if werte:
+        return " / ".join(werte) + (f" {einheit}" if einheit else "")
+    return "—"
 
 
 def _kontaktart(klasse: dict) -> str:

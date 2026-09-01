@@ -242,3 +242,20 @@ footer p { max-width: 44rem; }
 @media (prefers-reduced-motion: reduce) {
   * { animation: none !important; transition: none !important; }
 }
+
+/* --- Szenario-Bibliothek (ADR-016) ------------------------------------- */
+.szenarien { margin: 2rem 0; }
+.szenarien h2 { font-size: 1.05rem; margin: 0 0 .3rem; }
+.szenarien > .hinweis { margin: 0 0 1rem; max-width: 62ch; }
+.szenarioliste { list-style: none; margin: 0; padding: 0; display: grid;
+                 gap: .75rem; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); }
+.szenarioliste li { border: 1px solid var(--linie); border-radius: var(--radius);
+                    padding: .75rem .9rem; background: var(--flaeche); }
+.szenarioliste li.aktiv { border-color: var(--akzent); border-left-width: 3px; }
+/* Die Seite faerbt Links ueberall einzeln; ohne diese Zeile faellt die
+   Liste auf die Browservorgabe zurueck und sieht im dunklen Schema
+   nach nichts aus. */
+.szenarioliste a { color: var(--akzent); font-weight: 600; text-decoration: none; }
+.szenarioliste a:hover { text-decoration: underline; }
+.szenarioliste .hinweis { margin-left: .5rem; white-space: nowrap; }
+.szenarioliste p { margin: .35rem 0 0; font-size: .87rem; color: var(--tinte-weich); }

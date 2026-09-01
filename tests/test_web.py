@@ -502,3 +502,116 @@ def test_fusstext_nennt_alle_erzeugten_ressourcentypen(klient):
     text = klient.get("/").text
     fehlend = [t for t in erzeugte if t not in text]
     assert not fehlend, f"im Fusstext nicht genannt: {fehlend}"
+
+
+# --- Szenarien in der Oberflaeche (ADR-016) --------------------------------
+
+
+def test_die_bibliothek_steht_auf_der_startseite(klient):
+    """Sie ist der einzige Weg, der auch bei leerem Kontingent etwas
+    zeigt — also gehoert sie auf die erste Ansicht, nicht hinter einen
+    Klick."""
+    text = klient.get("/").text
+    for name in ("diabetes-ambulanz", "blutdruck-kontrolle",
+                 "labor-grundprofil", "mehrere-kontakte", "ohne-kontakt"):
+        assert f"/szenario/{name}" in text
+
+
+def test_szenario_liefert_eine_vollstaendige_kohorte(klient):
+    a = klient.get("/szenario/diabetes-ambulanz")
+    assert a.status_code == 200
+    assert "Valide gegen FHIR R4" in a.text
+    assert "Vorschau" in a.text
+    assert "synthfhir --szenario diabetes-ambulanz" in a.text
+    assert "kein Sprachmodell" in a.text
+
+
+def test_szenario_laeuft_ohne_jeden_modellaufruf(klient, monkeypatch):
+    """Die Zusage von ADR-016. `--szenario` LAEUFT ohne Schluessel — das
+    sieht man; ob dabei trotzdem ein Client gebaut wird, nicht."""
+    def verboten(*a, **k):
+        raise AssertionError("Ein Szenariolauf hat das Modell angefasst.")
+
+    monkeypatch.setattr(app_modul, "client_aus_umgebung", verboten)
+    monkeypatch.setattr(app_modul, "OpenAIKompatiblerClient", verboten)
+    for name in ("diabetes-ambulanz", "blutdruck-kontrolle",
+                 "labor-grundprofil", "mehrere-kontakte", "ohne-kontakt"):
+        assert klient.get(f"/szenario/{name}").status_code == 200
+
+
+def test_szenario_verbraucht_keinen_platz_der_bremse(klient):
+    """Die Bremsen schuetzen ein Kontingent beim Modellanbieter. Ein
+    Szenario benutzt keinen — es darf dort nichts abbuchen, sonst naehme
+    ausgerechnet der kostenlose Weg dem bezahlten die Plaetze weg."""
+    vorher = len(app_modul.GESAMTBREMSE._verlauf[app_modul.GESAMT])
+    for _ in range(8):
+        assert klient.get("/szenario/ohne-kontakt").status_code == 200
+    assert len(app_modul.GESAMTBREMSE._verlauf[app_modul.GESAMT]) == vorher
+
+
+def test_unbekanntes_szenario_gibt_404_und_nennt_die_bekannten(klient):
+    a = klient.get("/szenario/gibtsnicht")
+    assert a.status_code == 404
+    assert "diabetes-ambulanz" in a.text
+
+
+def test_der_pfad_wird_nicht_in_die_seite_zurueckgeschrieben(klient):
+    """Der Name kommt aus dem Pfad und ist damit Fremdeingabe. Jinja
+    maskiert zwar — aber der sicherste Weg ist, ihn gar nicht erst
+    aufzunehmen."""
+    a = klient.get("/szenario/GEHEIMER-MARKER-XYZ")
+    assert a.status_code == 404
+    assert "GEHEIMER-MARKER-XYZ" not in a.text
+    assert "MARKER" not in a.text
+
+
+def test_szenario_bietet_keine_aufzeichnung_an(klient):
+    """Eine Aufzeichnung haelt den Beitrag des Modells fest. Den gibt es
+    hier nicht, und eine Datei unter diesem Namen waere eine Luege."""
+    text = klient.get("/szenario/ohne-kontakt").text
+    assert 'value="json"' in text and 'value="ndjson"' in text
+    assert 'value="aufzeichnung"' not in text
+
+
+def test_das_gewaehlte_szenario_ist_in_der_liste_markiert(klient):
+    assert 'class="aktiv"' in klient.get("/szenario/labor-grundprofil").text
+
+
+def test_das_blutdruckpanel_zeigt_seine_werte(klient):
+    """Gefunden durch das Szenario selbst: Die Vorschau las nur
+    `valueQuantity` und zeigte ausgerechnet beim Blutdruck einen
+    Gedankenstrich — bei der einen Ressource, die ihn vorfuehren soll."""
+    text = klient.get("/szenario/blutdruck-kontrolle").text
+    assert "158.0 / 96.0 mmHg" in text
+    assert "85354-9" in text
+
+
+def test_ein_szenario_ohne_kontakt_zeigt_den_ergaenzten_kontakt(klient):
+    text = klient.get("/szenario/ohne-kontakt").text
+    assert "Kontakte" in text, "isik-con1 ergaenzt sie — das soll man sehen"
+
+
+@pytest.mark.parametrize("r,erwartet", [
+    ({"valueQuantity": {"value": 7.8, "unit": "%"}}, "7.8 %"),
+    ({"component": [{"valueQuantity": {"value": 120, "unit": "mmHg"}},
+                    {"valueQuantity": {"value": 80, "unit": "mmHg"}}]},
+     "120 / 80 mmHg"),
+    ({}, "—"),
+    ({"component": []}, "—"),
+    ({"component": ["kein Objekt", {"valueQuantity": {}}]}, "—"),
+    ({"valueQuantity": {"unit": "%"}}, "—"),
+])
+def test_messwerttext_haelt_auch_das_unvollstaendige_aus(r, erwartet):
+    """Die Vorschau darf an keiner Ressource abstuerzen — auch nicht an
+    einer, die aus einem fremden Bundle kommt."""
+    assert app_modul._messwerttext(r) == erwartet
+
+
+def test_die_bibliothek_zaehlt_sich_selbst(klient):
+    """„Diese fuenf" stand hier fest im Text. Eine sechste Vorlage haette
+    den Satz zur Falschaussage gemacht — die Sorte Handzaehlung, die
+    dieses Projekt schon fuenfmal eingeholt hat."""
+    from synthfhir.szenarien import alle
+
+    text = klient.get("/").text
+    assert f"Diese {len(alle())} sind kuratiert" in text

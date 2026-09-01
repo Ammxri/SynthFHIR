@@ -19,6 +19,7 @@ import argparse
 import json
 import os
 import sys
+import textwrap
 from pathlib import Path
 
 from dotenv import load_dotenv
@@ -28,6 +29,7 @@ from . import aufzeichnung as aufz
 from .llm import LLMFehler, client_aus_umgebung
 from .ndjson import MIME_TYP, Exportergebnis, ExportFehler, schreibe_ndjson
 from .push import TOKEN_VARIABLE, pushe
+from . import szenarien as szen
 
 HINWEIS = (
     "Synthetische Testdaten. Nicht für klinische Nutzung, "
@@ -42,6 +44,8 @@ def baue_parser() -> argparse.ArgumentParser:
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog=(
             "Beispiele:\n"
+            "  synthfhir --szenarien                       (kostet nichts)\n"
+            "  synthfhir --szenario diabetes-ambulanz -o d.json\n"
             '  synthfhir "40 Patientinnen mit Asthma" -n 40 -o asthma.json\n'
             '  synthfhir "200 Diabetiker über 60" -n 200 --teilgroesse 20 --bericht b.json\n'
             '  synthfhir "50 Patienten mit COPD" -n 50 --ndjson ./export --pause 60\n'
@@ -71,6 +75,13 @@ def baue_parser() -> argparse.ArgumentParser:
                    help="Eine Aufzeichnung abspielen statt das Modell zu "
                         "fragen. Ohne Netz, ohne Kontingent, exakt "
                         "reproduzierbar — und die Prüfsumme wird nachgerechnet.")
+    p.add_argument("--szenario", metavar="NAME",
+                   help="Ein fertiges Szenario bauen statt das Modell zu "
+                        "fragen. Ohne Netz, ohne Kontingent. NAME ist ein "
+                        "Name aus --szenarien oder der Pfad zu einer "
+                        "Szenariodatei (.json).")
+    p.add_argument("--szenarien", action="store_true",
+                   help="Die eingebauten Szenarien auflisten und beenden.")
     p.add_argument("--ndjson", type=Path, metavar="VERZEICHNIS",
                    help="Zusätzlich als NDJSON nach FHIR Bulk Data ausgeben: "
                         "eine Datei je Ressourcentyp plus manifest.json. Das "
@@ -101,7 +112,32 @@ def main(argv: list[str] | None = None) -> int:
     load_dotenv()
     args = baue_parser().parse_args(argv)
 
-    if args.wiedergeben:
+    if args.szenarien:
+        print(_szenarienliste())
+        return 0
+
+    # Zwei Wege, die beide ohne Modell laufen - aber verschiedene Dinge
+    # versprechen. Im ersten Entwurf gewann `--szenario` stillschweigend:
+    # Wer beides angab, bekam nicht, was er las.
+    if args.szenario and args.wiedergeben:
+        print("Fehler: --szenario und --wiedergeben schliessen sich aus. "
+              "Ein Szenario ist eine Vorlage, eine Aufzeichnung ein "
+              "wiederholter Lauf.", file=sys.stderr)
+        return 2
+    # Aufzeichnen verspricht den Beitrag des MODELLS. Bei einem Szenario
+    # gibt es den nicht, und eine Aufzeichnung davon waere eine Abschrift
+    # der Vorlage unter falschem Namen. Der Schalter wird uebergangen -
+    # aber nicht stumm: Eine angeforderte Datei, die nicht entsteht, ist
+    # genau die Sorte Ueberraschung, die spaeter Zeit kostet.
+    if args.szenario and args.aufzeichnen:
+        print("Hinweis: --aufzeichnen wird bei --szenario uebergangen. Eine "
+              "Aufzeichnung haelt den Beitrag des Modells fest; ein Szenario "
+              "hat keinen. Zum Teilen taugt die Szenariodatei selbst.",
+              file=sys.stderr)
+
+    if args.szenario:
+        ergebnis, vorbefund = _szenario(args)
+    elif args.wiedergeben:
         ergebnis, vorbefund = _wiedergeben(args)
     else:
         ergebnis, vorbefund = _erzeugen(args)
@@ -140,7 +176,7 @@ def main(argv: list[str] | None = None) -> int:
     # Bericht: Ein Dateisystemfehler dort nähme sonst den teuersten Teil des
     # Laufs mit — den Beitrag des Modells, der Minuten und Kontingent
     # gekostet hat und ohne den sich nichts wiederholen lässt.
-    if args.aufzeichnen and not args.wiedergeben:
+    if args.aufzeichnen and not args.wiedergeben and not args.szenario:
         try:
             a = aufz.aus_ergebnis(ergebnis, modell=_modellname())
             pfad = aufz.schreibe(a, args.aufzeichnen)
@@ -159,10 +195,7 @@ def main(argv: list[str] | None = None) -> int:
                 ergebnis.ressourcen,
                 args.ndjson,
                 ueberschreiben=args.ueberschreiben,
-                anfrage=(f"synthfhir --wiedergeben {args.wiedergeben}"
-                         if args.wiedergeben
-                         else f"synthfhir {ergebnis.beschreibung!r} "
-                              f"-n {ergebnis.angefragt}"),
+                anfrage=_anfragetext(args, ergebnis),
             )
         except ExportFehler as exc:
             print(f"NDJSON-Export fehlgeschlagen: {exc}", file=sys.stderr)
@@ -236,6 +269,74 @@ def _erzeugen(args) -> "tuple[Kohortenergebnis | None, int]":
     except KeyboardInterrupt:
         print(chr(10) + "Abgebrochen.", file=sys.stderr)
         return None, 2
+
+
+def _szenarienliste() -> str:
+    """Die Bibliothek als Text - ohne Modell, ohne Netz."""
+    zeilen = ["Eingebaute Szenarien (bauen ohne Modellaufruf):", ""]
+    for s in szen.alle():
+        wer = "Patient" if s.patienten == 1 else "Patienten"
+        zeilen.append(f"  {s.name:<22} {s.titel}  ({s.patienten} {wer})")
+        # Umbrochen, nicht abgeschnitten: `zeigt` ist der Satz, an dem man
+        # das passende Szenario erkennt. Eine Zeile ueber 200 Zeichen macht
+        # die ganze Liste unlesbar, ein Abschneiden nimmt die Pointe.
+        zeilen += textwrap.wrap(s.zeigt, width=74,
+                                initial_indent=" " * 25, subsequent_indent=" " * 25)
+        zeilen.append("")
+    zeilen.append("Bauen mit:  synthfhir --szenario NAME")
+    zeilen.append("Eine eigene Datei geht auch:  synthfhir --szenario meins.json")
+    return chr(10).join(zeilen)
+
+
+def _szenario(args) -> "tuple[Kohortenergebnis | None, int]":
+    """Baut ein Szenario - ohne Netz, ohne Kontingent.
+
+    `--szenario` nimmt einen Namen ODER einen Pfad. Unterschieden wird an
+    der Endung und nicht daran, ob die Datei existiert: Ein Tippfehler in
+    `--szenario diabetes-ambluanz` soll die Liste der bekannten Namen
+    zeigen und nicht melden, dass eine Datei fehlt.
+    """
+    wunsch = str(args.szenario).strip()
+    try:
+        if wunsch.lower().endswith(".json"):
+            s = szen.lies(Path(wunsch))
+        else:
+            s = szen.hole(wunsch)
+    except szen.SzenarioFehler as exc:
+        print(f"Fehler: {exc}", file=sys.stderr)
+        return None, 2
+
+    if not args.still:
+        print(f"Szenario: {s.titel}  ({s.name})", file=sys.stderr)
+        print(f"  {s.zeigt}", file=sys.stderr)
+        print(f"  {s.patienten} Patienten, kein Modellaufruf", file=sys.stderr)
+
+    # Ein geladenes Szenario kann Codes nennen, die dieser Katalog nicht
+    # fuehrt. Der Bau ersetzt sie und beanstandet das - aber die
+    # Beanstandung steht zwischen anderen. Hier wird sie vorgezogen, weil
+    # sie bei einer FREMDEN Datei die wichtigste Nachricht ist: Was du
+    # bekommst, ist nicht, was in der Datei stand.
+    fehlend = szen.unbekannte_codes(s)
+    if fehlend:
+        print(f"  ACHTUNG: {len(fehlend)} Code(s) stehen nicht in diesem "
+              "Katalog und werden ersetzt:", file=sys.stderr)
+        for feld, code in fehlend[:10]:
+            print(f"    {feld}: {code}", file=sys.stderr)
+
+    return szen.baue_kohorte(s), 0
+
+
+def _anfragetext(args, ergebnis) -> str:
+    """Was im NDJSON-Manifest als Anfrage steht.
+
+    Steht hier und nicht inline, weil es inzwischen drei Wege sind und der
+    Ausdruck sonst dreistufig verschachtelt waere.
+    """
+    if args.szenario:
+        return f"synthfhir --szenario {args.szenario}"
+    if args.wiedergeben:
+        return f"synthfhir --wiedergeben {args.wiedergeben}"
+    return f"synthfhir {ergebnis.beschreibung!r} -n {ergebnis.angefragt}"
 
 
 def _wiedergeben(args) -> "tuple[Kohortenergebnis | None, int]":

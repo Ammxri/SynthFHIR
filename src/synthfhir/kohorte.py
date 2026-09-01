@@ -174,6 +174,14 @@ class Kohortenergebnis:
     # verworfene Versuche. Dies hier ist der Beitrag des Modells zum
     # Ergebnis, und damit alles, was eine Aufzeichnung braucht.
     parameter: list[TeilParameter] = field(default_factory=list)
+    # Der Name des Szenarios, falls die Kohorte aus einer Vorlage stammt
+    # (ADR-016). Gegenstueck zu `Ergebnis.szenario` auf der Weboberflaeche.
+    #
+    # Ohne dieses Feld beschrieb `--szenario ... --bericht b.json` einen
+    # Modelllauf, den es nie gab: `teile` mit einem Eintrag, `dauer_s: 0.0`
+    # und null Token - nachgemessen. Wer den Bericht liest, muss erkennen
+    # koennen, dass hier nichts gefragt wurde.
+    szenario: str | None = None
 
     # -- die Zusage, unverändert aus Phase 1 --------------------------------
     @property
@@ -264,6 +272,7 @@ class Kohortenergebnis:
         return {
             "beschreibung": self.beschreibung,
             "fertig": self.fertig,
+            "szenario": self.szenario,
             "angefragt": self.angefragt,
             "patienten": self.patienten,
             "mengentreue": round(self.mengentreue, 4),
