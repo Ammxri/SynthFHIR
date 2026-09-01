@@ -832,3 +832,124 @@ def test_die_bezeichnung_kommt_aus_dem_katalog_nicht_aus_der_ressource():
         {"system": "http://fhir.de/CodeSystem/dgkev/Aufnahmeanlass",
          "code": "N", "display": "<script>boese</script>"}]}}}
     assert app_modul._kontaktart(e) == "stationär · Notfall"
+
+
+# --- /export gegen die JSON-Verstaerkungsbombe (Befund 7) ------------------
+
+
+def _tief(n):
+    x = 0
+    for _ in range(n):
+        x = [x]
+    return x
+
+
+def test_export_weist_die_json_bombe_ab(klient):
+    """EINE anonyme Anfrage unter 1 MB darf keine GB-Ausgabe erzeugen.
+
+    `json.dumps(indent=2)` blaeht tief verschachtelte Eingabe linear mit
+    der Tiefe auf - gemessen 1,6 KB rein, 1,3 MB raus. Auf der 512-MB-
+    Instanz ist das ein OOM aus einer einzigen Anfrage. Der Schutz sitzt
+    auf der Ausgabe, weil der Verstaerkungsfaktor jede Eingabegrenze
+    aushebelt.
+    """
+    import json as _json
+
+    ein = _json.dumps(_tief(2000))
+    a = klient.post("/export", data={"bundle": ein, "art": "json"})
+    assert a.status_code == 413
+    assert len(a.content) < 2000, "die Bombe darf keine grosse Antwort erzeugen"
+
+
+def test_export_grenze_greift_ohne_recursionerror(klient):
+    """Die Gegenprobe zur Tiefe, die WIRKLICH die Ausgabegrenze trifft.
+
+    Nachgemessen: `[tief(800)]*N` laeuft in Wahrheit in den
+    RecursionError des Encoders (Tiefe 801) und beweist die Ausgabegrenze
+    NICHT. Hier ist die Tiefe klein (51, weit unter der Encoder-Grenze),
+    aber die Breite gross: 704 KiB Eingabe, 36 MiB Ausgabe. Nur die
+    Ausgabegrenze kann das fangen — der Test wird gruen, wenn man sie
+    aufweicht, ist also die richtige Wache.
+    """
+    import json as _json
+    import urllib.parse as _up
+
+    # Tiefe 200: weit unter der Encoder-Rekursionsgrenze, also KEIN
+    # RecursionError — nachgemessen: mit aufgeweichter Grenze liefert
+    # genau diese Eingabe 200 mit 40 MB Ausgabe. Nur die Ausgabegrenze
+    # fangt es. 500 Kopien treiben die eingerueckte Ausgabe auf ~38 MB.
+    breit = [_tief(200)] * 500
+    ein = _json.dumps(breit)
+    # Der Wert wird urlencoded uebertragen; die vielen Klammern verdreifachen
+    # ihn. Er muss auch dann unter Starlettes 1-MB-Feldgrenze bleiben, sonst
+    # misst der Test die Feldgrenze statt der Ausgabegrenze.
+    assert len(_up.quote_plus(ein)) < 1024 * 1024
+    a = klient.post("/export", data={"bundle": ein, "art": "json"})
+    assert a.status_code == 413
+
+
+def test_export_sehr_tiefe_eingabe_ist_400_kein_500(klient):
+    """Ab rund 5000 Ebenen wirft schon der Parser RecursionError. Das ist
+    ein Eingabefehler (400), kein Serverfehler (500)."""
+    tief = "[" * 9000 + "0" + "]" * 9000
+    a = klient.post("/export", data={"bundle": tief, "art": "json"})
+    assert a.status_code == 400
+
+
+def test_export_meldung_zeigt_die_eingabe_nicht(klient):
+    """Der Koerper ist Fremdeingabe. Die 413-Meldung nennt die Grenze,
+    nicht den Inhalt."""
+    import json as _json
+
+    marke = "GEHEIM-MARKER-9998"
+    obj = {"resourceType": marke, "tief": _tief(2000)}
+    a = klient.post("/export", data={"bundle": _json.dumps(obj), "art": "json"})
+    assert a.status_code == 413
+    assert marke not in a.text
+
+
+def test_export_ein_echtes_bundle_geht_weiterhin_durch(klient):
+    """Die Grenze darf den rechtmaessigen Fall nicht treffen: 200
+    Patienten sind rund 3 MB, die Grenze liegt bei 16."""
+    import json as _json
+
+    bundle = {"resourceType": "Bundle", "entry": [
+        {"resource": {"resourceType": "Patient", "id": f"pat-{i}",
+                      "name": [{"family": "Mustermann", "given": ["Erika"]}]}}
+        for i in range(200)]}
+    a = klient.post("/export", data={"bundle": _json.dumps(bundle), "art": "json"})
+    assert a.status_code == 200
+    assert _json.loads(a.content)["entry"][0]["resource"]["resourceType"] == "Patient"
+
+
+# --- Der Betreiberschluessel darf nicht in die Seite (Fix 2) ---------------
+
+
+def test_betreiberschluessel_leckt_nicht_ueber_anbietertext(klient, monkeypatch):
+    """Auf dem Demopfad benutzt die Seite den Betreiberschluessel. Wenn der
+    Anbieter ihn in seiner Fehlermeldung wiederholt, darf er trotzdem nicht
+    in der gerenderten Seite stehen — ein anonymer Besucher saehe ihn sonst.
+    """
+    from synthfhir import llm
+
+    GEHEIM = "sk-BETREIBER-GEHEIM-4711"
+
+    class FakeAntwort:
+        status_code = 500
+        text = f'{{"error":{{"message":"rejected (Bearer {GEHEIM})"}}}}'
+        headers: dict = {}
+
+        def json(self):
+            raise ValueError("kein JSON")
+
+    def bau():
+        c = llm.OpenAIKompatiblerClient(
+            modell="m", basis_url="https://anbieter.invalid/v1",
+            api_schluessel=GEHEIM)
+        c._post_mit_wartepausen = lambda url, rumpf: FakeAntwort()
+        return c
+
+    monkeypatch.setattr(app_modul, "client_aus_umgebung", bau)
+    a = klient.post("/erzeugen", data={"beschreibung": "Ein Patient mit Diabetes"})
+    assert GEHEIM not in a.text, "der Betreiberschluessel steht in der Seite"
+    assert "Bearer" not in a.text

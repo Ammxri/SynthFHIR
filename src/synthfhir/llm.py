@@ -84,9 +84,17 @@ class LLMFehler(RuntimeError):
     * `verbindung`         — kein Kontakt zum Anbieter
     """
 
-    def __init__(self, meldung: str, *, art: str = "unbrauchbar") -> None:
+    def __init__(self, meldung: str, *, art: str = "unbrauchbar",
+                 roh: str | None = None) -> None:
         super().__init__(meldung)
         self.art = art
+        # Der ungefilterte Anbieter- oder Ausnahmetext. Er gehoert NICHT in
+        # `meldung`: Ein Anbieter, der den Authorization-Kopf in seiner
+        # Fehlermeldung wiederholt, brachte den Schluessel sonst ueber
+        # `str(exc)` in die Seite und in jeden Bericht. Fuer die
+        # Server-Logs des Betreibers steht er hier bereit; kein
+        # oeffentlicher Pfad liest ihn.
+        self.roh = roh
 
 
 @dataclass(frozen=True)
@@ -211,10 +219,13 @@ class OpenAIKompatiblerClient(LLMClient):
             antwort = self._post_mit_wartepausen(url, rumpf)
         except requests.exceptions.RequestException as exc:
             raise LLMFehler(
-                f"Keine Verbindung zu {url}: {exc}\n"
+                f"Keine Verbindung zu {url}.\n"
                 "  Lokales Ollama: läuft der Dienst?  ollama list\n"
                 "  Cloud-Dienst: stimmt SYNTHFHIR_LLM_BASE_URL?",
                 art="verbindung",
+                # `str(exc)` kann bei einem ungueltigen Kopf den Kopfwert
+                # tragen — deshalb nach `roh`, nicht in die Meldung.
+                roh=str(exc),
             ) from exc
 
         dauer = time.perf_counter() - beginn
@@ -223,11 +234,17 @@ class OpenAIKompatiblerClient(LLMClient):
         try:
             koerper = antwort.json()
         except ValueError as exc:
-            raise LLMFehler(f"Antwort von {url} war kein JSON: {antwort.text[:200]!r}") from exc
+            raise LLMFehler(
+                f"Die Antwort von {url} war kein JSON.",
+                roh=antwort.text[:300],
+            ) from exc
 
         auswahl = koerper.get("choices")
         if not isinstance(auswahl, list) or not auswahl:
-            raise LLMFehler(f"Antwort ohne 'choices': {str(koerper)[:300]}")
+            raise LLMFehler(
+                "Die Antwort enthielt kein Feld 'choices'.",
+                roh=str(koerper)[:300],
+            )
 
         nachricht = auswahl[0].get("message") or {}
         text = nachricht.get("content")
@@ -327,9 +344,13 @@ class OpenAIKompatiblerClient(LLMClient):
                 art="unbrauchbar",
             )
         if antwort.status_code >= 400:
+            # Der Hauptpfad des Schluessel-Lecks: Ein Gateway, das den
+            # Authorization-Kopf in seiner Fehlermeldung wiederholt, stand
+            # ueber `antwort.text` woertlich in der Meldung.
             raise LLMFehler(
-                f"{url} antwortete mit HTTP {antwort.status_code}: {antwort.text[:300]}",
+                f"{url} antwortete mit HTTP {antwort.status_code}.",
                 art="unbrauchbar",
+                roh=antwort.text[:300],
             )
 
 

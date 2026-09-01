@@ -390,6 +390,52 @@ def _aufzeichnung_json(ergebnis: Ergebnis, client: LLMClient) -> str:
 # Was heruntergeladen werden kann: Endung und MIME-Typ setzt der Server,
 # nicht das Formular. So kann kein Feld aus der Seite eine Datei zu etwas
 # anderem erklären, als sie ist.
+# Grenze der /export-Ausgabe. Sie ist der eigentliche Schutz gegen eine
+# JSON-Verstaerkungsbombe: `json.dumps(indent=2)` blaeht tief verschachtelte
+# Eingabe linear mit der Tiefe auf - gemessen 1,6 KB rein, 1,3 MB raus. Ein
+# Feld knapp unter Starlettes 1-MB-Feldgrenze erzeugt so GB-Ausgabe und
+# bringt die 512-MB-Instanz um, aus EINER anonymen Anfrage.
+#
+# Die Grenze sitzt auf der AUSGABE und nicht auf der Eingabe, weil der
+# Verstaerkungsfaktor sonst jede Eingabegrenze aushebelt. `/wiedergeben`
+# begrenzt aus demselben Grund die gebauten Ressourcen, nicht nur den
+# Koerper (ADR-012). 16 MB sind grosszuegig - ein Bundle aus 200 Patienten
+# ist rund 3 MB - und toeten den Angriff, der GB will.
+EXPORT_HOECHSTGROESSE = 16 * 1024 * 1024
+
+
+class _ZuGross(Exception):
+    """Die Ausgabe ueberschreitet EXPORT_HOECHSTGROESSE."""
+
+
+def _json_begrenzt(obj: object) -> str:
+    """Serialisiert `obj` als eingeruecktes JSON, bricht aber ab, sobald
+    die Ausgabe die Grenze ueberschreitet.
+
+    `iterencode` baut die Ausgabe stueckweise; der Speicher waechst damit
+    hoechstens bis zur Grenze plus ein Stueck, egal wie stark die Eingabe
+    sich unter `indent` aufblaeht. Ohne diesen Umweg (`json.dumps`) stuende
+    die volle, moeglicherweise gigabytegrosse Ausgabe auf einmal im
+    Speicher, bevor irgendeine Groessenpruefung sie sehen koennte.
+    """
+    stuecke: list[str] = []
+    gesamt = 0
+    try:
+        for stueck in json.JSONEncoder(indent=2, ensure_ascii=False).iterencode(obj):
+            gesamt += len(stueck)
+            if gesamt > EXPORT_HOECHSTGROESSE:
+                raise _ZuGross
+            stuecke.append(stueck)
+    except RecursionError as exc:
+        # `json.dumps(indent=...)` benutzt den REKURSIVEN Python-Encoder,
+        # nicht den C-Encoder. Eine tief verschachtelte Eingabe laesst ihn
+        # in die Rekursionsgrenze laufen, bevor die Ausgabegrenze greift.
+        # Beides ist derselbe Angriff und dieselbe Antwort: wird nicht
+        # ausgeliefert.
+        raise _ZuGross from exc
+    return "".join(stuecke)
+
+
 AUSGABEARTEN = {
     "json": (".json", "application/fhir+json", "synthfhir-bundle"),
     "ndjson": (".zip", "application/zip", "synthfhir-ndjson"),
@@ -429,6 +475,17 @@ def _sicherer_name(dateiname: str, endung: str) -> str:
 
 
 
+def _zu_gross() -> PlainTextResponse:
+    """Die 413-Antwort fuer /export. Nennt die Grenze, nicht die Eingabe:
+    Der Koerper ist Fremdeingabe und hat in der Meldung nichts verloren."""
+    return PlainTextResponse(
+        f"Die erzeugte Datei überschreitet "
+        f"{EXPORT_HOECHSTGROESSE // (1024 * 1024)} MB und wird nicht "
+        "ausgeliefert.",
+        status_code=413,
+    )
+
+
 @app.post("/export", include_in_schema=False)
 def export(
     bundle: str = Form(...),
@@ -448,7 +505,13 @@ def export(
 
     try:
         geparst = json.loads(bundle)
-    except json.JSONDecodeError:
+    except (json.JSONDecodeError, RecursionError):
+        # RecursionError, nicht nur JSONDecodeError: Ab rund 4000
+        # Verschachtelungsebenen wirft der Parser ihn statt eines
+        # Formatfehlers - und ein tief verschachtelter Koerper ist genau
+        # der Anfang des Verstaerkungsangriffs. Ohne dieses Fangen endete
+        # er als HTTP 500 (dieselbe Klasse wie der 60-KB-Klammern-Fall der
+        # API, ADR-012).
         return PlainTextResponse("Kein gültiges JSON erhalten.", status_code=400)
 
     if art == "aufzeichnung":
@@ -462,9 +525,10 @@ def export(
             return PlainTextResponse(
                 f"Keine gültige Aufzeichnung erhalten: {exc}", status_code=400
             )
-        inhalt: bytes | str = json.dumps(
-            geprueft.to_dict(), indent=2, ensure_ascii=False
-        )
+        try:
+            inhalt: bytes | str = _json_begrenzt(geprueft.to_dict())
+        except _ZuGross:
+            return _zu_gross()
     elif art == "ndjson":
         ressourcen = [
             e["resource"]
@@ -482,7 +546,12 @@ def export(
                 f"Archiv nicht erzeugbar: {exc}", status_code=400
             )
     else:
-        inhalt = json.dumps(geparst, indent=2, ensure_ascii=False)
+        # Der Angriffszweig: `geparst` ist beliebiges JSON des Aufrufers,
+        # und `art=json` ist die Vorgabe. Deshalb hier die Ausgabegrenze.
+        try:
+            inhalt = _json_begrenzt(geparst)
+        except _ZuGross:
+            return _zu_gross()
 
     return Response(
         content=inhalt,

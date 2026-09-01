@@ -204,3 +204,75 @@ def test_ausgeschoepfte_grenze_gilt_auch_ohne_bekannten_abbruchgrund():
                    dauer_s=0.0, abbruchgrund="voellig-unbekannt",
                    token_grenze=4500)
     assert not b.abgeschnitten
+
+
+# --- Kein Anbietertext in der Fehlermeldung (Fix 2, Befund) ----------------
+#
+# Ein Anbieter oder vorgelagertes Gateway kann den Authorization-Kopf in
+# seiner Fehlermeldung wiederholen. Der rohe Antworttext darf deshalb NICHT
+# in die LLMFehler-Meldung — sonst steht er ueber `str(exc)` in der Seite
+# und im Bericht. Er gehoert nach `exc.roh`, das kein oeffentlicher Pfad
+# rendert.
+
+
+class _FakeAntwort:
+    """Das Minimum, das `frage()` von einer requests.Response liest."""
+
+    def __init__(self, status_code, text, json_body=None):
+        self.status_code = status_code
+        self.text = text
+        self.headers = {}
+        self._json = json_body
+
+    def json(self):
+        if self._json is None:
+            raise ValueError("kein JSON")
+        return self._json
+
+
+def _client(monkeypatch, antwort):
+    from synthfhir import llm
+
+    c = llm.OpenAIKompatiblerClient(
+        modell="m", basis_url="https://anbieter.invalid/v1",
+        api_schluessel="sk-BETREIBER-GEHEIM-4711",
+    )
+    monkeypatch.setattr(c, "_post_mit_wartepausen", lambda url, rumpf: antwort)
+    return c
+
+
+GEHEIM = "sk-BETREIBER-GEHEIM-4711"
+
+
+def test_http_fehler_traegt_den_anbietertext_nicht_in_der_meldung(monkeypatch):
+    from synthfhir.llm import LLMFehler
+
+    echo = f'{{"error": {{"message": "rejected (Bearer {GEHEIM})"}}}}'
+    c = _client(monkeypatch, _FakeAntwort(500, echo))
+    with pytest.raises(LLMFehler) as fehler:
+        c.frage(system="s", benutzer="b")
+    assert GEHEIM not in str(fehler.value), "der Schluessel steht in der Meldung"
+    assert "HTTP 500" in str(fehler.value)
+    # Fuer die Server-Logs des Betreibers bleibt er erreichbar.
+    assert fehler.value.roh is not None and GEHEIM in fehler.value.roh
+
+
+def test_kein_json_traegt_den_anbietertext_nicht_in_der_meldung(monkeypatch):
+    from synthfhir.llm import LLMFehler
+
+    c = _client(monkeypatch, _FakeAntwort(200, f"<html>Bearer {GEHEIM}</html>"))
+    with pytest.raises(LLMFehler) as fehler:
+        c.frage(system="s", benutzer="b")
+    assert GEHEIM not in str(fehler.value)
+    assert GEHEIM in (fehler.value.roh or "")
+
+
+def test_ohne_choices_traegt_den_koerper_nicht_in_der_meldung(monkeypatch):
+    from synthfhir.llm import LLMFehler
+
+    c = _client(monkeypatch, _FakeAntwort(
+        200, "{}", json_body={"schluessel_echo": f"Bearer {GEHEIM}"}))
+    with pytest.raises(LLMFehler) as fehler:
+        c.frage(system="s", benutzer="b")
+    assert GEHEIM not in str(fehler.value)
+    assert GEHEIM in (fehler.value.roh or "")
