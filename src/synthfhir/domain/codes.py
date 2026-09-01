@@ -197,6 +197,21 @@ class ObservationCode:
     # Geholt und geprüft am 2026-09-01 gegen tx.fhir.org, LOINC 2.82.
     # `tests/test_terminologie.py` hält die Werte dagegen.
     display_loinc_de: str = ""
+    # SNOMED-CT-Code des Verfahrens. ISiK Labor verlangt neben der
+    # LOINC-Kodierung eine zweite in SNOMED — dieselbe Doppelkodierung,
+    # die ADR-003 für Diagnosen entschieden hat (SNOMED + ICD-10-GM).
+    #
+    # Gefüllt sind nur die sechs Werte, die die Spezifikation SELBST
+    # nennt (die Profile ISiKLaboruntersuchungHb, -CRP, -TSH,
+    # -Thrombozyten, -Serumkreatinin, -GFR tragen sie als
+    # `patternCoding`). Die übrigen wären eine eigene klinische Wahl;
+    # der Katalog ist sicherheitskritisch, und eine solche Wahl gehört
+    # geprüft, nicht geraten. Siehe `docs/snomed-labor-pruefliste.md`.
+    #
+    # Leer heisst: keine SNOMED-Kodierung in der Ausgabe. Ein erfundener
+    # Code wäre schlimmer als ein fehlender.
+    snomed: str = ""
+    snomed_display: str = ""
 
     @property
     def system(self) -> str:
@@ -239,15 +254,15 @@ class ConditionCode:
 OBSERVATION_CODES: dict[str, ObservationCode] = {
     o.code: o
     for o in [
-        ObservationCode("718-7", "Hemoglobin [Mass/volume] in Blood", "Hämoglobin", "g/dL", "g/dL", 8.0, 17.5, display_loinc_de="Hämoglobin [Masse/Volumen] in Blut"),
+        ObservationCode("718-7", "Hemoglobin [Mass/volume] in Blood", "Hämoglobin", "g/dL", "g/dL", 8.0, 17.5, display_loinc_de="Hämoglobin [Masse/Volumen] in Blut", snomed="416125006", snomed_display="Hemoglobin measurement"),
         ObservationCode("789-8", "Erythrocytes [#/volume] in Blood", "Erythrozyten", "10*6/uL", "10*6/uL", 3.5, 6.0, display_loinc_de="Erythrozyten [#/Volumen] in Blut mittels automatisierter Zählung"),
         ObservationCode("6690-2", "Leukocytes [#/volume] in Blood", "Leukozyten", "10*3/uL", "10*3/uL", 3.0, 15.0, display_loinc_de="Leukozyten [#/Volumen] in Blut mittels automatisierter Zählung"),
-        ObservationCode("777-3", "Platelets [#/volume] in Blood", "Thrombozyten", "10*3/uL", "10*3/uL", 120.0, 420.0, display_loinc_de="Thrombozyten [#/Volumen] in Blut mittels automatisierter Zählung"),
+        ObservationCode("777-3", "Platelets [#/volume] in Blood", "Thrombozyten", "10*3/uL", "10*3/uL", 120.0, 420.0, display_loinc_de="Thrombozyten [#/Volumen] in Blut mittels automatisierter Zählung", snomed="365632008", snomed_display="Finding of platelet count"),
         ObservationCode("2345-7", "Glucose [Mass/volume] in Serum or Plasma", "Glukose im Serum", "mg/dL", "mg/dL", 60.0, 300.0, display_loinc_de="Glucose [Masse/Volumen] in Serum oder Plasma"),
         ObservationCode("4548-4", "Hemoglobin A1c/Hemoglobin.total in Blood", "HbA1c", "%", "%", 4.5, 14.0, display_loinc_de="Hämoglobin A1c/Hämoglobin.gesamt in Blut"),
-        ObservationCode("2160-0", "Creatinine [Mass/volume] in Serum or Plasma", "Kreatinin im Serum", "mg/dL", "mg/dL", 0.5, 4.0, display_loinc_de="Creatinin [Masse/Volumen] in Serum oder Plasma"),
+        ObservationCode("2160-0", "Creatinine [Mass/volume] in Serum or Plasma", "Kreatinin im Serum", "mg/dL", "mg/dL", 0.5, 4.0, display_loinc_de="Creatinin [Masse/Volumen] in Serum oder Plasma", snomed="70901006", snomed_display="Creatinine measurement, serum"),
         ObservationCode("3094-0", "Urea nitrogen [Mass/volume] in Serum or Plasma", "Harnstoff-Stickstoff", "mg/dL", "mg/dL", 6.0, 60.0, display_loinc_de="Harnstoff-Stickstoff [Masse/Volumen] in Serum oder Plasma"),
-        ObservationCode("33914-3", "Glomerular filtration rate/1.73 sq M.predicted", "geschätzte GFR", "mL/min/{1.73_m2}", "mL/min/{1.73_m2}", 10.0, 120.0, display_loinc_de="Glomeruläre Filtrationsrate /1.7m2 KO (MDRD)"),
+        ObservationCode("33914-3", "Glomerular filtration rate/1.73 sq M.predicted", "geschätzte GFR", "mL/min/{1.73_m2}", "mL/min/{1.73_m2}", 10.0, 120.0, display_loinc_de="Glomeruläre Filtrationsrate /1.7m2 KO (MDRD)", snomed="80274001", snomed_display="Glomerular filtration rate measurement"),
         ObservationCode("2951-2", "Sodium [Moles/volume] in Serum or Plasma", "Natrium", "mmol/L", "mmol/L", 128.0, 148.0, display_loinc_de="Natrium [Mol/Volumen] in Serum oder Plasma"),
         ObservationCode("2823-3", "Potassium [Moles/volume] in Serum or Plasma", "Kalium", "mmol/L", "mmol/L", 3.0, 6.0, display_loinc_de="Kalium [Mol/Volumen] in Serum oder Plasma"),
         ObservationCode("2075-0", "Chloride [Moles/volume] in Serum or Plasma", "Chlorid", "mmol/L", "mmol/L", 95.0, 112.0, display_loinc_de="Chlorid [Mol/Volumen] in Serum oder Plasma"),
@@ -257,8 +272,8 @@ OBSERVATION_CODES: dict[str, ObservationCode] = {
         ObservationCode("1742-6", "Alanine aminotransferase [Enzymatic activity/volume] in Serum or Plasma", "ALAT (GPT)", "U/L", "U/L", 5.0, 150.0, display_loinc_de="Alanin-Aminotransferase [Enzymaktivität/Volumen] in Serum oder Plasma"),
         ObservationCode("1920-8", "Aspartate aminotransferase [Enzymatic activity/volume] in Serum or Plasma", "ASAT (GOT)", "U/L", "U/L", 5.0, 150.0, display_loinc_de="Aspartat-Aminotransferase [Enzymaktivität/Volumen] in Serum oder Plasma"),
         ObservationCode("1975-2", "Bilirubin.total [Mass/volume] in Serum or Plasma", "Bilirubin gesamt", "mg/dL", "mg/dL", 0.2, 4.0, display_loinc_de="Bilirubin.gesamt [Masse/Volumen] in Serum oder Plasma"),
-        ObservationCode("1988-5", "C reactive protein [Mass/volume] in Serum or Plasma", "C-reaktives Protein", "mg/L", "mg/L", 0.1, 120.0, display_loinc_de="C-reaktives Protein [Masse/Volumen] in Serum oder Plasma"),
-        ObservationCode("3016-3", "Thyrotropin [Units/volume] in Serum or Plasma", "TSH", "mIU/L", "m[IU]/L", 0.2, 12.0, display_loinc_de="Thyreotropin [Einheiten/Volumen] in Serum oder Plasma"),
+        ObservationCode("1988-5", "C reactive protein [Mass/volume] in Serum or Plasma", "C-reaktives Protein", "mg/L", "mg/L", 0.1, 120.0, display_loinc_de="C-reaktives Protein [Masse/Volumen] in Serum oder Plasma", snomed="55235003", snomed_display="C-reactive protein measurement"),
+        ObservationCode("3016-3", "Thyrotropin [Units/volume] in Serum or Plasma", "TSH", "mIU/L", "m[IU]/L", 0.2, 12.0, display_loinc_de="Thyreotropin [Einheiten/Volumen] in Serum oder Plasma", snomed="61167004", snomed_display="Thyroid stimulating hormone measurement"),
         ObservationCode("8867-4", "Heart rate", "Herzfrequenz", "beats/minute", "/min", 45.0, 130.0, vital_sign=True, display_loinc_de="Herzfrequenz"),
         ObservationCode("8480-6", "Systolic blood pressure", "Blutdruck systolisch", "mmHg", "mm[Hg]", 90.0, 190.0, vital_sign=True, display_loinc_de="Systolischer Blutdruck"),
         ObservationCode("8462-4", "Diastolic blood pressure", "Blutdruck diastolisch", "mmHg", "mm[Hg]", 50.0, 110.0, vital_sign=True, display_loinc_de="Diastolischer Blutdruck"),

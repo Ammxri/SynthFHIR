@@ -340,13 +340,30 @@ def baue_observation(
             # `display_de` bleibt daneben unsere Kurzform für Menschen und
             # steht in `text`. Beides zu vermischen wäre falsch: „HbA1c"
             # ist keine LOINC-Bezeichnung.
+            # Doppelkodierung, wo die Spezifikation den zweiten Code
+            # selbst nennt: ISiK Labor verlangt neben LOINC eine
+            # SNOMED-Kodierung. Wo der Katalog keine führt, bleibt es bei
+            # einer — ein erfundener Code wäre schlimmer als ein
+            # fehlender, und das Profil ist ohnehin ein Entwurf
+            # (ADR-015).
             "coding": [
                 {
                     "system": LOINC_SYSTEM,
                     "code": spec.code,
                     "display": spec.display_loinc_de or spec.display,
                 }
-            ],
+            ]
+            + (
+                [
+                    {
+                        "system": SNOMED_SYSTEM,
+                        "code": spec.snomed,
+                        "display": spec.snomed_display,
+                    }
+                ]
+                if spec.snomed
+                else []
+            ),
             "text": spec.display_de,
         },
         "subject": {"reference": f"Patient/tmp-pat-{patient_index}"},

@@ -604,3 +604,68 @@ def test_die_referenzkohorte_traegt_das_blutdruckpanel():
               if r["resourceType"] == "Observation" and r.get("component")]
     assert len(panels) == 1
     assert panels[0]["code"]["coding"][0]["code"] == "85354-9"
+
+
+# --- SNOMED-Doppelkodierung fuer Laborwerte (ADR-015) ----------------------
+
+
+def test_laborwerte_mit_snomed_code_tragen_zwei_kodierungen():
+    """ISiK Labor verlangt neben LOINC eine SNOMED-Kodierung.
+
+    Gefuellt sind nur die sechs Codes, die die Spezifikation selbst als
+    `patternCoding` fuehrt.
+    """
+    from synthfhir.domain.codes import OBSERVATION_CODES, SNOMED_SYSTEM
+
+    spec = OBSERVATION_CODES["718-7"]           # Haemoglobin
+    assert spec.snomed, "der Katalog fuehrt hier einen SNOMED-Code"
+    bau = baue_aus_parametern(
+        {"patienten": [_patient(messwerte=[{"code": "718-7", "wert": 14.0}])]}, {}
+    )
+    obs = next(r for r in bau.ressourcen if r["resourceType"] == "Observation")
+    systeme = [c["system"] for c in obs["code"]["coding"]]
+    assert systeme == ["http://loinc.org", SNOMED_SYSTEM]
+    assert obs["code"]["coding"][1]["code"] == spec.snomed
+
+
+def test_ohne_snomed_code_bleibt_es_bei_einer_kodierung():
+    """Ein erfundener Code waere schlimmer als ein fehlender.
+
+    14 der 20 Laborwerte haben noch keinen; die Wahl ist eine klinische
+    und gehoert geprueft (docs/snomed-labor-pruefliste.md).
+    """
+    from synthfhir.domain.codes import OBSERVATION_CODES
+
+    spec = OBSERVATION_CODES["4548-4"]          # HbA1c
+    assert not spec.snomed, "sonst prueft dieser Test nichts"
+    bau = baue_aus_parametern(
+        {"patienten": [_patient(messwerte=[{"code": "4548-4", "wert": 7.2}])]}, {}
+    )
+    obs = next(r for r in bau.ressourcen if r["resourceType"] == "Observation")
+    assert len(obs["code"]["coding"]) == 1
+
+
+def test_kein_vitalparameter_traegt_einen_snomed_code():
+    """Die Vitalparameter-Profile verlangen keinen — und der Blutdruck
+    waere als Panel ohnehin ein anderer Fall."""
+    from synthfhir.domain.codes import OBSERVATION_CODES
+
+    mit = [e.code for e in OBSERVATION_CODES.values() if e.vital_sign and e.snomed]
+    assert not mit, mit
+
+
+def test_die_pruefliste_deckt_jeden_offenen_laborwert_ab():
+    """Sonst faellt einer stillschweigend hinten runter — die Sorte
+    Handaufzaehlung, die in diesem Projekt fuenfmal einen Eintrag
+    vergessen hat."""
+    import re
+    from pathlib import Path
+
+    from synthfhir.domain.codes import OBSERVATION_CODES
+
+    liste = Path(__file__).resolve().parent.parent / "docs" / "snomed-labor-pruefliste.md"
+    text = liste.read_text(encoding="utf-8")
+    offen = [e.code for e in OBSERVATION_CODES.values()
+             if not e.vital_sign and not e.snomed]
+    fehlend = [c for c in offen if not re.search(rf"### `{re.escape(c)}`", text)]
+    assert not fehlend, f"nicht in der Pruefliste: {fehlend}"

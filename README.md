@@ -291,8 +291,17 @@ gegen einen Terminologieserver. Gemessen am 2026-09-01:
 
 Gemessen wird gegen drei Module: Basismodul, Vitalparameter und
 Medikation ([ADR-014](docs/adr-014-isik-module.md)). Die 20 Laborwerte
-des Katalogs bleiben unprofiliert — dafür wäre ISiK Labor zuständig, und
-der Bericht sagt das in jeder Ausgabe.
+des Katalogs bleiben unprofiliert, und der Bericht sagt das in jeder
+Ausgabe.
+
+Zuständig wäre **ISiK Labor** — das existiert aber nur als Release
+Candidate, und das veröffentlichte Paket verlangt für
+`Observation.category` ein CodeSystem, das den geforderten Code gar nicht
+enthält. Konformität ist damit derzeit für niemanden erreichbar. Sechs
+Laborwerte tragen trotzdem schon die SNOMED-Kodierung, die die
+Spezifikation nennt; die übrigen 14 stehen als
+[Prüfliste](docs/snomed-labor-pruefliste.md). Näheres in
+[ADR-015](docs/adr-015-isik-labor.md).
 
 Damit sind die acht ungeprüften Befunde aus ADR-009 **aufgelöst**, nicht
 wegdefiniert — das Werkzeug sucht ausdrücklich nach den Meldungen, die
@@ -427,6 +436,7 @@ in dieser Reihenfolge:
 | [ADR-012](docs/adr-012-mengengrenze-und-wiedergabe.md) | Eine Mengengrenze gegen Verstärkung — und die Wiedergabe über das Netz |
 | [ADR-013](docs/adr-013-terminologienachweis.md) | Die SNOMED-Bindung entscheiden — und beweisen, dass entschieden wurde |
 | [ADR-014](docs/adr-014-isik-module.md) | Die ISiK-Module für Observation und MedicationStatement |
+| [ADR-015](docs/adr-015-isik-labor.md) | ISiK Labor — was geht, und warum Konformität nicht geht |
 | [Konzepte](docs/konzepte.md) | Die FHIR-Grundlagen dahinter, ausführlich erklärt |
 
 ### Die tragenden Entscheidungen in drei Sätzen
