@@ -17,8 +17,9 @@ import json
 import pytest
 
 from synthfhir.profil import (
-    OHNE_PROFIL,
     PROFILE,
+    VITALPROFILE,
+    profil_fuer,
     Profilergebnis,
     bewerte,
     pruefe_gegen_profile,
@@ -262,15 +263,33 @@ def test_referenzkohorte_traegt_deutsche_sonderzeichen():
 # --- Der Bericht -----------------------------------------------------------
 
 
-def test_nicht_profilierte_typen_werden_ausgewiesen_nicht_verschwiegen(profilserver):
-    """Observation und MedicationStatement kennt das Basismodul nicht. Sie
-    stillschweigend zu überspringen liesse den Bericht vollständiger
-    aussehen, als er ist."""
-    b = pruefe_gegen_profile(baue(), profilserver)
-    assert any("kein Profil" in h for h in b.hinweise)
-    geprueft = {e.ressourcentyp for e in b.ergebnisse}
-    assert geprueft == set(PROFILE)
-    assert not geprueft & set(OHNE_PROFIL)
+def test_unprofilierte_ressourcen_werden_ausgewiesen_nicht_verschwiegen(profilserver):
+    """Seit ADR-014 ist das je RESSOURCE zu zählen, nicht je Typ.
+
+    Ein Observation-Satz kann zur Hälfte profiliert sein (Vitalparameter)
+    und zur Hälfte nicht (Laborwerte). Die alte Meldung „für Observation
+    gibt es kein Profil" wäre schlicht falsch geworden — und hätte den
+    Bericht vollständiger aussehen lassen, als er ist.
+    """
+    res = baue()
+    b = pruefe_gegen_profile(res, profilserver)
+    assert any("ohne Profil" in h for h in b.hinweise)
+
+    erwartet = sum(1 for r in res if profil_fuer(r) is not None)
+    assert len(b.ergebnisse) == erwartet
+    # Und die Gegenprobe: Es gibt tatsächlich beide Sorten Observation.
+    obs = [r for r in res if r["resourceType"] == "Observation"]
+    assert any(profil_fuer(r) for r in obs), "kein profilierter Vitalparameter"
+    assert any(profil_fuer(r) is None for r in obs), "kein unprofilierter Laborwert"
+
+
+def test_das_blutdruckpanel_bekommt_sein_vitalparameterprofil(profilserver):
+    """Ohne die Zuordnung je Ressource fiele es unter „Observation" und
+    bliebe ungeprüft."""
+    res = baue()
+    panel = next(r for r in res
+                 if r["resourceType"] == "Observation" and r.get("component"))
+    assert profil_fuer(panel) == VITALPROFILE["85354-9"]
 
 
 def test_bericht_nennt_paket_und_terminologiestand(profilserver):
@@ -287,7 +306,9 @@ def test_bericht_nennt_paket_und_terminologiestand(profilserver):
 def test_bericht_zaehlt_drei_spalten_getrennt(profilserver):
     b = pruefe_gegen_profile(baue(), profilserver)
     s = b.to_dict()["summe"]
-    assert s["geprueft"] == 11
+    # 14 statt 11 seit ADR-014: Das Blutdruckpanel und die beiden
+    # MedicationStatements sind jetzt profiliert.
+    assert s["geprueft"] == 14
     assert s["ungeprueft"] > 0, "die SNOMED-Bindung ist ohne Terminologie offen"
 
 
@@ -465,3 +486,31 @@ def test_unbekanntes_profil_ist_keine_messung(monkeypatch):
     )
     with pytest.raises(ProfilFehler, match="kennt das Profil"):
         pruefe_gegen_profile(baue(), "http://beispiel.invalid/fhir")
+def test_der_bericht_nennt_alle_geladenen_module(profilserver):
+    """Seit ADR-014 tragen drei Module Profile bei.
+
+    Der Kopf „gemessen gegen das Basismodul" waere eine unzutreffende
+    Angabe ueber den eigenen Messaufbau — und genau die Sorte Angabe, die
+    einen Bericht wertlos macht. Der Test zaehlt gegen MODULE, nicht gegen
+    eine Liste hier, damit ein viertes Modul nicht stillschweigend
+    danebensteht.
+    """
+    from synthfhir.profil import MODULE
+
+    d = pruefe_gegen_profile(baue(), profilserver).to_dict()
+    assert d["module"] == MODULE
+    assert len(d["module"]) >= 3
+
+
+def test_jedes_profil_der_zuordnung_wird_auch_benutzt():
+    """Ein Eintrag in VITALPROFILE, den keine Ressource je trifft, waere
+    toter Code — und er liesse den Bericht breiter aussehen, als er misst.
+
+    Rot, sobald ein Profil eingetragen wird, fuer das der Katalog keinen
+    Code fuehrt.
+    """
+    from synthfhir.domain.codes import BLUTDRUCK_PANEL, OBSERVATION_CODES
+
+    bekannt = set(OBSERVATION_CODES) | {BLUTDRUCK_PANEL}
+    unbenutzbar = [c for c in VITALPROFILE if c not in bekannt]
+    assert not unbenutzbar, f"Profil ohne passenden Katalogcode: {unbenutzbar}"

@@ -140,6 +140,11 @@ den, den der Code für den Patienten ohne Begegnung ergänzt.
 > | Encounter | 4 | **0** | 0 | 8 | 0 |
 > | Condition | 4 | **0** | 8 | 4 | 4 |
 > | **Summe** | **11** | **0** | **8** | **15** | **4** |
+>
+> Gemessen gegen **ein** Paket — das Basismodul —, wie diese Entscheidung
+> es festlegt. Seit ADR-014 lädt der Messaufbau drei Module, und dieselbe
+> Kohorte ergibt dann 14 geprüfte Ressourcen. Die Zahlen hier bleiben der
+> Nachweis **dieser** Entscheidung und sind nicht der heutige Stand.
 
 Zusätzlich: **17 von 17** Ressourcen weiterhin gültig gegen normales
 FHIR R4 ohne Profile. Die Ergänzungen brechen also nichts.

@@ -95,12 +95,33 @@ zurückgäbe, lieferte die falsche Hälfte.
 Beschreibung der Schnittstelle: `/api/v1/docs`.
 
 Grenzen, die trotz „unbegrenzt" gelten: höchstens `25` Patienten je
-Anfrage, 2000 Zeichen Beschreibung, 64 KB Anfragekörper und vier
-gleichzeitige Läufe. Der letzte Punkt ist kein Ratenlimit, sondern der
-Schutz davor, dass ein Aufrufer alle Arbeitsplätze des einen Prozesses
-belegt und die Weboberfläche mitreißt. Und: Die Anbieter-URL ist die des
-Betreibers (Groq) — ein Schlüssel eines anderen Anbieters funktioniert
-daher nicht.
+Anfrage, 2000 Zeichen Beschreibung, 64 KB Anfragekörper, **80 Ressourcen
+je Patient** ([ADR-012](docs/adr-012-mengengrenze-und-wiedergabe.md)) und
+vier gleichzeitige Läufe. Der Deckel für gleichzeitige Läufe ist kein
+Ratenlimit, sondern der Schutz davor, dass ein Aufrufer alle
+Arbeitsplätze des einen Prozesses belegt und die Weboberfläche mitreißt.
+
+Und: Die Anbieter-URL ist die des Betreibers (Groq) — ein Schlüssel eines
+anderen Anbieters funktioniert daher nicht.
+
+### Wiedergabe: derselbe Lauf, ohne Modellaufruf
+
+`POST /api/v1/wiedergeben` rechnet eine Aufzeichnung nach. **Ohne jeden
+Modellaufruf** — der erste Lauf kostet Token, jede Wiederholung ist
+umsonst. Für eine Prüfkette ist das der eigentliche Wert des Zugangs: Er
+funktioniert auch dann, wenn beim Betreiber gar kein Anbieter erreichbar
+ist.
+
+**Ohne Schlüssel** — diese Route berührt kein Kontingent, weder Ihres
+noch ein fremdes. Der Rumpf ist `{"aufzeichnung": …}` mit dem Objekt aus
+dem Feld `aufzeichnung` einer `/erzeugen`-Antwort. Die Antwort trägt `identisch`,
+`befund` und beide Prüfsummen. Sie antwortet mit **200 für jede
+Prüfsummenlage** — eine Abweichung ist ein Befund, kein Fehler.
+
+Grenzen: 512 KB Anfragekörper, höchstens 200 Teile, höchstens 5000
+Ressourcen, zwei gleichzeitige Läufe. Anders als sonst wird hier
+**abgelehnt und nicht gekürzt**: Eine gekürzte Wiedergabe träfe auf die
+Prüfsumme des Originals und meldete eine Abweichung, die keine ist.
 
 ### Große Kohorten von der Kommandozeile
 
@@ -218,18 +239,83 @@ synthfhir-profil -o docs/belege/isik-profilbericht.json
 Typ                     geprüft   Fehler  ungeprüft  Warnungen  Hinweise
 Condition                     4        0          8          4         4
 Encounter                     4        0          0          8         0
+MedicationStatement           2        0          2          2         6
+Observation                   1        0          3          2         4
 Patient                       3        0          0          3         0
-SUMME                        11        0          8         15         4
+SUMME                        14        0         13         19        14
 ```
 
 Bei der ersten Messung waren es **25 Fehler**; [ADR-009](docs/adr-009-isik-konformitaet.md)
 hat sie geschlossen. **„0 Fehler" heißt aber nicht „ISiK-konform"** — die
-acht ungeprüften Befunde bleiben, solange kein Terminologieserver die
-SNOMED-Bindung entscheiden kann.
+dreizehn ungeprüften Befunde bleiben, solange kein Terminologieserver die
+Bindungen entscheiden kann. Genau das leisten die beiden nächsten
+Abschnitte.
 
 **Vier Spalten, nicht zwei.** `ungeprüft` heißt: Der Validator konnte es
 nicht entscheiden — nicht, dass es richtig ist. Ohne Terminologieserver
 bleibt jede Bindung an SNOMED, LOINC, ICD-10-GM und ATC in dieser Spalte.
+
+### Die SNOMED-Bindung entscheiden
+
+```bash
+synthfhir-profil --terminologie
+```
+
+Fragt einen öffentlichen Terminologieserver, ob jeder Diagnosecode des
+Katalogs Mitglied des ValueSets ist, das ISiK für `Condition.code`
+verlangt — genau die Frage, die dem Validator ohne SNOMED-Hierarchie
+offenbleibt. Gemessen am 2026-09-01: **25 von 25**, auf tx.fhir.de und
+tx.fhir.org.
+
+Der Nachweis führt zwei **Gegenproben** mit: einen Code, den es gibt, der
+aber kein Befund ist, und einen erfundenen. Beide müssen verneint werden,
+sonst gilt die Messung als ungültig. Das ist kein Beiwerk — der Versuch,
+stattdessen den Validator selbst auf einen Terminologieserver zu zeigen,
+ergab „0 ungeprüft" aus einer abgestürzten Validierung.
+
+### Gegen den offiziellen HL7-Validator
+
+```bash
+python tools/isik_referenzvalidator.py
+```
+
+Misst dieselbe Kohorte mit dem Validator, den HL7 selbst veröffentlicht,
+gegen einen Terminologieserver. Gemessen am 2026-09-01:
+
+    Profil                                  geprüft   Fehler   Warn.
+    ISiKBlutdruckSystemischArteriell              1        0       2
+    ISiKDiagnose                                  4        0      12
+    ISiKKontaktGesundheitseinrichtung             4        0       8
+    ISiKMedikationsInformation                    2        0       2
+    ISiKPatient                                   3        0       3
+    SUMME                                        14        0      27
+
+    Keine ungeprüften Befunde: Die Terminologie hat entschieden.
+
+Gemessen wird gegen drei Module: Basismodul, Vitalparameter und
+Medikation ([ADR-014](docs/adr-014-isik-module.md)). Die 20 Laborwerte
+des Katalogs bleiben unprofiliert, und der Bericht sagt das in jeder
+Ausgabe.
+
+Zuständig wäre **ISiK Labor** — das existiert aber nur als Release
+Candidate, und das veröffentlichte Paket verlangt für
+`Observation.category` ein CodeSystem, das den geforderten Code gar nicht
+enthält. Konformität ist damit derzeit für niemanden erreichbar. Sechs
+Laborwerte tragen trotzdem schon die SNOMED-Kodierung, die die
+Spezifikation nennt; die übrigen 14 stehen als
+[Prüfliste](docs/snomed-labor-pruefliste.md). Näheres in
+[ADR-015](docs/adr-015-isik-labor.md).
+
+Damit sind die acht ungeprüften Befunde aus ADR-009 **aufgelöst**, nicht
+wegdefiniert — das Werkzeug sucht ausdrücklich nach den Meldungen, die
+„ungeprüft" bedeuten, und meldet sie mit Rückgabewert 1.
+
+Das Werkzeug braucht `werkzeuge/validator_cli.jar` (rund 191 MiB, von
+[HL7](https://github.com/hapifhir/org.hl7.fhir.core/releases)) und Java.
+Beides gehört nicht ins Repository; eingecheckt wird nur der Bericht
+unter `docs/belege/`.
+
+Näheres in [ADR-013](docs/adr-013-terminologienachweis.md).
 Solche Befunde als Fehler zu zählen machte das Ergebnis schlechter, als es
 ist; sie zu verschweigen besser. Beides wäre Schönfärberei mit Zahlen.
 `Hinweise` sind Befunde vom Schweregrad `information` — erlaubt,
@@ -360,6 +446,10 @@ in dieser Reihenfolge:
 | [ADR-009](docs/adr-009-isik-konformitaet.md) | ISiK-Basismodul erfüllen — und was daran nicht additiv war |
 | [ADR-010](docs/adr-010-ausgabewege-in-der-weboberflaeche.md) | Warum der NDJSON-Download ein Archiv ist und die Aufzeichnung nicht gesperrt wird |
 | [ADR-011](docs/adr-011-programmatischer-zugang.md) | Ein API-Zugang, der ausschließlich auf fremde Rechnung läuft |
+| [ADR-012](docs/adr-012-mengengrenze-und-wiedergabe.md) | Eine Mengengrenze gegen Verstärkung — und die Wiedergabe über das Netz |
+| [ADR-013](docs/adr-013-terminologienachweis.md) | Die SNOMED-Bindung entscheiden — und beweisen, dass entschieden wurde |
+| [ADR-014](docs/adr-014-isik-module.md) | Die ISiK-Module für Observation und MedicationStatement |
+| [ADR-015](docs/adr-015-isik-labor.md) | ISiK Labor — was geht, und warum Konformität nicht geht |
 | [Konzepte](docs/konzepte.md) | Die FHIR-Grundlagen dahinter, ausführlich erklärt |
 
 ### Die tragenden Entscheidungen in drei Sätzen
@@ -475,3 +565,25 @@ Den eingefrorenen Spike separat prüfen:
 ```bash
 .venv/Scripts/python.exe -m pytest spike/tests -q
 ```
+
+---
+
+## Lizenz
+
+Der **Code** steht unter der MIT-Lizenz (`LICENSE`).
+
+Der **Katalog** in `src/synthfhir/domain/codes.py` führt daneben Codes und
+Bezeichnungen aus SNOMED CT, LOINC, ICD-10-GM und ATC. Für sie gilt die
+MIT-Lizenz nicht — die Bedingungen ihrer Herausgeber stehen in
+[NOTICE.md](NOTICE.md).
+
+Kurz: Die **erzeugten Testdaten** sind eine Anwendung dieser
+Terminologien und unproblematisch. Wer den **Katalog selbst** übernimmt
+oder verändert, handelt mit kuratierter Terminologie und ist an die
+Bedingungen in `NOTICE.md` gebunden.
+
+> This material contains content from LOINC (<https://loinc.org>). LOINC is
+> copyright © 1995-2026, Regenstrief Institute, Inc. and the LOINC
+> Committee and is available at no cost under the license at
+> <https://loinc.org/license/>. LOINC® is a registered United States
+> trademark of Regenstrief Institute, Inc.

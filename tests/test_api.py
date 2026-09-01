@@ -401,7 +401,15 @@ def test_das_schema_verraet_keine_formularfelder(klient):
     assert schema.status_code == 200
     text = schema.text
     assert "eigener_schluessel" not in text
-    assert list(schema.json()["paths"]) == ["/api/v1/erzeugen"]
+    # Die Eigenschaft, nicht die Liste: Hier stand einmal
+    # `== ["/api/v1/erzeugen"]`, und der Test wurde rot, als eine zweite
+    # API-Route dazukam — obwohl genau das erlaubt ist. Verboten ist,
+    # dass eine Route der Weboberflaeche im Schema auftaucht.
+    pfade = list(schema.json()["paths"])
+    assert pfade, "das Schema ist leer"
+    assert all(p.startswith("/api/v1/") for p in pfade), pfade
+    for oberflaeche in ("/erzeugen", "/export", "/health", "/"):
+        assert oberflaeche not in pfade
 
 
 def test_das_schema_nennt_keine_paketversion(klient):
@@ -488,3 +496,311 @@ def test_das_schema_nennt_den_kopfnamen(klient):
     assert schema["in"] == "header"
     assert schema["name"] == KOPF
     assert dokument["paths"]["/api/v1/erzeugen"]["post"]["security"]
+
+
+# --- Die Wiedergabe --------------------------------------------------------
+#
+# Der Endpunkt, der keinen Modellaufruf braucht — und genau deshalb der,
+# ueber den ein Aufrufer die Parameterobjekte SELBST schreibt. Bei
+# /erzeugen kommen sie vom Modell und sind durch max_tokens gedeckelt.
+
+
+def _aufzeichnung(patienten, angefragt=1):
+    """Eine Aufzeichnung mit EINEM Teil, ohne Pruefsumme."""
+    return {
+        "format_version": 1,
+        "angefragt": angefragt,
+        "beschreibung": "Testkohorte",
+        "modell": "test",
+        "erzeugt": "2026-09-01T00:00:00Z",
+        "bundle_pruefsumme": "",
+        "katalog_pruefsumme": "",
+        "teile": [{"angefragt": angefragt, "parameter": {"patienten": patienten}}],
+    }
+
+
+def _wiedergabe(klient, aufzeichnung, schluessel=AUFRUFER):
+    kopf = {KOPF: schluessel} if schluessel is not None else {}
+    return klient.post(
+        "/api/v1/wiedergeben", json={"aufzeichnung": aufzeichnung}, headers=kopf
+    )
+
+
+def test_wiedergabe_braucht_keinen_modellaufruf(klient, draht):
+    """Der Grund, warum es diesen Endpunkt gibt: Der erste Lauf kostet
+    Token, jede Wiederholung ist umsonst."""
+    daten = _erzeuge(klient).json()
+    assert len(draht.anfragen) == 1
+
+    antwort = _wiedergabe(klient, daten["aufzeichnung"])
+    assert antwort.status_code == 200, antwort.text
+    ergebnis = antwort.json()
+    assert ergebnis["identisch"] is True, ergebnis["befund"]
+    assert ergebnis["lauf"]["modellaufrufe"] == 0
+    assert len(draht.anfragen) == 1, "die Wiedergabe hat doch das Modell gefragt"
+
+
+def test_wiedergabe_laeuft_ohne_schluessel(klient):
+    """Diese Route ruft kein Modell auf und beruehrt kein Kontingent.
+
+    Einen Schluessel zu verlangen haette hier nichts geschuetzt: Er wurde
+    nie auf Gueltigkeit geprueft, jede druckbare Zeichenkette genuegte.
+    Er einzusammeln haette also fremde Zugangsdaten aufgenommen, die
+    niemand braucht.
+    """
+    antwort = _wiedergabe(klient, _aufzeichnung([{"vorname": "A"}]), schluessel=None)
+    assert antwort.status_code == 200, antwort.text
+    assert antwort.json()["lauf"]["modellaufrufe"] == 0
+
+
+def test_jede_api_route_verlangt_einen_schluessel_ausser_der_wiedergabe(klient):
+    """Die Regel, die den zweiten Router traegt.
+
+    Sie geht ueber ALLE veroeffentlichten Routen, nicht ueber eine Liste,
+    die jemand hier pflegen muesste. Kommt eine neue Route dazu und
+    verlangt keinen Schluessel, faerbt sich dieser Test rot und zwingt zu
+    einer bewussten Entscheidung.
+
+    Gegengeprueft, mit zwei absichtlichen Fehlern:
+
+    * Eine NEUE Route am offenen Router ohne jede Pruefung -> rot.
+      Das ist der Fall, um den es geht.
+    * `/erzeugen` an den offenen Router gehaengt -> **gruen**, und das ist
+      richtig so: Diese Route traegt `Depends(pflicht_schluessel)` auch in
+      ihrer Signatur, die Pruefung hielt also weiterhin. Der Test misst
+      die Eigenschaft „verlangt einen Schluessel", nicht „haengt am
+      richtigen Router" — und die erste ist die, auf die es ankommt.
+    """
+    OHNE_SCHLUESSEL = {"/api/v1/wiedergeben"}
+
+    # Die Pfadliste kommt aus dem Schema, das die App selbst
+    # veroeffentlicht — nicht aus FastAPI-Interna und nicht aus einer
+    # Liste, die jemand hier pflegen muesste.
+    pfade = klient.get("/api/v1/openapi.json").json()["paths"]
+    gepruefte = 0
+    for pfad, operationen in pfade.items():
+        if "post" not in operationen:
+            continue
+        gepruefte += 1
+        antwort = klient.post(pfad, json={})
+        if pfad in OHNE_SCHLUESSEL:
+            assert antwort.status_code != 401, f"{pfad} verlangt doch einen"
+        else:
+            assert antwort.status_code == 401, (
+                f"{pfad} laesst ohne Schluessel durch (HTTP {antwort.status_code})"
+            )
+    assert gepruefte >= 2, f"nur {gepruefte} Routen gefunden"
+
+
+def test_das_schema_sagt_die_wahrheit_ueber_den_schluessel(klient):
+    """Ein Schema, das an der offenen Route eine Sicherheitsangabe
+    behauptet, waere eine Falschauskunft — und umgekehrt."""
+    pfade = klient.get("/api/v1/openapi.json").json()["paths"]
+    assert pfade["/api/v1/erzeugen"]["post"]["security"]
+    assert pfade["/api/v1/wiedergeben"]["post"]["security"] == []
+
+
+def test_wiedergabe_braucht_keinen_erreichbaren_anbieter(klient, monkeypatch):
+    """Das macht sie fuer eine Pruefkette wertvoll: Sie laeuft auch dann,
+    wenn beim Betreiber gar kein Modell konfiguriert ist. Ein 503 kommt
+    hier nie vor."""
+    monkeypatch.delenv("SYNTHFHIR_LLM_BASE_URL", raising=False)
+    monkeypatch.delenv("SYNTHFHIR_LLM_MODEL", raising=False)
+    antwort = _wiedergabe(klient, _aufzeichnung([{"vorname": "A", "nachname": "B"}]))
+    assert antwort.status_code == 200
+
+
+# --- Die drei gemessenen Verstaerkungen ------------------------------------
+
+
+def test_ein_patient_mit_zwanzigtausend_messwerten_wird_abgelehnt(klient):
+    """Gemessen ergab ein solcher Eintrag 20.001 Ressourcen. Abgelehnt,
+    nicht gekappt: Eine gekappte Wiedergabe traefe auf die Pruefsumme des
+    Originals und meldete ABWEICHUNG.
+
+    5000 Messwerte und nicht 20.000, damit der Rumpf unter der
+    Koerpergrenze bleibt — sonst pruefte dieser Test die Koerpergrenze
+    und nicht die Grenze je Patient. Genau die Verwechslung, die einen
+    Test gruen und wertlos macht.
+    """
+    viel = _aufzeichnung([{
+        "vorname": "A", "nachname": "B",
+        "messwerte": [{"code": "8867-4", "wert": 80}] * 5000,
+    }])
+    rumpf = len(json.dumps({"aufzeichnung": viel}))
+    assert rumpf < api_modul.WIEDERGABE_KOERPER, f"Rumpf {rumpf} B ist zu gross"
+
+    antwort = _wiedergabe(klient, viel)
+    assert antwort.status_code == 413
+    assert antwort.json()["fehlerart"] == "patient_zu_umfangreich"
+
+
+def test_ein_zu_grosser_koerper_wird_vor_allem_anderen_abgewiesen(klient):
+    """Und die andere Reihenfolge, damit beide Grenzen belegt sind."""
+    riesig = _aufzeichnung([{
+        "vorname": "A", "nachname": "B",
+        "messwerte": [{"code": "8867-4", "wert": 80}] * 20000,
+    }])
+    antwort = _wiedergabe(klient, riesig)
+    assert antwort.status_code == 413
+    assert antwort.json()["fehlerart"] == "koerper_zu_gross"
+
+
+def test_zweitausend_winzige_teile_werden_abgelehnt(klient):
+    """Der Fall, gegen den jede Grenze JE AUFRUF blind ist: Jedes Teil
+    fuer sich bleibt weit unter jeder Schranke. Deshalb gibt es eine
+    eigene Zahl fuer die Teile."""
+    teil = {"angefragt": 1, "parameter": {"patienten": [{"vorname": "A"}]}}
+    viele = _aufzeichnung([{"vorname": "A"}])
+    viele["teile"] = [teil] * 2000
+    antwort = _wiedergabe(klient, viele)
+    assert antwort.status_code == 413
+    assert antwort.json()["fehlerart"] == "zu_viele_teile"
+
+
+def test_zwanzigtausend_leere_eintraege_werden_abgelehnt(klient):
+    """Vier Bytes JSON genuegen fuer einen vollstaendigen Patienten.
+    Gegen diesen Fall hilft weder die Grenze je Patient (jeder Eintrag
+    kostet genau eins) noch die Teilegrenze (ein Teil)."""
+    antwort = _wiedergabe(klient, _aufzeichnung([{}] * 20000))
+    assert antwort.status_code == 413
+    assert antwort.json()["fehlerart"] == "zu_viele_ressourcen"
+
+
+def test_abgelehnt_wird_bevor_gebaut_wird(klient):
+    """Ein 413 nach getaner Arbeit waere wertlos. Gemessen kostet die
+    Zaehlung 24 ms fuer 21.839 Eintraege, der Bau 20,9 Sekunden."""
+    import time
+
+    beginn = time.monotonic()
+    antwort = _wiedergabe(klient, _aufzeichnung([{}] * 20000))
+    gedauert = time.monotonic() - beginn
+    assert antwort.status_code == 413
+    assert gedauert < 2.0, f"die Ablehnung dauerte {gedauert:.1f}s — es wurde gebaut"
+
+
+def test_eine_legitime_grosse_aufzeichnung_geht_durch(klient):
+    """Die Gegenprobe. Ohne sie koennten die Grenzen beliebig scharf sein
+    und jeder Ablehnungstest bliebe gruen."""
+    patient = {
+        "vorname": "Käthe", "nachname": "Schäfer", "geschlecht": "female",
+        "geburtsdatum": "1970-01-01",
+        "diagnosen": [{"code": "44054006", "beginn": "2020-01-01"}],
+        "messwerte": [{"code": "8867-4", "wert": 80, "datum": "2023-01-01"}] * 3,
+    }
+    antwort = _wiedergabe(klient, _aufzeichnung([patient] * 25, angefragt=25))
+    assert antwort.status_code == 200, antwort.text
+    assert sum(antwort.json()["ressourcen"].values()) == 25 * 6
+
+
+# --- Was nicht herauskommen darf -------------------------------------------
+
+
+def test_die_wiedergabe_verraet_keine_rechenzeit(klient):
+    """`dauer_s` waere hier eine Auslastungssonde: reine, vom Server
+    gemessene Rechenzeit ueber eine vom Aufrufer frei gewaehlte,
+    konstante Last — gratis und beliebig oft abfragbar."""
+    daten = _wiedergabe(klient, _aufzeichnung([{"vorname": "A"}])).json()
+    assert "dauer_s" not in json.dumps(daten)
+
+
+def test_die_wiedergabe_behauptet_keine_schluesselherkunft(klient):
+    """Das Feld ist die pruefbare Form der Zusage 'niemals auf Rechnung
+    des Betreibers'. Hier entsteht kein Client — es auszugeben waere eine
+    Aussage ueber einen Modellaufruf, den es nicht gab."""
+    daten = _wiedergabe(klient, _aufzeichnung([{"vorname": "A"}])).json()
+    assert "schluessel_herkunft" not in json.dumps(daten)
+    assert daten["lauf"]["modellaufrufe"] == 0
+
+
+def test_kein_aufruferwert_in_der_fehlermeldung(klient):
+    """`int('GEHEIM-XY')` schrieb den Wert woertlich in die Ausnahme, und
+    die wanderte ueber `AufzeichnungFehler` bis in den Antwortkoerper."""
+    kaputt = _aufzeichnung([{"vorname": "A"}])
+    kaputt["teile"] = [{"angefragt": "GEHEIM-XY", "parameter": {"patienten": []}}]
+    antwort = _wiedergabe(klient, kaputt)
+    assert antwort.status_code == 400
+    assert "GEHEIM" not in antwort.text
+
+
+def test_kein_fremdtext_der_validierungsbibliothek(klient):
+    """`Befund.meldung` traegt den Text von pydantic beziehungsweise
+    fhir.resources. Ausgeliefert wird nur der `pfad` — er stammt aus dem
+    eigenen Modell."""
+    daten = _wiedergabe(
+        klient,
+        _aufzeichnung([{"vorname": "A", "nachname": "B", "geburtsdatum": "kein Datum"}]),
+    ).json()
+    for eintrag in daten["validierung_ungueltig"]:
+        assert set(eintrag) == {"ressourcentyp", "ressourcen_id", "pfade"}
+
+
+def test_unfoermige_aufzeichnungen_ergeben_nie_einen_serverfehler(klient):
+    """Vier Formen, die vorher abgestuerzt sind — davon zwei gemessen als
+    HTTP 500."""
+    proben = [
+        {"aufzeichnung": "kein Objekt"},
+        {"aufzeichnung": {"format_version": 99, "teile": [{}]}},
+        {"aufzeichnung": {"format_version": 1, "teile": [42]}},
+        {"aufzeichnung": {"format_version": 1,
+                          "teile": [{"angefragt": 1, "parameter": "Text"}]}},
+    ]
+    for probe in proben:
+        antwort = klient.post("/api/v1/wiedergeben", json=probe, headers={KOPF: AUFRUFER})
+        assert 400 <= antwort.status_code < 500, (probe, antwort.status_code, antwort.text)
+
+
+def test_tief_verschachtelter_koerper_ergibt_keinen_serverfehler(klient):
+    """`json.loads` wirft ab rund 5000 Ebenen `RecursionError`, und der
+    ist kein `ValueError`. Gemessen ergaben 60 KB Klammern HTTP 500 — auf
+    beiden Routen, denn sie teilen sich `_lies_koerper`."""
+    tief = (b"[" * 30000) + (b"]" * 30000)
+    for pfad in ("/api/v1/erzeugen", "/api/v1/wiedergeben"):
+        antwort = klient.post(
+            pfad, content=tief,
+            headers={KOPF: AUFRUFER, "Content-Type": "application/json"},
+        )
+        assert antwort.status_code == 400, (pfad, antwort.status_code)
+        assert antwort.json()["fehlerart"] == "koerper_unlesbar"
+
+
+def test_riesige_zahl_als_messwert_stuerzt_die_wiedergabe_nicht_ab(klient):
+    """Eine Ganzzahl mit 400 Stellen ist ein `int` und kam durch die
+    Typpruefung; `float()` warf darauf `OverflowError` mitten im Bauweg."""
+    antwort = klient.post(
+        "/api/v1/wiedergeben",
+        content=json.dumps({"aufzeichnung": _aufzeichnung([{
+            "vorname": "A", "nachname": "B",
+            "messwerte": [{"code": "8867-4", "wert": int("9" * 400)}],
+        }])}).encode(),
+        headers={KOPF: AUFRUFER, "Content-Type": "application/json"},
+    )
+    assert antwort.status_code == 200, antwort.text
+    assert any(
+        b["art"] == "ungueltiger_messwert" for b in antwort.json()["beanstandungen"]
+    )
+
+
+def test_infinity_als_messwert_laesst_sich_ausliefern(klient):
+    """`json.loads` liest `Infinity`, Starlettes Renderer lehnt es ab —
+    die Ressource entstand, und erst das Ausliefern scheiterte mit 500."""
+    antwort = klient.post(
+        "/api/v1/wiedergeben",
+        content=b'{"aufzeichnung": {"format_version": 1, "angefragt": 1, "teile": '
+                b'[{"angefragt": 1, "parameter": {"patienten": [{"vorname": "A", '
+                b'"messwerte": [{"code": "8867-4", "wert": Infinity}]}]}}]}}',
+        headers={KOPF: AUFRUFER, "Content-Type": "application/json"},
+    )
+    assert antwort.status_code == 200, antwort.text
+
+
+def test_der_gleichzeitigkeitsdeckel_der_wiedergabe_ist_ein_eigener(klient, monkeypatch):
+    """Geteilt verdraengten die billigen Wiedergaben die teuren
+    Erzeugungen, und die 429 sagte nicht mehr, welche Grenze griff."""
+    monkeypatch.setattr(
+        api_modul._wiedergabeplaetze, "acquire", lambda blocking=True: False
+    )
+    antwort = _wiedergabe(klient, _aufzeichnung([{"vorname": "A"}]))
+    assert antwort.status_code == 429
+    assert antwort.json()["quelle"] == "synthfhir"
+    assert antwort.headers.get("Retry-After")

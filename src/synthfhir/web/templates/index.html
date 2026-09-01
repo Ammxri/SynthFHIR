@@ -130,10 +130,18 @@
 
   {% else %}
 
-  <div class="kasten {{ 'gut' if ergebnis.fertig else 'warnend' }}">
+  {# `vollstaendig` statt `fertig`: Ein gekapptes Ergebnis ist strukturell
+     gueltig und trotzdem nicht das, was angefragt war. Ohne diese
+     Unterscheidung stand ueber einer auf 80 Messwerte gekuerzten
+     Zeitreihe die Ueberschrift „Valide gegen FHIR R4" — wahr, und
+     trotzdem irrefuehrend. #}
+  {% set vollstaendig = ergebnis.fertig and not ergebnis.mengengrenze_gegriffen %}
+  <div class="kasten {{ 'gut' if vollstaendig else 'warnend' }}">
     <h2>
-      {% if ergebnis.fertig %}
+      {% if vollstaendig %}
         Valide gegen FHIR R4
+      {% elif ergebnis.fertig %}
+        Valide, aber gekürzt
       {% else %}
         Nicht ausgelieferbar
       {% endif %}
@@ -149,6 +157,12 @@
       <li class="{{ 'ja' if ergebnis.erfundene_codes == 0 else 'nein' }}">
         Codes: {{ ergebnis.erfundene_codes }} außerhalb des Katalogs
       </li>
+      {% if ergebnis.mengengrenze_gegriffen %}
+      <li class="nein">
+        Mengengrenze: Ressourcen verworfen — ein Patient trug mehr
+        Einträge, als dieses Werkzeug je Patient baut.
+      </li>
+      {% endif %}
     </ul>
     <p class="hinweis">
       Geprüft werden Pflichtfelder, Kardinalitäten, Datentypen und die
@@ -283,12 +297,15 @@
       {% if aufzeichnung_json %}
       <input type="hidden" name="aufzeichnung" value="{{ aufzeichnung_json }}">
       {% endif %}
+      {# Auch an der Mengengrenze gesperrt: Ein gekuerztes Bundle als
+         Testdatensatz auszuliefern hiesse, etwas anderes zu liefern als
+         bestellt — und der Nutzer saehe es dem Bundle nicht an. #}
       <button type="submit" name="art" value="json"
-              {% if not ergebnis.fertig %}disabled{% endif %}>
+              {% if not vollstaendig %}disabled{% endif %}>
         Als FHIR-JSON herunterladen
       </button>
       <button type="submit" name="art" value="ndjson" class="zweitrangig"
-              {% if not ergebnis.fertig %}disabled{% endif %}>
+              {% if not vollstaendig %}disabled{% endif %}>
         Als NDJSON-Archiv (ZIP)
       </button>
       {% if aufzeichnung_json %}
@@ -305,6 +322,10 @@
     <p class="hinweis">
       {% if not ergebnis.fertig %}
       Die Datenausgabe ist gesperrt, solange die Prüfung nicht durchgeht.
+      {% elif ergebnis.mengengrenze_gegriffen %}
+      Die Datenausgabe ist gesperrt, weil die Mengengrenze gegriffen hat:
+      Das Bundle enthielte weniger, als beschrieben wurde. Verteile die
+      Messreihe auf mehrere Patienten, dann geht es durch.
       {% endif %}
       Das ZIP enthält je Ressourcentyp eine NDJSON-Datei und ein Manifest —
       das Format, das Bulk-Import-Werkzeuge erwarten.

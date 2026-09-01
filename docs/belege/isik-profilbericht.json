@@ -1,17 +1,22 @@
 {
-  "erzeugt": "2026-09-01T09:29:05Z",
+  "erzeugt": "2026-09-01T17:22:47Z",
   "server": "http://localhost:8090/fhir",
   "fhir_version": "4.0.1",
   "paket": "de.gematik.isik-basismodul",
   "paketversion": "4.0.3",
+  "module": {
+    "de.gematik.isik-basismodul": "4.0.3",
+    "de.gematik.isik-vitalparameter": "4.0.2",
+    "de.gematik.isik-medikation": "4.0.3"
+  },
   "terminologieserver": "keiner",
   "hinweis": "Synthetische Testdaten. 'ungeprueft' heißt: Der Validator konnte es nicht entscheiden — nicht, dass es richtig ist.",
   "summe": {
-    "geprueft": 11,
+    "geprueft": 14,
     "fehler": 0,
-    "ungeprueft": 8,
-    "warnungen": 15,
-    "informationen": 4
+    "ungeprueft": 13,
+    "warnungen": 19,
+    "informationen": 14
   },
   "je_typ": {
     "Patient": {
@@ -34,10 +39,24 @@
       "ungeprueft": 8,
       "warnungen": 4,
       "informationen": 4
+    },
+    "MedicationStatement": {
+      "geprueft": 2,
+      "fehler": 0,
+      "ungeprueft": 2,
+      "warnungen": 2,
+      "informationen": 6
+    },
+    "Observation": {
+      "geprueft": 1,
+      "fehler": 0,
+      "ungeprueft": 3,
+      "warnungen": 2,
+      "informationen": 4
     }
   },
   "hinweise": [
-    "Für MedicationStatement, Observation kennt das Basismodul kein Profil. Sie gehören zu eigenen Modulen (Vitalparameter, Medikation) und wurden nicht geprüft."
+    "2 Observation-Ressource(n) ohne Profil in den geladenen Modulen. Für Laborwerte wäre das Modul ISiK Labor zuständig; es ist nicht geladen."
   ],
   "ergebnisse": [
     {
@@ -99,17 +118,58 @@
           "schweregrad": "error",
           "ort": "Condition.code.coding[0]",
           "ungeprueft": true,
-          "meldung": "Unable to expand ValueSet: cannot apply filters '[org.hl7.fhir.r5.model.ValueSet$ConceptSetFilterComponent@1e15c50f]' because CodeSystem 'http://snomed.info/sct' is ignored/not-present"
+          "meldung": "Unable to expand ValueSet: cannot apply filters '[org.hl7.fhir.r5.model.ValueSet$ConceptSetFilterComponent@4a130659]' because CodeSystem 'http://snomed.info/sct' is ignored/not-present"
         },
         {
           "schweregrad": "error",
           "ort": "Condition.code.coding[0]",
           "ungeprueft": true,
-          "meldung": "The Coding provided (http://snomed.info/sct#44054006) was not found in the value set 'DiagnosesSCT' (https://gematik.de/fhir/isik/ValueSet/DiagnosesSCT|4.0.3), and a code is required from this value set.  (error message = Failed to expand ValueSet 'https://gematik.de/fhir/isik/ValueSet/DiagnosesSCT' (in-memory). Could not validate code http://snomed.info/sct#44054006. Error was: HAPI-2646: Unable to expand ValueSet: cannot apply filters '[org.hl7.fhir.r5.model.ValueSet$ConceptSetFilterComponent@1e15c50f]' because CodeSystem 'http://snomed.info/sct' is ignored/not-present; Unable to expand ValueSet: cannot apply filters '[org.hl7.fhir.r5.model.ValueSet$ConceptSetFilterComponent@1e15c50f]' because CodeSystem 'http://snomed.info/sct' is ignored/not-present)"
+          "meldung": "The Coding provided (http://snomed.info/sct#44054006) was not found in the value set 'DiagnosesSCT' (https://gematik.de/fhir/isik/ValueSet/DiagnosesSCT|4.0.3), and a code is required from this value set.  (error message = Failed to expand ValueSet 'https://gematik.de/fhir/isik/ValueSet/DiagnosesSCT' (in-memory). Could not validate code http://snomed.info/sct#44054006. Error was: HAPI-2646: Unable to expand ValueSet: cannot apply filters '[org.hl7.fhir.r5.model.ValueSet$ConceptSetFilterComponent@4a130659]' because CodeSystem 'http://snomed.info/sct' is ignored/not-present; Unable to expand ValueSet: cannot apply filters '[org.hl7.fhir.r5.model.ValueSet$ConceptSetFilterComponent@4a130659]' because CodeSystem 'http://snomed.info/sct' is ignored/not-present)"
         },
         {
           "schweregrad": "warning",
           "ort": "Condition",
+          "ungeprueft": false,
+          "meldung": "Constraint failed: dom-6: 'A resource should have narrative for robust management' (defined in http://hl7.org/fhir/StructureDefinition/DomainResource) (Best Practice Recommendation)"
+        }
+      ]
+    },
+    {
+      "ressourcentyp": "MedicationStatement",
+      "kennung": "med-001",
+      "profil": "https://gematik.de/fhir/isik/StructureDefinition/ISiKMedikationsInformation",
+      "fehler": 0,
+      "ungeprueft": 1,
+      "warnungen": 1,
+      "informationen": 3,
+      "befunde": [
+        {
+          "schweregrad": "warning",
+          "ort": "MedicationStatement.medication.ofType(CodeableConcept)",
+          "ungeprueft": true,
+          "meldung": "CodeSystem is unknown and can't be validated: http://www.whocc.no/atc for 'http://www.whocc.no/atc#A10BA02'"
+        },
+        {
+          "schweregrad": "information",
+          "ort": "MedicationStatement.medication.ofType(CodeableConcept).coding[0]",
+          "ungeprueft": false,
+          "meldung": "This element does not match any known slice defined in the profile https://gematik.de/fhir/isik/StructureDefinition/ISiKMedikationsInformation|4.0.3 (this may not be a problem, but you should check that it's not intended to match a slice) - Does not match slice 'PZN' (discriminator: $this.where(system = 'http://fhir.de/CodeSystem/ifa/pzn').exists())"
+        },
+        {
+          "schweregrad": "information",
+          "ort": "MedicationStatement.medication.ofType(CodeableConcept).coding[0]",
+          "ungeprueft": false,
+          "meldung": "This element does not match any known slice defined in the profile https://gematik.de/fhir/isik/StructureDefinition/ISiKMedikationsInformation|4.0.3 (this may not be a problem, but you should check that it's not intended to match a slice) - Does not match slice 'ATC-DE' (discriminator: $this.where(system = 'http://fhir.de/CodeSystem/bfarm/atc').exists())"
+        },
+        {
+          "schweregrad": "information",
+          "ort": "MedicationStatement.medication.ofType(CodeableConcept).coding[0]",
+          "ungeprueft": false,
+          "meldung": "This element does not match any known slice defined in the profile https://gematik.de/fhir/isik/StructureDefinition/ISiKMedikationsInformation|4.0.3 (this may not be a problem, but you should check that it's not intended to match a slice) - Does not match slice 'SCT' (discriminator: $this.where(system = 'http://snomed.info/sct').exists())"
+        },
+        {
+          "schweregrad": "warning",
+          "ort": "MedicationStatement",
           "ungeprueft": false,
           "meldung": "Constraint failed: dom-6: 'A resource should have narrative for robust management' (defined in http://hl7.org/fhir/StructureDefinition/DomainResource) (Best Practice Recommendation)"
         }
@@ -197,13 +257,13 @@
           "schweregrad": "error",
           "ort": "Condition.code.coding[0]",
           "ungeprueft": true,
-          "meldung": "Unable to expand ValueSet: cannot apply filters '[org.hl7.fhir.r5.model.ValueSet$ConceptSetFilterComponent@ad17959]' because CodeSystem 'http://snomed.info/sct' is ignored/not-present"
+          "meldung": "Unable to expand ValueSet: cannot apply filters '[org.hl7.fhir.r5.model.ValueSet$ConceptSetFilterComponent@70aa62e8]' because CodeSystem 'http://snomed.info/sct' is ignored/not-present"
         },
         {
           "schweregrad": "error",
           "ort": "Condition.code.coding[0]",
           "ungeprueft": true,
-          "meldung": "The Coding provided (http://snomed.info/sct#38341003) was not found in the value set 'DiagnosesSCT' (https://gematik.de/fhir/isik/ValueSet/DiagnosesSCT|4.0.3), and a code is required from this value set.  (error message = Failed to expand ValueSet 'https://gematik.de/fhir/isik/ValueSet/DiagnosesSCT' (in-memory). Could not validate code http://snomed.info/sct#38341003. Error was: HAPI-2646: Unable to expand ValueSet: cannot apply filters '[org.hl7.fhir.r5.model.ValueSet$ConceptSetFilterComponent@ad17959]' because CodeSystem 'http://snomed.info/sct' is ignored/not-present; Unable to expand ValueSet: cannot apply filters '[org.hl7.fhir.r5.model.ValueSet$ConceptSetFilterComponent@ad17959]' because CodeSystem 'http://snomed.info/sct' is ignored/not-present)"
+          "meldung": "The Coding provided (http://snomed.info/sct#38341003) was not found in the value set 'DiagnosesSCT' (https://gematik.de/fhir/isik/ValueSet/DiagnosesSCT|4.0.3), and a code is required from this value set.  (error message = Failed to expand ValueSet 'https://gematik.de/fhir/isik/ValueSet/DiagnosesSCT' (in-memory). Could not validate code http://snomed.info/sct#38341003. Error was: HAPI-2646: Unable to expand ValueSet: cannot apply filters '[org.hl7.fhir.r5.model.ValueSet$ConceptSetFilterComponent@70aa62e8]' because CodeSystem 'http://snomed.info/sct' is ignored/not-present; Unable to expand ValueSet: cannot apply filters '[org.hl7.fhir.r5.model.ValueSet$ConceptSetFilterComponent@70aa62e8]' because CodeSystem 'http://snomed.info/sct' is ignored/not-present)"
         },
         {
           "schweregrad": "warning",
@@ -232,17 +292,123 @@
           "schweregrad": "error",
           "ort": "Condition.code.coding[0]",
           "ungeprueft": true,
-          "meldung": "Unable to expand ValueSet: cannot apply filters '[org.hl7.fhir.r5.model.ValueSet$ConceptSetFilterComponent@41ea668d]' because CodeSystem 'http://snomed.info/sct' is ignored/not-present"
+          "meldung": "Unable to expand ValueSet: cannot apply filters '[org.hl7.fhir.r5.model.ValueSet$ConceptSetFilterComponent@57e1bb1d]' because CodeSystem 'http://snomed.info/sct' is ignored/not-present"
         },
         {
           "schweregrad": "error",
           "ort": "Condition.code.coding[0]",
           "ungeprueft": true,
-          "meldung": "The Coding provided (http://snomed.info/sct#84114007) was not found in the value set 'DiagnosesSCT' (https://gematik.de/fhir/isik/ValueSet/DiagnosesSCT|4.0.3), and a code is required from this value set.  (error message = Failed to expand ValueSet 'https://gematik.de/fhir/isik/ValueSet/DiagnosesSCT' (in-memory). Could not validate code http://snomed.info/sct#84114007. Error was: HAPI-2646: Unable to expand ValueSet: cannot apply filters '[org.hl7.fhir.r5.model.ValueSet$ConceptSetFilterComponent@41ea668d]' because CodeSystem 'http://snomed.info/sct' is ignored/not-present; Unable to expand ValueSet: cannot apply filters '[org.hl7.fhir.r5.model.ValueSet$ConceptSetFilterComponent@41ea668d]' because CodeSystem 'http://snomed.info/sct' is ignored/not-present)"
+          "meldung": "The Coding provided (http://snomed.info/sct#84114007) was not found in the value set 'DiagnosesSCT' (https://gematik.de/fhir/isik/ValueSet/DiagnosesSCT|4.0.3), and a code is required from this value set.  (error message = Failed to expand ValueSet 'https://gematik.de/fhir/isik/ValueSet/DiagnosesSCT' (in-memory). Could not validate code http://snomed.info/sct#84114007. Error was: HAPI-2646: Unable to expand ValueSet: cannot apply filters '[org.hl7.fhir.r5.model.ValueSet$ConceptSetFilterComponent@57e1bb1d]' because CodeSystem 'http://snomed.info/sct' is ignored/not-present; Unable to expand ValueSet: cannot apply filters '[org.hl7.fhir.r5.model.ValueSet$ConceptSetFilterComponent@57e1bb1d]' because CodeSystem 'http://snomed.info/sct' is ignored/not-present)"
         },
         {
           "schweregrad": "warning",
           "ort": "Condition",
+          "ungeprueft": false,
+          "meldung": "Constraint failed: dom-6: 'A resource should have narrative for robust management' (defined in http://hl7.org/fhir/StructureDefinition/DomainResource) (Best Practice Recommendation)"
+        }
+      ]
+    },
+    {
+      "ressourcentyp": "Observation",
+      "kennung": "obs-002",
+      "profil": "https://gematik.de/fhir/isik/StructureDefinition/ISiKBlutdruckSystemischArteriell",
+      "fehler": 0,
+      "ungeprueft": 3,
+      "warnungen": 2,
+      "informationen": 4,
+      "befunde": [
+        {
+          "schweregrad": "warning",
+          "ort": "Observation.code",
+          "ungeprueft": true,
+          "meldung": "CodeSystem is unknown and can't be validated: http://loinc.org for 'http://loinc.org#85354-9'"
+        },
+        {
+          "schweregrad": "warning",
+          "ort": "Observation.component[0].code",
+          "ungeprueft": true,
+          "meldung": "CodeSystem is unknown and can't be validated: http://loinc.org for 'http://loinc.org#8480-6'"
+        },
+        {
+          "schweregrad": "information",
+          "ort": "Observation.component[0].code.coding[0]",
+          "ungeprueft": false,
+          "meldung": "This element does not match any known slice defined in the profile https://gematik.de/fhir/isik/StructureDefinition/ISiKBlutdruckSystemischArteriell|4.0.2 (this may not be a problem, but you should check that it's not intended to match a slice) - Does not match slice 'IEEE11073' (discriminator: $this.where((system = 'urn:iso:std:iso:11073:10101') and (code = '150017')).exists())"
+        },
+        {
+          "schweregrad": "information",
+          "ort": "Observation.component[0].code.coding[0]",
+          "ungeprueft": false,
+          "meldung": "This element does not match any known slice defined in the profile https://gematik.de/fhir/isik/StructureDefinition/ISiKBlutdruckSystemischArteriell|4.0.2 (this may not be a problem, but you should check that it's not intended to match a slice) - Does not match slice 'SCT' (discriminator: $this.where((system = 'http://snomed.info/sct') and (code = '271649006')).exists())"
+        },
+        {
+          "schweregrad": "warning",
+          "ort": "Observation.component[1].code",
+          "ungeprueft": true,
+          "meldung": "CodeSystem is unknown and can't be validated: http://loinc.org for 'http://loinc.org#8462-4'"
+        },
+        {
+          "schweregrad": "information",
+          "ort": "Observation.component[1].code.coding[0]",
+          "ungeprueft": false,
+          "meldung": "This element does not match any known slice defined in the profile https://gematik.de/fhir/isik/StructureDefinition/ISiKBlutdruckSystemischArteriell|4.0.2 (this may not be a problem, but you should check that it's not intended to match a slice) - Does not match slice 'IEEE11073' (discriminator: $this.where((system = 'urn:iso:std:iso:11073:10101') and (code = '150018')).exists())"
+        },
+        {
+          "schweregrad": "information",
+          "ort": "Observation.component[1].code.coding[0]",
+          "ungeprueft": false,
+          "meldung": "This element does not match any known slice defined in the profile https://gematik.de/fhir/isik/StructureDefinition/ISiKBlutdruckSystemischArteriell|4.0.2 (this may not be a problem, but you should check that it's not intended to match a slice) - Does not match slice 'SCT' (discriminator: $this.where((system = 'http://snomed.info/sct') and (code = '271650006')).exists())"
+        },
+        {
+          "schweregrad": "warning",
+          "ort": "Observation",
+          "ungeprueft": false,
+          "meldung": "Constraint failed: dom-6: 'A resource should have narrative for robust management' (defined in http://hl7.org/fhir/StructureDefinition/DomainResource) (Best Practice Recommendation)"
+        },
+        {
+          "schweregrad": "warning",
+          "ort": "Observation",
+          "ungeprueft": false,
+          "meldung": "Best Practice Recommendation: In general, all observations should have a performer"
+        }
+      ]
+    },
+    {
+      "ressourcentyp": "MedicationStatement",
+      "kennung": "med-002",
+      "profil": "https://gematik.de/fhir/isik/StructureDefinition/ISiKMedikationsInformation",
+      "fehler": 0,
+      "ungeprueft": 1,
+      "warnungen": 1,
+      "informationen": 3,
+      "befunde": [
+        {
+          "schweregrad": "warning",
+          "ort": "MedicationStatement.medication.ofType(CodeableConcept)",
+          "ungeprueft": true,
+          "meldung": "CodeSystem is unknown and can't be validated: http://www.whocc.no/atc for 'http://www.whocc.no/atc#C09AA05'"
+        },
+        {
+          "schweregrad": "information",
+          "ort": "MedicationStatement.medication.ofType(CodeableConcept).coding[0]",
+          "ungeprueft": false,
+          "meldung": "This element does not match any known slice defined in the profile https://gematik.de/fhir/isik/StructureDefinition/ISiKMedikationsInformation|4.0.3 (this may not be a problem, but you should check that it's not intended to match a slice) - Does not match slice 'PZN' (discriminator: $this.where(system = 'http://fhir.de/CodeSystem/ifa/pzn').exists())"
+        },
+        {
+          "schweregrad": "information",
+          "ort": "MedicationStatement.medication.ofType(CodeableConcept).coding[0]",
+          "ungeprueft": false,
+          "meldung": "This element does not match any known slice defined in the profile https://gematik.de/fhir/isik/StructureDefinition/ISiKMedikationsInformation|4.0.3 (this may not be a problem, but you should check that it's not intended to match a slice) - Does not match slice 'ATC-DE' (discriminator: $this.where(system = 'http://fhir.de/CodeSystem/bfarm/atc').exists())"
+        },
+        {
+          "schweregrad": "information",
+          "ort": "MedicationStatement.medication.ofType(CodeableConcept).coding[0]",
+          "ungeprueft": false,
+          "meldung": "This element does not match any known slice defined in the profile https://gematik.de/fhir/isik/StructureDefinition/ISiKMedikationsInformation|4.0.3 (this may not be a problem, but you should check that it's not intended to match a slice) - Does not match slice 'SCT' (discriminator: $this.where(system = 'http://snomed.info/sct').exists())"
+        },
+        {
+          "schweregrad": "warning",
+          "ort": "MedicationStatement",
           "ungeprueft": false,
           "meldung": "Constraint failed: dom-6: 'A resource should have narrative for robust management' (defined in http://hl7.org/fhir/StructureDefinition/DomainResource) (Best Practice Recommendation)"
         }
@@ -307,13 +473,13 @@
           "schweregrad": "error",
           "ort": "Condition.code.coding[0]",
           "ungeprueft": true,
-          "meldung": "Unable to expand ValueSet: cannot apply filters '[org.hl7.fhir.r5.model.ValueSet$ConceptSetFilterComponent@727a81d9]' because CodeSystem 'http://snomed.info/sct' is ignored/not-present"
+          "meldung": "Unable to expand ValueSet: cannot apply filters '[org.hl7.fhir.r5.model.ValueSet$ConceptSetFilterComponent@3be04ab2]' because CodeSystem 'http://snomed.info/sct' is ignored/not-present"
         },
         {
           "schweregrad": "error",
           "ort": "Condition.code.coding[0]",
           "ungeprueft": true,
-          "meldung": "The Coding provided (http://snomed.info/sct#195967001) was not found in the value set 'DiagnosesSCT' (https://gematik.de/fhir/isik/ValueSet/DiagnosesSCT|4.0.3), and a code is required from this value set.  (error message = Failed to expand ValueSet 'https://gematik.de/fhir/isik/ValueSet/DiagnosesSCT' (in-memory). Could not validate code http://snomed.info/sct#195967001. Error was: HAPI-2646: Unable to expand ValueSet: cannot apply filters '[org.hl7.fhir.r5.model.ValueSet$ConceptSetFilterComponent@727a81d9]' because CodeSystem 'http://snomed.info/sct' is ignored/not-present; Unable to expand ValueSet: cannot apply filters '[org.hl7.fhir.r5.model.ValueSet$ConceptSetFilterComponent@727a81d9]' because CodeSystem 'http://snomed.info/sct' is ignored/not-present)"
+          "meldung": "The Coding provided (http://snomed.info/sct#195967001) was not found in the value set 'DiagnosesSCT' (https://gematik.de/fhir/isik/ValueSet/DiagnosesSCT|4.0.3), and a code is required from this value set.  (error message = Failed to expand ValueSet 'https://gematik.de/fhir/isik/ValueSet/DiagnosesSCT' (in-memory). Could not validate code http://snomed.info/sct#195967001. Error was: HAPI-2646: Unable to expand ValueSet: cannot apply filters '[org.hl7.fhir.r5.model.ValueSet$ConceptSetFilterComponent@3be04ab2]' because CodeSystem 'http://snomed.info/sct' is ignored/not-present; Unable to expand ValueSet: cannot apply filters '[org.hl7.fhir.r5.model.ValueSet$ConceptSetFilterComponent@3be04ab2]' because CodeSystem 'http://snomed.info/sct' is ignored/not-present)"
         },
         {
           "schweregrad": "warning",

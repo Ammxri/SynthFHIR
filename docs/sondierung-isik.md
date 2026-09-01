@@ -270,6 +270,25 @@ die Ausgabe, zwei die Messung**:
   Nachtrag im nächsten Abschnitt: Der Zähler dahinter konnte zu niedrig
   zählen. Dass er es hier nicht tat, war Zufall.
 
+> **Zum Zuschnitt dieser Tabelle.** Sie misst gegen **ein** Paket, das
+> ISiK-Basismodul, und deckt damit drei der fünf Ressourcentypen ab —
+> Observation und MedicationStatement waren zu diesem Zeitpunkt
+> unprofiliert, so wie es der Abschnitt „Was die Messung sonst noch
+> ergeben hat" beschreibt.
+>
+> Seit ADR-014 lädt der Messaufbau drei Module (Basismodul,
+> Vitalparameter, Medikation), und derselbe Befehl misst dann 14 statt 11
+> Ressourcen: **0 Fehler, 13 ungeprüft, 19 Warnungen, 14 Hinweise.** Die
+> Zahl der ungeprüften Befunde steigt, weil mehr geprüft wird — nicht,
+> weil etwas schlechter geworden wäre. Und sie ist seit ADR-013 auflösbar:
+> Der Referenzvalidator gegen einen Terminologieserver meldet für dieselbe
+> Kohorte 14 geprüft, 0 Fehler und **nichts ungeprüft**.
+>
+> Diese Tabelle bleibt trotzdem stehen. Sie ist der Stand, auf den sich
+> die Abwägung dieses Dokuments bezieht, und ein Stand ohne sein Datum und
+> seinen Zuschnitt ist keiner — das war der Fehler, den der Abschnitt
+> darüber beschreibt.
+
 ### Warum vier Spalten und nicht zwei
 
 `ungeprüft` heißt: **Der Validator konnte es nicht entscheiden.** Nicht,

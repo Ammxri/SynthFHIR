@@ -7,6 +7,7 @@ Zusage des Produkts.
 
 from __future__ import annotations
 
+import json
 import re
 
 import pytest
@@ -22,6 +23,8 @@ from synthfhir.domain.codes import (
 from synthfhir.domain.identity import assign_ids
 from synthfhir.domain.integrity import check_resources
 from synthfhir.domain.templates import (
+    GRENZE_JE_PATIENT,
+    zaehle_ressourcen,
     Beanstandung,
     baue_aus_parametern,
     baue_bundle,
@@ -432,3 +435,375 @@ def test_ein_rueckfalldatum_fuer_diagnose_und_ergaenzten_kontakt():
     assert kontakt["period"]["start"] == RUECKFALLDATUM, (
         "der ergänzte Kontakt liegt nicht mehr Jahre neben seiner Diagnose"
     )
+# --- Die Mengengrenze ------------------------------------------------------
+#
+# Ein Patienteneintrag durfte beliebig viele Untereinträge tragen. Gemessen
+# ergab EIN Patient mit 20.000 Messwerten 20.001 Ressourcen, ohne eine
+# einzige Beanstandung.
+
+
+def _patient(**kw):
+    return {"vorname": "Käthe", "nachname": "Schäfer", "geschlecht": "female",
+            "geburtsdatum": "1970-01-01", **kw}
+
+
+def _messwerte(n):
+    return [{"code": "8867-4", "wert": 80, "datum": "2023-01-01"}] * n
+
+
+def test_die_vorzaehlung_stimmt_mit_dem_bau_ueberein():
+    """Der wichtigste Test dieser Datei.
+
+    `zaehle_je_patient` ist eine **Abschrift** der Zählweise von
+    `baue_aus_parametern` — die Sorte Duplizierung, gegen die dieses
+    Projekt sonst argumentiert. Sie ist nur zu verantworten, solange
+    dieser Test beide gegeneinander hält.
+
+    Entscheidend ist, was der Zufall erzeugt: Ein Test, der nur
+    **wohlgeformte** Einträge würfelt, bliebe grün und bewiese nichts.
+    Genau diese Falle hat sich das Projekt bei `katalog_pruefsumme` schon
+    einmal gestellt — dort übersah eine Handaufzählung `vital_sign`.
+    Deshalb kommen hier ausdrücklich Nicht-Objekte, falsch typisierte
+    Unterlisten und Diagnosen ohne Begegnung vor.
+    """
+    import random
+
+    wuerfel = random.Random(20260901)
+    muell = [0, "text", None, [], {}, 5, "kein array", True]
+    # Blutdruckcodes gehören ausdrücklich hinein: Seit ADR-014 wird ein
+    # Paar zu EINER Observation, die Zählung ist also nicht mehr eins zu
+    # eins. Ein Zufallstest, der nur leere Objekte würfelt, träfe diesen
+    # Pfad nie und bliebe grün, während die Vorzählung falsch zählt.
+    messwertformen = [
+        {}, {"code": "8480-6", "datum": "2024-01-01"},
+        {"code": "8462-4", "datum": "2024-01-01"},
+        {"code": "8480-6", "datum": "2024-06-01"},
+        {"code": "4548-4", "datum": "2024-01-01"},
+    ]
+
+    for lauf in range(500):
+        patienten = []
+        for _ in range(wuerfel.randint(0, 6)):
+            if wuerfel.random() < 0.15:
+                patienten.append(wuerfel.choice(muell))
+                continue
+            eintrag = _patient()
+            for feld in ("begegnungen", "diagnosen", "messwerte", "medikamente"):
+                wahl = wuerfel.random()
+                if wahl < 0.2:
+                    continue                        # Feld fehlt
+                if wahl < 0.35:
+                    eintrag[feld] = wuerfel.choice(muell)   # falscher Typ
+                    continue
+                if feld == "messwerte":
+                    eintrag[feld] = [
+                        dict(wuerfel.choice(messwertformen))
+                        for _ in range(wuerfel.randint(0, 5))
+                    ]
+                else:
+                    eintrag[feld] = [{}] * wuerfel.randint(0, 4)
+            patienten.append(eintrag)
+        parameter = {"patienten": patienten}
+
+        gezaehlt = zaehle_ressourcen(parameter)
+        gebaut = len(baue_aus_parametern(parameter, {}).ressourcen)
+        assert gezaehlt == gebaut, f"Lauf {lauf}: {gezaehlt} gezählt, {gebaut} gebaut"
+
+
+def test_die_vorzaehlung_kennt_die_ersatzbegegnung():
+    """Der Fall, den eine naive Zählung übersieht: Eine Diagnose ohne
+    Begegnung erzeugt eine — das verlangt `isik-con1` (ADR-009)."""
+    ohne = {"patienten": [_patient(diagnosen=[{"code": "44054006"}])]}
+    assert zaehle_ressourcen(ohne) == 3        # Patient + Ersatzbegegnung + Diagnose
+    assert len(baue_aus_parametern(ohne, {}).ressourcen) == 3
+
+
+def test_die_grenze_je_patient_greift_und_meldet_sich():
+    bau = baue_aus_parametern({"patienten": [_patient(messwerte=_messwerte(20000))]}, {})
+    assert len(bau.ressourcen) == GRENZE_JE_PATIENT
+
+    grenze = [b for b in bau.beanstandungen if b.art == "mengengrenze_je_patient"]
+    assert len(grenze) == 1, "genau eine Sammelmeldung, nicht eine je Vorfall"
+    # Beide Zahlen gehören hinein: Ohne sie wäre es stilles Abschneiden
+    # mit einem Hinweis daneben.
+    assert "20001" in grenze[0].detail
+    assert str(GRENZE_JE_PATIENT) in grenze[0].detail
+    assert "19921" in grenze[0].detail
+
+
+def test_der_legitime_fall_bleibt_unberuehrt():
+    """Eine Quartalsmessreihe über zehn Jahre. Der nächstliegende echte
+    Anwendungsfall unterhalb der Grenze — geht er kaputt, ist die Zahl
+    falsch gewählt."""
+    reihe = {"patienten": [
+        _patient(diagnosen=[{"code": "44054006"}], messwerte=_messwerte(40))
+    ]}
+    bau = baue_aus_parametern(reihe, {})
+    assert len(bau.ressourcen) == 43
+    assert not any(b.art.startswith("mengengrenze") for b in bau.beanstandungen)
+
+
+def test_kappen_zerreisst_die_referenzintegritaet_nicht():
+    """Die naheliegende falsche Umsetzung wäre, nach dem Bau
+    abzuschneiden. Dann bliebe eine Diagnose ohne ihren Patienten stehen —
+    oder die Begegnung fiele weg, auf die `Condition.encounter` zeigt."""
+    from synthfhir.domain.identity import assign_ids
+    from synthfhir.domain.integrity import check_resources
+    from synthfhir.validation import pruefe_alle
+
+    formen = [
+        _patient(diagnosen=[{"code": "44054006"}] * 200, messwerte=_messwerte(200)),
+        _patient(begegnungen=[{"art": "AMB", "datum": "2023-01-01"}] * 200,
+                 diagnosen=[{"code": "44054006"}] * 200),
+        _patient(begegnungen=[{"art": "AMB", "datum": "2023-01-01"}],
+                 messwerte=_messwerte(20000)),
+    ]
+    for form in formen:
+        bau = baue_aus_parametern({"patienten": [form]}, {})
+        assert len(bau.ressourcen) == GRENZE_JE_PATIENT
+        res = assign_ids(bau.ressourcen).resources
+        bericht = check_resources(res)
+        assert bericht.ok, bericht.to_dict()
+        assert bericht.broken_reference_count == 0
+        assert not [p for p in pruefe_alle(res) if not p.valide]
+
+
+def test_die_kappung_faelscht_die_mengenabweichung_nicht():
+    """Gekappt wird NACH dem Sollvergleich.
+
+    Andersherum meldete die Beanstandung „79 Messwerte geliefert, 200
+    erwartet" — und behauptete damit etwas Falsches über das Modell:
+    Geliefert hat es 200, gekappt hat der eigene Code. Die Mengentreue
+    ist die Kennzahl aus Phase 0; sie darf nicht die eigene Grenze messen.
+    """
+    bau = baue_aus_parametern(
+        {"patienten": [_patient(messwerte=_messwerte(200))]},
+        {"patienten": 1, "messwerte_je_patient": 200},
+    )
+    abweichung = [b for b in bau.beanstandungen if b.art == "mengenabweichung"]
+    assert abweichung == [], [b.detail for b in abweichung]
+
+
+def test_die_kappung_veraendert_das_parameterobjekt_nicht():
+    """Sonst trüge die Aufzeichnung die gekappte Liste, und die
+    Wiedergabe meldete die Beanstandung nicht mehr — der Lauf sähe
+    rückblickend sauber aus."""
+    parameter = {"patienten": [_patient(messwerte=_messwerte(500))]}
+    baue_aus_parametern(parameter, {})
+    assert len(parameter["patienten"][0]["messwerte"]) == 500
+
+
+def test_die_kappung_ist_deterministisch():
+    """Ohne das wäre eine gekappte Kohorte nicht wiedergebbar."""
+    parameter = {"patienten": [_patient(messwerte=_messwerte(500))]}
+    erst = baue_aus_parametern(parameter, {}).ressourcen
+    zweit = baue_aus_parametern(parameter, {}).ressourcen
+    assert json.dumps(erst, sort_keys=True) == json.dumps(zweit, sort_keys=True)
+
+
+def test_unbrauchbare_messwerte_stuerzen_nicht_ab():
+    """Drei Werte, die den Bau oder das Ausliefern zum Absturz brachten.
+
+    Eine Ganzzahl mit 400 Stellen ist ein `int` und kam durch die
+    Typprüfung — `float()` warf darauf `OverflowError`. `Infinity` und
+    `NaN` wurden gebaut, und erst Starlettes Renderer (`allow_nan=False`)
+    scheiterte. Beides ergab HTTP 500.
+    """
+    for wert in (int("9" * 400), float("inf"), float("nan"), "keine Zahl"):
+        bau = baue_aus_parametern(
+            {"patienten": [_patient(
+                messwerte=[{"code": "8867-4", "wert": wert, "datum": "2023-01-01"}]
+            )]},
+            {},
+        )
+        assert len(bau.ressourcen) == 2
+        assert any(b.art == "ungueltiger_messwert" for b in bau.beanstandungen)
+        # Muss sich strikt serialisieren lassen — NaN und Infinity sind
+        # kein JSON, und der Renderer der API lehnt sie ab.
+        json.dumps(bau.ressourcen, allow_nan=False)
+
+
+def test_die_meldung_gibt_keinen_langen_aufruferwert_wieder():
+    """Der Wert stammt vom Aufrufer. Bei 400 Stellen stünden sonst 400
+    Stellen in der Beanstandung — und die wandert in Berichte."""
+    bau = baue_aus_parametern(
+        {"patienten": [_patient(
+            messwerte=[{"code": "8867-4", "wert": int("9" * 400)}]
+        )]},
+        {},
+    )
+    meldung = next(b for b in bau.beanstandungen if b.art == "ungueltiger_messwert")
+    assert len(meldung.detail) < 200, meldung.detail
+
+
+# --- Blutdruck als Panel (ADR-014) -----------------------------------------
+
+
+def _blutdruck(datum="2024-01-15", syst=130, diast=85):
+    return [{"code": "8480-6", "wert": syst, "datum": datum},
+            {"code": "8462-4", "wert": diast, "datum": datum}]
+
+
+def test_blutdruck_wird_eine_observation_mit_zwei_komponenten():
+    """Das Vitalparameter-Profil laesst nichts anderes zu.
+
+    Gemessen gegen ISiKBlutdruckSystemischArteriell ergaben zwei getrennte
+    Observations 12 Fehler, darunter:
+      BPCode: magic LOINC code 85354-9 required, but not found
+      Observation.component: mindestens erforderlich = 2
+      Observation.value[x]: maximal erlaubt = 0, aber gefunden 1
+    """
+    from synthfhir.domain.codes import BLUTDRUCK_PANEL
+
+    bau = baue_aus_parametern({"patienten": [_patient(messwerte=_blutdruck())]}, {})
+    obs = [r for r in bau.ressourcen if r["resourceType"] == "Observation"]
+    assert len(obs) == 1, "aus zwei Messwerten wird EINE Observation"
+
+    panel = obs[0]
+    assert panel["code"]["coding"][0]["code"] == BLUTDRUCK_PANEL
+    assert "valueQuantity" not in panel, "das Profil erlaubt hier maximal null"
+    codes = [k["code"]["coding"][0]["code"] for k in panel["component"]]
+    assert codes == ["8480-6", "8462-4"]
+    for k in panel["component"]:
+        assert k["valueQuantity"]["code"] == "mm[Hg]"
+
+
+def test_ein_einzelner_blutdruckwert_bleibt_eine_eigene_observation():
+    """Ein Panel braucht beide Komponenten. Einen unpaarigen Wert zu
+    verwerfen waere schlimmer als ihn stehenzulassen: Er ist als schlichte
+    Observation weiterhin gueltiges FHIR, nur nicht profilkonform."""
+    bau = baue_aus_parametern(
+        {"patienten": [_patient(messwerte=[{"code": "8480-6", "wert": 130,
+                                            "datum": "2024-01-15"}])]}, {}
+    )
+    obs = [r for r in bau.ressourcen if r["resourceType"] == "Observation"]
+    assert len(obs) == 1
+    assert obs[0]["code"]["coding"][0]["code"] == "8480-6"
+    assert "valueQuantity" in obs[0]
+    assert "component" not in obs[0]
+
+
+def test_gepaart_wird_nur_am_selben_datum():
+    """Die einzige Zuordnung, die aus den Parametern hervorgeht. Alles
+    andere waere geraten."""
+    mw = _blutdruck("2024-01-15") + [{"code": "8480-6", "wert": 140,
+                                      "datum": "2024-06-01"}]
+    bau = baue_aus_parametern({"patienten": [_patient(messwerte=mw)]}, {})
+    obs = [r for r in bau.ressourcen if r["resourceType"] == "Observation"]
+    codes = sorted(o["code"]["coding"][0]["code"] for o in obs)
+    assert codes == ["8480-6", "85354-9"], codes
+
+
+def test_die_paarung_ist_deterministisch():
+    """Ohne das waere eine Kohorte mit Blutdruck nicht wiedergebbar."""
+    p = {"patienten": [_patient(messwerte=_blutdruck("2024-01-15")
+                                + _blutdruck("2024-03-01", 128, 82))]}
+    erst = json.dumps(baue_aus_parametern(p, {}).ressourcen, sort_keys=True)
+    zweit = json.dumps(baue_aus_parametern(p, {}).ressourcen, sort_keys=True)
+    assert erst == zweit
+
+
+def test_loinc_display_ist_die_amtliche_deutsche_bezeichnung():
+    """Die deutschen ISiK-Profile pruefen `Coding.display` gegen LOINCs
+    de-DE-Fassung. Nachgemessen ergab 'Body weight' bei ISiKKoerpergewicht
+    genau einen Fehler, und der verschwand mit 'Koerpergewicht'.
+
+    `display_de` bleibt daneben unsere Kurzform und steht in `text` —
+    'HbA1c' ist keine LOINC-Bezeichnung.
+    """
+    from synthfhir.domain.codes import OBSERVATION_CODES
+
+    bau = baue_aus_parametern(
+        {"patienten": [_patient(messwerte=[{"code": "4548-4", "wert": 7.2}])]}, {}
+    )
+    obs = next(r for r in bau.ressourcen if r["resourceType"] == "Observation")
+    spec = OBSERVATION_CODES["4548-4"]
+    assert obs["code"]["coding"][0]["display"] == spec.display_loinc_de
+    assert obs["code"]["text"] == spec.display_de
+    assert spec.display_loinc_de != spec.display_de, "sonst prueft dieser Test nichts"
+
+
+def test_jeder_messwertcode_hat_eine_amtliche_deutsche_bezeichnung():
+    """Eine Luecke hier hiesse: stiller Rueckfall auf den englischen Text
+    und ein Fehler im deutschen Profil."""
+    from synthfhir.domain.codes import OBSERVATION_CODES
+
+    ohne = [e.code for e in OBSERVATION_CODES.values() if not e.display_loinc_de]
+    assert not ohne, f"ohne deutsche LOINC-Bezeichnung: {ohne}"
+
+
+def test_die_referenzkohorte_traegt_das_blutdruckpanel():
+    """Sie ist die Messgrundlage. Faellt das Panel aus ihr heraus, misst
+    der ISiK-Bericht den Fall nicht mehr, um den es geht."""
+    from synthfhir.referenzkohorte import baue
+
+    res = baue()
+    panels = [r for r in res
+              if r["resourceType"] == "Observation" and r.get("component")]
+    assert len(panels) == 1
+    assert panels[0]["code"]["coding"][0]["code"] == "85354-9"
+
+
+# --- SNOMED-Doppelkodierung fuer Laborwerte (ADR-015) ----------------------
+
+
+def test_laborwerte_mit_snomed_code_tragen_zwei_kodierungen():
+    """ISiK Labor verlangt neben LOINC eine SNOMED-Kodierung.
+
+    Gefuellt sind nur die sechs Codes, die die Spezifikation selbst als
+    `patternCoding` fuehrt.
+    """
+    from synthfhir.domain.codes import OBSERVATION_CODES, SNOMED_SYSTEM
+
+    spec = OBSERVATION_CODES["718-7"]           # Haemoglobin
+    assert spec.snomed, "der Katalog fuehrt hier einen SNOMED-Code"
+    bau = baue_aus_parametern(
+        {"patienten": [_patient(messwerte=[{"code": "718-7", "wert": 14.0}])]}, {}
+    )
+    obs = next(r for r in bau.ressourcen if r["resourceType"] == "Observation")
+    systeme = [c["system"] for c in obs["code"]["coding"]]
+    assert systeme == ["http://loinc.org", SNOMED_SYSTEM]
+    assert obs["code"]["coding"][1]["code"] == spec.snomed
+
+
+def test_ohne_snomed_code_bleibt_es_bei_einer_kodierung():
+    """Ein erfundener Code waere schlimmer als ein fehlender.
+
+    14 der 20 Laborwerte haben noch keinen; die Wahl ist eine klinische
+    und gehoert geprueft (docs/snomed-labor-pruefliste.md).
+    """
+    from synthfhir.domain.codes import OBSERVATION_CODES
+
+    spec = OBSERVATION_CODES["4548-4"]          # HbA1c
+    assert not spec.snomed, "sonst prueft dieser Test nichts"
+    bau = baue_aus_parametern(
+        {"patienten": [_patient(messwerte=[{"code": "4548-4", "wert": 7.2}])]}, {}
+    )
+    obs = next(r for r in bau.ressourcen if r["resourceType"] == "Observation")
+    assert len(obs["code"]["coding"]) == 1
+
+
+def test_kein_vitalparameter_traegt_einen_snomed_code():
+    """Die Vitalparameter-Profile verlangen keinen — und der Blutdruck
+    waere als Panel ohnehin ein anderer Fall."""
+    from synthfhir.domain.codes import OBSERVATION_CODES
+
+    mit = [e.code for e in OBSERVATION_CODES.values() if e.vital_sign and e.snomed]
+    assert not mit, mit
+
+
+def test_die_pruefliste_deckt_jeden_offenen_laborwert_ab():
+    """Sonst faellt einer stillschweigend hinten runter — die Sorte
+    Handaufzaehlung, die in diesem Projekt fuenfmal einen Eintrag
+    vergessen hat."""
+    import re
+    from pathlib import Path
+
+    from synthfhir.domain.codes import OBSERVATION_CODES
+
+    liste = Path(__file__).resolve().parent.parent / "docs" / "snomed-labor-pruefliste.md"
+    text = liste.read_text(encoding="utf-8")
+    offen = [e.code for e in OBSERVATION_CODES.values()
+             if not e.vital_sign and not e.snomed]
+    fehlend = [c for c in offen if not re.search(rf"### `{re.escape(c)}`", text)]
+    assert not fehlend, f"nicht in der Pruefliste: {fehlend}"

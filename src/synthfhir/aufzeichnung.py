@@ -186,13 +186,17 @@ class Aufzeichnung:
             )
         try:
             teile = [TeilParameter.from_dict(t) for t in d["teile"]]
+            # `angefragt` gehört mit in diesen Block: Aussen stehend warf
+            # ein unlesbarer Wert einen nackten ValueError an
+            # `AufzeichnungFehler` vorbei.
+            angefragt = int(d.get("angefragt", 0))
         except (KeyError, TypeError, ValueError) as exc:
             raise AufzeichnungFehler(f"Aufzeichnung ist unvollständig: {exc}") from exc
         if not teile:
             raise AufzeichnungFehler("Aufzeichnung enthält keine Teile.")
         return cls(
             beschreibung=str(d.get("beschreibung", "")),
-            angefragt=int(d.get("angefragt", 0)),
+            angefragt=angefragt,
             teile=teile,
             modell=str(d.get("modell", "unbekannt")),
             erzeugt=str(d.get("erzeugt", "")),

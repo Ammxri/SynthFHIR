@@ -20,6 +20,13 @@ from pathlib import Path
 
 from .profil import ProfilFehler, Profilbericht, pruefe_gegen_profile
 from .referenzkohorte import baue
+from .terminologie import (
+    SERVER,
+    TerminologieFehler,
+    Terminologienachweis,
+    weise_nach,
+)
+from .terminologie import STANDARD_SERVER as TERMINOLOGIE_STANDARD
 
 STANDARD_SERVER = "http://localhost:8090/fhir"
 
@@ -44,6 +51,12 @@ def baue_parser() -> argparse.ArgumentParser:
                    help="Zieldatei für den Bericht als JSON.")
     p.add_argument("--still", action="store_true",
                    help="Keine Tabelle auf stderr ausgeben.")
+    p.add_argument("--terminologie", nargs="?", const=TERMINOLOGIE_STANDARD,
+                   metavar="URL",
+                   help="Zusätzlich die SNOMED-Bindung entscheiden, die ohne "
+                        "Terminologieserver ungeprüft bleibt. Ohne Wert wird "
+                        f"{TERMINOLOGIE_STANDARD} benutzt; Ausweichserver: "
+                        f"{SERVER['org']}")
     return p
 
 
@@ -58,10 +71,28 @@ def main(argv: list[str] | None = None) -> int:
               "docs/belege/docker-compose.isik.yml up -d", file=sys.stderr)
         return 2
 
+    nachweis: Terminologienachweis | None = None
+    if args.terminologie:
+        try:
+            nachweis = weise_nach(server=args.terminologie)
+        except TerminologieFehler as exc:
+            # Kein stiller Rückfall auf „ohne Terminologie". Wer sie
+            # angefordert hat, bekommt entweder eine Antwort oder einen
+            # Abbruch — ein Bericht, der stillschweigend weniger misst als
+            # bestellt, ist genau der Bericht, gegen den dieses Projekt
+            # antritt.
+            print(f"Terminologie-Nachweis fehlgeschlagen: {exc}", file=sys.stderr)
+            return 2
+
     if not args.still:
         print(_tabelle(bericht), file=sys.stderr)
+        if nachweis:
+            print(_terminologietabelle(nachweis), file=sys.stderr)
 
-    text = json.dumps(bericht.to_dict(), ensure_ascii=False, indent=2) + "\n"
+    inhalt = bericht.to_dict()
+    if nachweis:
+        inhalt["terminologienachweis"] = nachweis.to_dict()
+    text = json.dumps(inhalt, ensure_ascii=False, indent=2) + "\n"
     if args.ausgabe:
         args.ausgabe.parent.mkdir(parents=True, exist_ok=True)
         args.ausgabe.write_text(text, encoding="utf-8")
@@ -70,13 +101,19 @@ def main(argv: list[str] | None = None) -> int:
     else:
         print(text)
 
+    # Ein Nachweis, der nicht entschieden hat, ist ein Fehlschlag — auch
+    # wenn die Profilmessung selbst sauber war. Sonst meldete der
+    # Rückgabewert 0, während im Bericht „UNGÜLTIG" steht.
+    if nachweis and not (nachweis.gueltig and nachweis.alle_mitglied):
+        return 1
     return 1 if bericht.summe("fehler") else 0
 
 
 def _tabelle(b: Profilbericht) -> str:
     zeilen = [
         "",
-        f"Profilmessung gegen {b.paket} {b.paketversion}",
+        "Profilmessung gegen "
+        + ", ".join(f"{n} {v}" for n, v in sorted(b.module.items())),
         f"  Server:            {b.server} (FHIR {b.fhir_version})",
         f"  Terminologieserver: {b.terminologieserver}",
         "",
@@ -105,6 +142,35 @@ def _tabelle(b: Profilbericht) -> str:
         "  Warnungen und liessen deren Zahl grösser erscheinen, als sie ist."
     )
     return "\n".join(zeilen)
+
+
+def _terminologietabelle(n: Terminologienachweis) -> str:
+    """Der Nachweis, und zwar mit den Gegenproben zuerst.
+
+    Sie stehen oben, weil ohne sie alles darunter bedeutungslos ist: Ein
+    Server, der jeden Code bejaht, meldete sonst „25 von 25 Mitglied" und
+    hätte nichts entschieden.
+    """
+    zeilen = [
+        "",
+        f"SNOMED-Bindung, entschieden gegen {n.server}",
+        f"  ValueSet:  {n.valueset}|{n.valueset_version}",
+        f"  SHA-256:   {n.valueset_sha256[:32]}…  (Definition der gematik, geprüft)",
+        f"  SNOMED:    {n.snomed_version or 'unbekannt'}",
+        "",
+        "  Gegenproben — ohne sie bedeutet die Zahl darunter nichts:",
+    ]
+    for p in n.kanarienvoegel:
+        zeichen = "ok  " if p.wie_erwartet else "NEIN"
+        zeilen.append(
+            f"    [{zeichen}] {p.code:<10} erwartet {p.erwartet}, "
+            f"erhalten {p.erhalten}   {p.bezeichnung}"
+        )
+    zeilen.append("")
+    zeilen.append(f"  {n.befund()}")
+    for p in n.abweichler:
+        zeilen.append(f"    KEIN MITGLIED: {p.code}  {p.bezeichnung}")
+    return chr(10).join(zeilen)
 
 
 if __name__ == "__main__":
