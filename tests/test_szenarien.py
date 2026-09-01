@@ -366,3 +366,21 @@ def test_beide_wege_liefern_dasselbe(szenario):
     assert a.bundle is not None and b.bundle is not None
     assert json.dumps(a.bundle, sort_keys=True) == json.dumps(b.bundle, sort_keys=True)
     assert a.fertig == b.fertig
+
+
+def test_ein_szenario_fuehrt_den_notfall_vor():
+    """Der Notfall ist der einzige Katalogeintrag, bei dem Schluessel und
+    Code auseinandergehen (ADR-018). Ein Szenario, das ihn zeigt, ist die
+    beste Erklaerung - und faellt auf, wenn die Umsetzung zurueckgedreht
+    wird."""
+    from synthfhir.domain.codes import AUFNAHMEANLASS_SYSTEM
+
+    notfaelle = [
+        r for s in alle() for r in baue(s).ressourcen
+        if r["resourceType"] == "Encounter" and r.get("hospitalization")
+    ]
+    assert notfaelle, "kein Szenario zeigt den Aufnahmeanlass"
+    e = notfaelle[0]
+    assert e["class"]["code"] == "IMP", "der Notfall steht nicht in class"
+    k = e["hospitalization"]["admitSource"]["coding"][0]
+    assert k["system"] == AUFNAHMEANLASS_SYSTEM and k["code"] == "N"

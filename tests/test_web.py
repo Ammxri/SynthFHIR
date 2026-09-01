@@ -751,6 +751,8 @@ def test_die_bibliothek_zaehlt_sich_selbst(klient):
 
     text = klient.get("/").text
     assert f"Diese {len(alle())} sind kuratiert" in text
+
+
 def test_dateiname_mit_nicht_ascii_wird_gefiltert_statt_zu_scheitern(klient):
     """`c.isalnum()` ist unicode-bewusst und liess alles durch, was
     irgendwo ein Buchstabe ist.
@@ -780,3 +782,53 @@ def test_pfaddurchquerung_im_dateinamen_bleibt_wirkungslos(klient):
     assert antwort.status_code == 200
     zuordnung = antwort.headers["content-disposition"]
     assert ".." not in zuordnung and "/" not in zuordnung.split("filename=")[1]
+
+
+# --- Der Notfall in der Vorschau (ADR-018) ---------------------------------
+
+
+def test_die_vorschau_zeigt_den_notfall(klient):
+    """Seit ADR-018 steht der Notfall in `hospitalization.admitSource`,
+    nicht in `class`. Wer nur `class` liest, zeigt bei einer Notaufnahme
+    "stationaer" — richtig und trotzdem irrefuehrend, weil genau die
+    Information fehlt, nach der gefragt wurde."""
+    text = klient.get("/szenario/mehrere-kontakte").text
+    assert "Notfall" in text
+    assert "stationär · Notfall" in text
+
+
+@pytest.mark.parametrize("encounter,erwartet", [
+    ({"class": {"code": "AMB"}}, "ambulant"),
+    ({"class": {"code": "VR"}}, "Videosprechstunde"),
+    ({"class": {"code": "IMP"}}, "stationär"),
+    ({"class": {"code": "IMP"}, "hospitalization": {"admitSource": {"coding": [
+        {"system": "http://fhir.de/CodeSystem/dgkev/Aufnahmeanlass",
+         "code": "N"}]}}}, "stationär · Notfall"),
+    # Fremdes System an derselben Stelle: nicht uebersetzen, nicht anzeigen.
+    ({"class": {"code": "IMP"}, "hospitalization": {"admitSource": {"coding": [
+        {"system": "http://example.org/fremd", "code": "N"}]}}}, "stationär"),
+    # Unbekannter Anlass aus unserem System: roh zeigen, sichtbar fremd.
+    ({"class": {"code": "IMP"}, "hospitalization": {"admitSource": {"coding": [
+        {"system": "http://fhir.de/CodeSystem/dgkev/Aufnahmeanlass",
+         "code": "G"}]}}}, "stationär · G"),
+    # Alte Aufzeichnung, aelter als ADR-018.
+    ({"class": {"code": "EMER", "display": "emergency"}},
+     "Notfall, stationäre Aufnahme"),
+    # Kaputtes: darf nicht abstuerzen.
+    ({}, "—"),
+    ({"class": {"code": "IMP"}, "hospitalization": {}}, "stationär"),
+    ({"class": {"code": "IMP"}, "hospitalization": {"admitSource": {}}}, "stationär"),
+    ({"class": {"code": "IMP"}, "hospitalization": {"admitSource": {
+        "coding": ["kein Objekt"]}}}, "stationär"),
+])
+def test_kontaktart_haelt_auch_das_unvollstaendige_aus(encounter, erwartet):
+    assert app_modul._kontaktart(encounter) == erwartet
+
+
+def test_die_bezeichnung_kommt_aus_dem_katalog_nicht_aus_der_ressource():
+    """Bei einer geladenen Fremddatei stammt `display` vom Aufrufer. Der
+    gehoert nicht ungeprueft in die Seite."""
+    e = {"class": {"code": "IMP"}, "hospitalization": {"admitSource": {"coding": [
+        {"system": "http://fhir.de/CodeSystem/dgkev/Aufnahmeanlass",
+         "code": "N", "display": "<script>boese</script>"}]}}}
+    assert app_modul._kontaktart(e) == "stationär · Notfall"

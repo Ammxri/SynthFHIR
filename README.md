@@ -78,7 +78,7 @@ leer oder der Anbieter ausgefallen ist
 | `diabetes-ambulanz` | alle fünf Ressourcentypen im Zusammenspiel |
 | `blutdruck-kontrolle` | das Panel: eine Observation mit zwei Komponenten |
 | `labor-grundprofil` | viele Observations mit UCUM-Einheiten |
-| `mehrere-kontakte` | mehrere Encounter je Patient |
+| `mehrere-kontakte` | mehrere Encounter je Patient, darunter ein Notfall |
 | `ohne-kontakt` | Diagnose ohne Kontakt — `isik-con1` ergänzt ihn |
 
 Jede hat eine eigene Adresse und ist damit verlinkbar:
@@ -523,6 +523,7 @@ in dieser Reihenfolge:
 | [ADR-015](docs/adr-015-isik-labor.md) | ISiK Labor — was geht, und warum Konformität nicht geht |
 | [ADR-016](docs/adr-016-szenario-bibliothek.md) | Die Szenario-Bibliothek — Vorlagen statt Modellaufrufe |
 | [ADR-017](docs/adr-017-profilmessung-in-der-ci.md) | Die Profilmessung als Auflage der CI — und was sie nicht verspricht |
+| [ADR-018](docs/adr-018-notfall-als-aufnahmeanlass.md) | Der Notfall steht nicht in `Encounter.class` |
 | [Konzepte](docs/konzepte.md) | Die FHIR-Grundlagen dahinter, ausführlich erklärt |
 
 ### Die tragenden Entscheidungen in drei Sätzen

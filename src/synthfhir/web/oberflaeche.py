@@ -34,6 +34,7 @@ from ..llm import (
     client_aus_umgebung,
     client_mit_fremdschluessel,
 )
+from ..domain.codes import AUFNAHMEANLASS_SYSTEM
 from ..prompts import MAX_PATIENTEN
 from .. import szenarien as szen
 from .ratenbremse import Ratenbremse, kennung_aus_anfrage
@@ -593,7 +594,7 @@ def _ansicht(ergebnis: Ergebnis) -> list[dict]:
             eintrag["begegnungen"].append(
                 {
                     "id": r["id"],
-                    "art": _kontaktart(r.get("class") or {}),
+                    "art": _kontaktart(r),
                     "zeitraum": _zeitraum(r.get("period") or {}),
                     "fallnummer": next(
                         (k.get("value", "—") for k in r.get("identifier", [])),
@@ -679,21 +680,56 @@ def _messwerttext(r: dict) -> str:
     return "—"
 
 
-def _kontaktart(klasse: dict) -> str:
+def _kontaktart(encounter: dict) -> str:
     """Die Kontaktart auf Deutsch — aus dem Katalog, nicht aus einer
     zweiten Liste.
 
     Eine hier abgeschriebene Zuordnung ginge genau so lange gut, bis dem
     Katalog eine fünfte Kontaktart zuwüchse. Das ist in diesem Projekt
     schon viermal passiert, jedes Mal mit einer Handaufzählung.
+
+    **Bekommt die ganze Ressource, nicht nur `class`.** Seit ADR-018 steht
+    der Notfall nicht mehr in `class`, sondern in
+    `hospitalization.admitSource`. Wer nur `class` liest, zeigt bei einer
+    Notaufnahme „stationär" — richtig und trotzdem irreführend, weil
+    genau die Information fehlt, nach der gefragt wurde.
+
+    Gelesen wird die RESSOURCE, nicht der Katalogschlüssel: Die Vorschau
+    soll zeigen, was in den Daten steht. Bei einer alten Aufzeichnung mit
+    `class: EMER` bleibt es deshalb bei „Notfall" aus dem Katalog.
     """
+    klasse = encounter.get("class") or {}
     code = klasse.get("code", "")
     eintrag = KATALOGE["encounter_classes"].get(code)
-    if eintrag is not None:
-        return eintrag.display_de
     # Unbekannter Code: lieber den rohen Code zeigen als nichts. Er
     # stammte dann aus einer Aufzeichnung, die älter ist als der Katalog.
-    return klasse.get("display") or code or "—"
+    art = eintrag.display_de if eintrag else (klasse.get("display") or code or "—")
+
+    anlass = _aufnahmeanlass(encounter)
+    return f"{art} · {anlass}" if anlass else art
+
+
+def _aufnahmeanlass(encounter: dict) -> str:
+    """Der Aufnahmeanlass als Text, oder leer.
+
+    Aus dem Katalog übersetzt statt aus der Ressource abgeschrieben: Die
+    `display` in den Daten stammt bei einer geladenen Fremddatei vom
+    Aufrufer, und die gehört nicht ungeprüft in die Seite. Steht der Code
+    nicht im Katalog, wird er roh gezeigt — sichtbar fremd.
+    """
+    kodierungen = (
+        ((encounter.get("hospitalization") or {}).get("admitSource") or {})
+        .get("coding") or []
+    )
+    for k in kodierungen:
+        if not isinstance(k, dict) or k.get("system") != AUFNAHMEANLASS_SYSTEM:
+            continue
+        code = str(k.get("code") or "")
+        for e in KATALOGE["encounter_classes"].values():
+            if e.aufnahmeanlass == code:
+                return e.aufnahmeanlass_display or code
+        return code
+    return ""
 
 
 def _zeitraum(zeitraum: dict) -> str:

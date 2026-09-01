@@ -16,6 +16,7 @@ import json
 
 import pytest
 
+from synthfhir.domain.codes import ENCOUNTER_CLASSES
 from synthfhir.profil import (
     PROFILE,
     VITALPROFILE,
@@ -516,19 +517,12 @@ def test_jedes_profil_der_zuordnung_wird_auch_benutzt():
     assert not unbenutzbar, f"Profil ohne passenden Katalogcode: {unbenutzbar}"
 
 
-# --- Was der Katalog anbietet und ISiK nicht annimmt -----------------------
-
-
-# Gemessen am 2026-09-01 gegen `EncounterClassDE` (de.basisprofil.r4 1.5.3),
-# an das ISiK `Encounter.class` bindet. Die Liste enthaelt genau sechs
-# Codes: AMB, HH, SS, VR, IMP, PRENC.
+# --- Die Kontaktarten gegen ISiK -------------------------------------------
 #
-# Unser Katalog fuehrt vier, davon drei aus dieser Liste. EMER steht NICHT
-# darin — obwohl es ein gueltiger v3-ActCode ist und unsere Daten damit
-# gueltiges FHIR bleiben. Das ist eine offene Katalogfrage (ADR-016) und
-# keine Eigenschaft, die dieser Test gutheisst.
-ISIK_KONTAKTARTEN = {"AMB", "IMP", "VR"}
-NICHT_IN_ENCOUNTERCLASSDE = {"EMER"}
+# Hier stand bis zum 2026-09-01 ein Befundtest: EMER genuege ISiK nicht.
+# Er war so gebaut, dass er ROT wird, sobald der Befund behoben ist - und
+# genau das ist beim Umbau passiert. Er hat seine Aufgabe getan und ist
+# durch die Tests unten ersetzt (ADR-018).
 
 
 def _encounter_mit(art: str) -> list[dict]:
@@ -543,38 +537,157 @@ def _encounter_mit(art: str) -> list[dict]:
     return [r for r in e.ressourcen if r["resourceType"] == "Encounter"]
 
 
-def test_der_katalog_der_kontaktarten_ist_vollstaendig_vermessen(profilserver):
-    """Keine Kontaktart darf unvermessen bleiben.
+def _encounterclass_de(server: str) -> set[str]:
+    """Die erlaubten Codes, GEHOLT statt abgeschrieben.
 
-    Ohne diesen Test wuchs der Katalog, und ob eine neue Art ISiK genuegt,
-    stellte sich erst beim Nutzer heraus. Genau so blieb EMER unbemerkt:
-    Die feste Testkohorte benutzt es nicht.
+    Eine Liste im Test waere eine zweite Handaufzaehlung neben der im
+    Katalog - und die zweite veraltet immer zuerst. Aendert
+    de.basisprofil.r4 das ValueSet, soll dieser Test das merken, nicht
+    dieselbe alte Annahme bestaetigen.
+    """
+    import requests
+
+    s = requests.Session()
+    s.trust_env = False
+    a = s.get(f"{server}/ValueSet/$expand",
+              params={"url": "http://fhir.de/ValueSet/EncounterClassDE",
+                      "count": 200},
+              headers={"Accept": "application/fhir+json"}, timeout=120)
+    d = a.json()
+    assert d.get("resourceType") == "ValueSet", d
+    return {c["code"] for c in d.get("expansion", {}).get("contains", [])}
+
+
+# Gemessen am 2026-09-01 aus dem Paket de.basisprofil.r4 (identisch in
+# 1.5.3, 1.5.4 und 1.6.0). Festgeschrieben, weil der Servertest darunter
+# OHNE Profilserver uebersprungen wird - und ohne Server ist auf diesem
+# Rechner der Normalfall, und in der CI laeuft er nie.
+#
+# Eine festgeschriebene Liste ist sonst genau das, wovor dieses Projekt
+# sich huetet. Sie ist hier vertretbar, weil der Servertest darunter sie
+# gegen die Quelle haelt, sobald ein Server da ist: Die Liste kann nicht
+# still veralten, sie kann nur unbemerkt RICHTIG bleiben.
+ENCOUNTERCLASSDE = {"AMB", "HH", "SS", "VR", "IMP", "PRENC"}
+
+
+def test_jeder_katalogcode_liegt_in_encounterclassde_auch_ohne_server():
+    """Die Wache, die IMMER laeuft.
+
+    `test_jeder_katalogcode_liegt_in_encounterclassde` misst gegen den
+    Server und ist damit genau dann still, wenn keiner da ist. Gemessen:
+    Ohne Profilserver kam ein Katalogeintrag mit `code = "FLD"` - ein Code,
+    den EncounterClassDE bewusst auslaesst - durch die ganze Testreihe.
+
+    `test_begegnungsarten_stammen_aus_dem_valueset` faengt das nicht: Es
+    prueft gegen `v3-ActEncounterCode`, und dort sind FLD und EMER
+    enthalten. Die ISiK-Bindung ist enger als der Standard.
     """
     from synthfhir.domain.codes import ENCOUNTER_CLASSES
 
-    assert set(ENCOUNTER_CLASSES) == ISIK_KONTAKTARTEN | NICHT_IN_ENCOUNTERCLASSDE
+    fremd = {e.schluessel: e.code for e in ENCOUNTER_CLASSES.values()
+             if e.code not in ENCOUNTERCLASSDE}
+    assert not fremd, f"{fremd} nicht in EncounterClassDE"
 
 
-@pytest.mark.parametrize("art", sorted(ISIK_KONTAKTARTEN))
-def test_diese_kontaktarten_genuegen_isik(art, profilserver):
+def test_die_festgeschriebene_liste_stimmt_noch(profilserver):
+    """Die Gegenprobe zur Festschreibung: Sobald ein Server da ist, muss
+    die Liste oben genau seiner Expansion entsprechen. Ohne diesen Test
+    waere sie eine Behauptung."""
+    assert _encounterclass_de(profilserver) == ENCOUNTERCLASSDE
+
+
+def test_jeder_katalogcode_liegt_in_encounterclassde(profilserver):
+    """Der Test, der EMER haette verhindern muessen.
+
+    Die Bindung von `Encounter.class` ist **required**. Ein Katalogeintrag
+    mit einem Code ausserhalb erzeugt Daten, die niemals ISiK-konform sein
+    koennen - und die Laufzeitpruefung sieht das nicht.
+    """
+    from synthfhir.domain.codes import ENCOUNTER_CLASSES
+
+    erlaubt = _encounterclass_de(profilserver)
+    assert erlaubt, "leere Expansion - dann prueft dieser Test nichts"
+    fremd = {e.schluessel: e.code for e in ENCOUNTER_CLASSES.values()
+             if e.code not in erlaubt}
+    assert not fremd, f"{fremd} nicht in EncounterClassDE ({sorted(erlaubt)})"
+
+
+def test_emer_ist_kein_class_code_mehr(profilserver):
+    """Die Gegenprobe: EMER liegt weiterhin NICHT im ValueSet.
+
+    Ohne sie koennte der Test darueber gruen sein, weil das ValueSet
+    inzwischen alles enthaelt - und dann bewiese er nichts.
+    """
+    assert "EMER" not in _encounterclass_de(profilserver)
+
+
+# Aus dem Katalog, nicht von Hand: Eine Liste hier waere eine zweite
+# Aufzaehlung neben ENCOUNTER_CLASSES, und ein fuenfter Eintrag fiele an
+# der einzigen profilkritischen Stelle lautlos hinten runter.
+@pytest.mark.parametrize("art", sorted(ENCOUNTER_CLASSES))
+def test_jede_kontaktart_genuegt_isik(art, profilserver):
     b = pruefe_gegen_profile(_encounter_mit(art), profilserver)
     fehler = [f.meldung for e in b.ergebnisse for f in e.fehler]
     assert fehler == [], fehler
 
 
-@pytest.mark.parametrize("art", sorted(NICHT_IN_ENCOUNTERCLASSDE))
-def test_diese_kontaktart_genuegt_isik_nicht(art, profilserver):
-    """Ein Test, der einen BEFUND festhaelt, kein Sollverhalten.
+def test_der_notfall_steht_im_aufnahmeanlass(profilserver):
+    """Was aus EMER wird, und dass es nicht verschwindet.
 
-    Er steht hier, damit zwei Dinge auffallen: dass der Befund noch gilt
-    (dann bleibt er gruen) und dass er behoben ist (dann wird er rot und
-    gehoert geloescht). Ohne ihn verschwaende die Messung.
+    `class` sagt WIE der Kontakt stattfand, `admitSource` WARUM er
+    zustande kam. Ohne diesen Test koennte der Notfall stillschweigend zu
+    einer gewoehnlichen stationaeren Aufnahme werden - gueltiges FHIR mit
+    falschem Inhalt, die schlimmste Sorte Fehler in diesem Projekt.
     """
-    b = pruefe_gegen_profile(_encounter_mit(art), profilserver)
-    fehler = " ".join(f.meldung for e in b.ergebnisse for f in e.fehler)
-    assert "EncounterClassDE" in fehler, (
-        f"{art} genuegt ISiK jetzt — Befund behoben, diesen Test loeschen."
-    )
+    from synthfhir.domain.codes import AUFNAHMEANLASS_SYSTEM
+
+    enc = _encounter_mit("EMER")[0]
+    assert enc["class"]["code"] == "IMP"
+    kodierung = enc["hospitalization"]["admitSource"]["coding"][0]
+    assert kodierung["system"] == AUFNAHMEANLASS_SYSTEM
+    assert kodierung["code"] == "N"
+
+    b = pruefe_gegen_profile([enc], profilserver)
+    assert [f.meldung for e in b.ergebnisse for f in e.fehler] == []
+
+
+def test_nur_der_notfall_traegt_einen_aufnahmeanlass():
+    """Ein `hospitalization` an jedem Kontakt waere gueltiges FHIR und
+    trotzdem Unsinn - eine Videosprechstunde hat keinen Aufnahmeanlass."""
+    for art in ("AMB", "IMP", "VR"):
+        assert "hospitalization" not in _encounter_mit(art)[0], art
+    assert "hospitalization" in _encounter_mit("EMER")[0]
+
+
+def test_der_aufnahmeanlass_ist_ein_echter_code(profilserver):
+    """Gegen den Server, nicht gegen eine Annahme. Der Katalog ist
+    sicherheitskritisch: Ein erfundener Code erzeugt unbemerkt inhaltlich
+    falsche Testdaten, und die Laufzeitpruefung sieht Codes nicht.
+    """
+    import requests
+
+    from synthfhir.domain.codes import ENCOUNTER_CLASSES
+
+    s = requests.Session()
+    s.trust_env = False
+    a = s.get(f"{profilserver}/ValueSet/$expand",
+              params={"url": "http://fhir.de/ValueSet/dgkev/Aufnahmeanlass",
+                      "count": 100},
+              headers={"Accept": "application/fhir+json"}, timeout=120)
+    d = a.json()
+    assert d.get("resourceType") == "ValueSet", d
+    vorhanden = {c["code"]: c.get("display", "")
+                 for c in d.get("expansion", {}).get("contains", [])}
+
+    for e in ENCOUNTER_CLASSES.values():
+        if not e.aufnahmeanlass:
+            continue
+        assert e.aufnahmeanlass in vorhanden, (
+            f"{e.schluessel}: Aufnahmeanlass {e.aufnahmeanlass!r} gibt es nicht"
+        )
+        # Auch die Bezeichnung, nicht nur der Code: Ein richtiger Code mit
+        # falschem Text ist genau die Sorte Fehler, die niemand bemerkt.
+        assert e.aufnahmeanlass_display == vorhanden[e.aufnahmeanlass]
 
 
 def test_kein_szenario_liefert_einen_profilfehler(profilserver):

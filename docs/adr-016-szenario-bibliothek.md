@@ -220,22 +220,18 @@ nicht kennt.
 | `Sollmenge` an `baue_und_pruefe` durchreichen | Gemessen: `Szenario.patienten` **ist** die Länge derselben Liste, gegen die verglichen wird. Der Vergleich könnte nie ausschlagen; er sähe nur nach Prüfung aus. |
 | Ein zweiter Bauweg für die CLI | Es gibt schon zwei Hüllen (`Ergebnis`, `Kohortenergebnis`). Ein Szenario ist aus Sicht des Baus eine einteilige Aufzeichnung — `baue_aus_aufzeichnung` genügt. Ein Test hält beide Wege auf byte-identisches Ergebnis. |
 | Eine Gleichzeitigkeitsgrenze auf `/api/v1/szenarien/{name}` | 3,1 ms je Bau bei fester Last. Die Grenze kostete den Zweck und brächte nichts. |
-| `EMER` im Szenario lassen | Eine kuratierte Vorlage mit bekanntem Profilfehler wäre ein Pflegefehler. Der Katalogbefund gehört gemeldet, nicht ausgeliefert. |
+| `EMER` im Szenario lassen | Eine kuratierte Vorlage mit bekanntem Profilfehler wäre ein Pflegefehler. Der Katalogbefund gehört gemeldet, nicht ausgeliefert. *(Seit ADR-018 ist `EMER` konform und wieder im Szenario — es führt den Aufnahmeanlass vor.)* |
 
 ---
 
 ## 6. Offen
 
-- **`EMER` im Katalog.** Gemessen: ISiK bindet `Encounter.class` an
-  `EncounterClassDE` (de.basisprofil.r4 1.5.3), und diese Liste enthält
-  genau `AMB`, `HH`, `SS`, `VR`, `IMP`, `PRENC` — **kein `EMER`**. Unsere
-  Notfall-Kontakte sind gültiges FHIR, aber nicht ISiK-konform. Das
-  betrifft jede Anfrage nach einer Notaufnahme, nicht nur Szenarien. Wie
-  ein Notfall in ISiK stattdessen abgebildet wird (vermutlich `IMP` plus
-  Aufnahmeanlass), ist eine inhaltliche Entscheidung über den Katalog und
-  steht deshalb hier und nicht im Code. Festgehalten in
-  `test_diese_kontaktart_genuegt_isik_nicht` — der Test wird rot, sobald
-  der Befund behoben ist.
+- ~~**`EMER` im Katalog.**~~ **Erledigt am 2026-09-01 durch
+  [ADR-018](adr-018-notfall-als-aufnahmeanlass.md).** Der Notfall steht
+  jetzt in `hospitalization.admitSource` (`N`) statt in `Encounter.class`.
+  Die Vermutung „`IMP` plus Aufnahmeanlass" hat sich bestätigt.
+  `test_diese_kontaktart_genuegt_isik_nicht` wurde beim Umbau rot — genau
+  wie gebaut — und ist ersetzt.
 - **Mehr Szenarien?** Fünf decken die fünf Ressourcentypen und zwei
   unbequeme Fälle ab. Weitere lohnen erst, wenn ein sechster
   Ressourcentyp oder ein neues Modul dazukommt.

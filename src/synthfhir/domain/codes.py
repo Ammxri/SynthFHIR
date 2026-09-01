@@ -490,39 +490,75 @@ MEDICATION_CODES: dict[str, MedicationCode] = {
 # ---------------------------------------------------------------------------
 
 
+# Der Aufnahmeanlass nach § 301 SGB V. Die einzige Stelle im deutschen
+# FHIR-Stapel, an der ein Notfall ausgedrückt wird — siehe ADR-018.
+AUFNAHMEANLASS_SYSTEM = "http://fhir.de/CodeSystem/dgkev/Aufnahmeanlass"
+
+
 @dataclass(frozen=True)
 class EncounterClass:
-    """Eine zulässige Begegnungsart.
+    """Eine Begegnungsart des Katalogs.
 
     `Encounter.class` ist in FHIR R4 ein **Coding**, kein
     CodeableConcept — nachgeprüft: HAPI weist ein `{"coding": [...]}` mit
     „Unrecognized property 'coding'" ab. Die Bindung an dieses ValueSet ist
     verpflichtend, ein erfundener Code also kein Kavaliersdelikt.
 
-    `display` ist wörtlich aus dem ValueSet v3-ActEncounterCode übernommen.
+    ===================================================================
+    `schluessel` und `code` sind NICHT dasselbe
+    ===================================================================
+
+    `schluessel` ist, wonach gefragt wird: im Prompt, in einem
+    Parametersatz, in einem Szenario. `code` ist, was in
+    `Encounter.class` landet.
+
+    Für drei der vier Einträge sind beide gleich. Beim Notfall nicht, und
+    das ist gemessen und nicht gewählt (ADR-018): ISiK bindet
+    `Encounter.class` **required** an `EncounterClassDE`, und dieses
+    ValueSet enthält `EMER` nicht — in keiner Fassung von
+    de.basisprofil.r4, auch nicht in der aktuellen 1.6.0.
+
+    Ein Notfall wird im deutschen Modell nicht über die Kontakt**art**
+    ausgedrückt, sondern über den Aufnahme**anlass**:
+    `hospitalization.admitSource` = `N` („Notfall"), extensible gebunden.
+    `class` sagt weiterhin nur, WIE der Kontakt stattfand.
+
+    `display` ist wörtlich aus dem ValueSet v3-ActEncounterCode
+    übernommen und gehört zu `code`, nicht zu `schluessel`.
     """
 
+    schluessel: str
     code: str
-    display: str        # wörtlich aus dem ValueSet
+    display: str        # wörtlich aus dem ValueSet, gehört zu `code`
     display_de: str
+    # Der Aufnahmeanlass, falls dieser Eintrag einen ausdrückt. Nur der
+    # Notfall hat einen: „ambulant" ist kein Anlass, sondern eine Art.
+    aufnahmeanlass: str | None = None
+    aufnahmeanlass_display: str | None = None
 
     @property
     def system(self) -> str:
         return ACT_CODE_SYSTEM
 
 
-# Geprüft am 2026-08-30 gegen
-# <https://terminology.hl7.org/6.0.2/ValueSet-v3-ActEncounterCode.html>.
+# `code` geprüft am 2026-09-01 gegen die Expansion von
+# <http://fhir.de/ValueSet/EncounterClassDE> aus de.basisprofil.r4:
+# AMB, HH, SS, VR, IMP, PRENC. Über die Fassungen 1.5.3, 1.5.4 und 1.6.0
+# hinweg identisch — das Fehlen von EMER ist Absicht, kein Versehen.
+#
 # Bewusst nur die vier Arten, die in Testdaten tatsächlich vorkommen — ein
 # ValueSet vollständig abzuschreiben, ohne dass die Einträge gebraucht
 # werden, vergrößert nur die Fläche, die von Hand zu pflegen ist.
 ENCOUNTER_CLASSES: dict[str, EncounterClass] = {
-    e.code: e
+    e.schluessel: e
     for e in [
-        EncounterClass("AMB", "ambulatory", "ambulant"),
-        EncounterClass("IMP", "inpatient encounter", "stationär"),
-        EncounterClass("EMER", "emergency", "Notfall"),
-        EncounterClass("VR", "virtual", "Videosprechstunde"),
+        EncounterClass("AMB", "AMB", "ambulatory", "ambulant"),
+        EncounterClass("IMP", "IMP", "inpatient encounter", "stationär"),
+        # Der eine Eintrag, bei dem Schlüssel und Code auseinandergehen.
+        EncounterClass("EMER", "IMP", "inpatient encounter",
+                       "Notfall, stationäre Aufnahme",
+                       aufnahmeanlass="N", aufnahmeanlass_display="Notfall"),
+        EncounterClass("VR", "VR", "virtual", "Videosprechstunde"),
     ]
 }
 
@@ -558,6 +594,16 @@ KATALOGE: dict[str, dict] = {
 
 # Die System-URIs gehören zum Katalog: Sie landen ebenso im Bundle wie die
 # Codes selbst.
+#
+# **Diese Aufzählung hat schon einmal etwas übersehen.** Mit ADR-018 kam
+# `AUFNAHMEANLASS_SYSTEM` dazu und stand hier nicht. Nachgestellt: Ein
+# Dreher `dgkev` → `dkgev` — ein Buchstabe — änderte das Bundle und ließ
+# den Fingerabdruck gleich. Die Wiedergabe meldete dann ABWEICHUNG und
+# dazu „Der Katalog ist unverändert", also genau die falsche Fährte.
+# Dasselbe war zuvor mit `vital_sign` passiert (siehe `katalog_pruefsumme`).
+#
+# Deshalb wacht jetzt ein Test darüber: `test_jede_system_konstante_steht_im_fingerabdruck`
+# liest die Konstanten aus dem Modul, statt sie zu wiederholen.
 SYSTEME: tuple[str, ...] = (
     LOINC_SYSTEM,
     SNOMED_SYSTEM,
@@ -567,6 +613,7 @@ SYSTEME: tuple[str, ...] = (
     ACT_CODE_SYSTEM,
     V2_0203_SYSTEM,
     KONTAKTEBENE_SYSTEM,
+    AUFNAHMEANLASS_SYSTEM,
 )
 
 # Auch die festen Statuswerte gehören zum Fingerabdruck: Sie stehen im
@@ -604,8 +651,11 @@ def medication_catalog_text() -> str:
 
 def encounter_catalog_text() -> str:
     """Kompakte Katalogdarstellung für den Prompt."""
+    # `schluessel`, nicht `code`: Gefragt wird nach dem Schlüssel.
+    # Stünde hier `code`, listete der Prompt IMP zweimal und EMER gar
+    # nicht — und niemand könnte mehr einen Notfall anfordern.
     return "\n".join(
-        f"  {e.code} | {e.display_de} ({e.display})"
+        f"  {e.schluessel} | {e.display_de} ({e.display})"
         for e in ENCOUNTER_CLASSES.values()
     )
 

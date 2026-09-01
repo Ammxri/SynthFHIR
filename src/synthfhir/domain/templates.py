@@ -43,6 +43,7 @@ import re
 from dataclasses import dataclass, field
 
 from .codes import (
+    AUFNAHMEANLASS_SYSTEM,
     BLUTDRUCK_DIASTOLISCH,
     BLUTDRUCK_PANEL,
     BLUTDRUCK_PANEL_DE,
@@ -584,10 +585,17 @@ def baue_encounter(
     mit **einem** Code aus `http://fhir.de/CodeSystem/Kontaktebene`, der an
     der Quelle geprüft ist. Der Absatz stand hier noch unverändert und sagte
     das Gegenteil dessen, was sechs Zeilen weiter unten geschieht.
+
+    **Der Notfall steht nicht in `class`.** ISiK bindet `Encounter.class`
+    required an `EncounterClassDE`, und dort gibt es kein `EMER` (ADR-018).
+    Ausgedrückt wird er über `hospitalization.admitSource` = `N`. Welcher
+    Katalogeintrag das tut, entscheidet der Katalog und nicht diese
+    Funktion — sonst stünde hier eine zweite Aufzählung, die beim nächsten
+    Eintrag vergessen würde.
     """
     art = _begegnungsart(params.get("art"), beanstandungen)
     datum = _datum(params.get("datum"), RUECKFALLDATUM, beanstandungen, "datum")
-    return {
+    encounter: dict = {
         "resourceType": "Encounter",
         "id": f"tmp-enc-{teil}-{index}",
         "status": ENCOUNTER_STATUS,
@@ -630,6 +638,21 @@ def baue_encounter(
         "subject": {"reference": f"Patient/tmp-pat-{patient_index}"},
         "period": {"start": datum, "end": datum},
     }
+    if art.aufnahmeanlass:
+        # `hospitalization` nur anlegen, wenn es etwas zu sagen gibt. Ein
+        # leeres Objekt wäre gültiges FHIR und trotzdem Unsinn.
+        encounter["hospitalization"] = {
+            "admitSource": {
+                "coding": [
+                    {
+                        "system": AUFNAHMEANLASS_SYSTEM,
+                        "code": art.aufnahmeanlass,
+                        "display": art.aufnahmeanlass_display,
+                    }
+                ]
+            }
+        }
+    return encounter
 
 
 def baue_medicationstatement(

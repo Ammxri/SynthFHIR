@@ -251,18 +251,17 @@ _EINGEBAUT: list[Szenario] = [
         ),
         zeigt=(
             "Mehrere Encounter je Patient und die Kennungsvergabe darüber "
-            "hinweg. Der Fall, an dem eine Kennungskollision einmal "
-            "unbemerkt blieb (ADR-007)."
+            "hinweg (ADR-007) — und den Notfall, der in ISiK nicht in "
+            "`class` steht, sondern im Aufnahmeanlass (ADR-018)."
         ),
         parameter={"patienten": [
             _p("Christa", "Lindemann", "female", "1943-02-11",
-               # Nicht EMER. Gemessen gegen ISiK: `Encounter.class` ist an
-               # `EncounterClassDE` (de.basisprofil.r4 1.5.3) gebunden, und
-               # diese Liste enthaelt genau AMB, HH, SS, VR, IMP, PRENC —
-               # kein EMER. Ein kuratiertes Szenario liefert keinen
-               # Profilfehler aus. Dass der Katalog EMER trotzdem fuehrt,
-               # ist ein eigener Befund und steht in ADR-016 unter Offen.
-               begegnungen=[{"art": "IMP", "datum": "2024-01-08"},
+               # EMER steht hier mit Absicht. Es ist der Schlüssel, nicht
+               # der Code: Gebaut wird `class: IMP` plus
+               # `hospitalization.admitSource: N` — weil `EncounterClassDE`
+               # kein EMER kennt (ADR-018). Das Szenario führt genau das
+               # vor, und `test_szenarien.py` hält es fest.
+               begegnungen=[{"art": "EMER", "datum": "2024-01-08"},
                             {"art": "VR", "datum": "2024-01-22"},
                             {"art": "AMB", "datum": "2024-02-19"}],
                diagnosen=[{"code": "84114007", "beginn": "2024-01-08"},

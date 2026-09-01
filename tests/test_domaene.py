@@ -807,3 +807,67 @@ def test_die_pruefliste_deckt_jeden_offenen_laborwert_ab():
              if not e.vital_sign and not e.snomed]
     fehlend = [c for c in offen if not re.search(rf"### `{re.escape(c)}`", text)]
     assert not fehlend, f"nicht in der Pruefliste: {fehlend}"
+
+
+# --- Der Begegnungskatalog im Prompt (ADR-018) -----------------------------
+
+
+def test_der_prompt_nennt_jeden_schluessel_genau_einmal():
+    """Gefunden durch Mutation: Stuende in `encounter_catalog_text`
+    `e.code` statt `e.schluessel`, listete der Prompt IMP zweimal und EMER
+    gar nicht — und niemand koennte mehr einen Notfall anfordern. Kein
+    Test fiel darueber.
+
+    Seit ADR-018 sind Schluessel und Code nicht mehr dasselbe. Gefragt
+    wird nach dem Schluessel.
+    """
+    from synthfhir.domain.codes import ENCOUNTER_CLASSES, encounter_catalog_text
+
+    zeilen = [z for z in encounter_catalog_text().splitlines() if z.strip()]
+    genannt = [z.strip().split(" | ")[0] for z in zeilen]
+    assert genannt == list(ENCOUNTER_CLASSES)
+    assert len(set(genannt)) == len(genannt), f"Dublette im Prompt: {genannt}"
+    assert "EMER" in genannt, "ohne EMER ist kein Notfall anforderbar"
+
+
+def test_jeder_prompt_schluessel_ist_auch_baubar():
+    """Die Gegenprobe: Was der Prompt anbietet, muss `_begegnungsart`
+    auch annehmen — ohne Beanstandung."""
+    from synthfhir.domain.codes import ENCOUNTER_CLASSES, encounter_catalog_text
+    from synthfhir.domain.templates import _begegnungsart
+
+    for zeile in encounter_catalog_text().splitlines():
+        schluessel = zeile.strip().split(" | ")[0]
+        beanstandungen: list = []
+        art = _begegnungsart(schluessel, beanstandungen)
+        assert beanstandungen == [], f"{schluessel}: {beanstandungen}"
+        assert art is ENCOUNTER_CLASSES[schluessel]
+
+
+def test_jede_system_konstante_steht_im_fingerabdruck():
+    """Die Aufzaehlung SYSTEME hat schon zweimal etwas uebersehen.
+
+    Zuerst `vital_sign` (dort behoben durch `asdict`), dann mit ADR-018
+    `AUFNAHMEANLASS_SYSTEM`. Nachgestellt: Ein Dreher `dgkev` -> `dkgev`
+    aenderte das Bundle und liess den Fingerabdruck gleich. Die Wiedergabe
+    meldete ABWEICHUNG und dazu "Der Katalog ist unveraendert" — die genau
+    falsche Faehrte.
+
+    Dieser Test liest die Konstanten aus dem Modul, statt sie zu
+    wiederholen. Eine neue `*_SYSTEM`-Konstante kann damit nicht mehr
+    still am Fingerabdruck vorbeigehen.
+    """
+    from synthfhir.domain import codes
+
+    # Gegen BEIDE Listen: Der Fingerabdruck speist sich aus SYSTEME und
+    # FESTE_WERTE.  steht nur in der zweiten (als
+    # TESTDATEN_LABEL["system"]) und ist trotzdem gedeckt — eine Pruefung
+    # allein gegen SYSTEME meldete das faelschlich als Luecke.
+    gedeckt = set(codes.SYSTEME) | set(codes.FESTE_WERTE)
+    konstanten = {
+        name: wert for name, wert in vars(codes).items()
+        if name.endswith("_SYSTEM") and isinstance(wert, str)
+    }
+    assert konstanten, "keine gefunden — der Test prueft dann nichts"
+    fehlend = {n: w for n, w in konstanten.items() if w not in gedeckt}
+    assert not fehlend, f"nicht im Fingerabdruck: {fehlend}"

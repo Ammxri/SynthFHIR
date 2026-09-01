@@ -41,6 +41,11 @@ Sechs Festlegungen:
 1. **19 Wirkstoffe**, ATC-kodiert, je mit den Diagnosen verknüpft, zu
    denen sie passen.
 2. **4 Begegnungsarten** (AMB, IMP, EMER, VR) aus v3-ActEncounterCode.
+   *Nachtrag 2026-09-01:* `EMER` wird seit
+   [ADR-018](adr-018-notfall-als-aufnahmeanlass.md) nicht mehr nach
+   `Encounter.class` geschrieben — ISiK bindet das Feld an
+   `EncounterClassDE`, und dort gibt es den Code nicht. Der Notfall
+   steht jetzt im Aufnahmeanlass.
 3. **`status` setzt der Code**, nicht das Modell — bei beiden neuen Typen.
 4. **`Encounter.type` bleibt leer.**
 5. **Diagnosen und Messwerte verweisen auf die Begegnung**, aber nur wenn
