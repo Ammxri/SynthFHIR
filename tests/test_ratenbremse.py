@@ -122,11 +122,38 @@ def test_gefaelschte_glieder_aendern_die_kennung_nicht():
     echt = "198.51.100.4"
     kennungen = {
         kennung_aus_anfrage(
-            FalscheAnfrage(host="10.0.0.1", weitergeleitet=f"{luege}, {echt}")
+            FalscheAnfrage(host="10.0.0.1", weitergeleitet=f"{luege}, {echt}"),
+            # Ausdrücklich: Diese Eigenschaft setzt genau einen
+            # vertrauenswürdigen Proxy voraus. Der Test verliess sich
+            # zuvor auf die Vorgabe — und schrieb damit fest, dass die
+            # Vorgabe 1 sei, statt die Eigenschaft zu prüfen, um die es
+            # geht.
+            vertraute_proxys=1,
         )
         for luege in ("203.0.113.1", "203.0.113.2", "8.8.8.8, 1.1.1.1", "")
     }
     assert kennungen == {echt}, "die Kennung liess sich verschieben"
+
+
+def test_vorgabe_traut_keiner_kopfzeile():
+    """Der Fall, über den die Vorgabe entscheidet — und der ungetestet war.
+
+    Steht kein Proxy davor, ist die Kette genau ein Glied lang, und dieses
+    Glied hat der Aufrufer selbst geschrieben. Mit der früheren Vorgabe 1
+    gab `glieder[-min(1, 1)]` genau es zurück: Wer `X-Forwarded-For`
+    rotieren liess, bekam bei jeder Anfrage eine neue Kennung, und die
+    Bremse je Adresse war wirkungslos — dieselbe Lücke, die das Zählen von
+    rechts gerade schliessen sollte.
+
+    Geprüft wird deshalb die VORGABE. Der Test daneben setzt
+    `vertraute_proxys=0` ausdrücklich und ging an der Frage vorbei, die im
+    Betrieb zählt: was gilt, wenn niemand etwas eingestellt hat.
+    """
+    kennungen = {
+        kennung_aus_anfrage(FalscheAnfrage(host="10.0.0.1", weitergeleitet=luege))
+        for luege in ("203.0.113.1", "203.0.113.2", "8.8.8.8", "1.1.1.1")
+    }
+    assert kennungen == {"10.0.0.1"}, "die Kennung liess sich über die Kopfzeile setzen"
 
 
 def test_ohne_vertrauenswuerdigen_proxy_gilt_die_verbindung():

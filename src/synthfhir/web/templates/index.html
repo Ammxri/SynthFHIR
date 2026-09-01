@@ -56,6 +56,29 @@
   </div>
   {% endif %}
 
+  {% if eingabefehler %}
+  <div class="kasten warnend">
+    <h2>So lässt sich die Anfrage nicht stellen</h2>
+    <p>{{ eingabefehler }}</p>
+    <p>
+      Das kostet dich nichts: Es wurde kein Modell aufgerufen, und dein
+      Demo-Kontingent ist unberührt geblieben.
+    </p>
+  </div>
+  {% endif %}
+
+  {% if ausgelastet %}
+  <div class="kasten warnend">
+    <h2>Es laufen bereits {{ gleichzeitig }} Erzeugungen</h2>
+    <p>
+      Diese Grenze schützt die Seite davor, dass einzelne Läufe alle
+      Arbeitsplätze des Servers belegen. Sie gilt unabhängig vom Schlüssel
+      und ist kein Kontingent — in etwa einer halben Minute ist wieder
+      Platz.
+    </p>
+  </div>
+  {% endif %}
+
   <form method="post" action="/erzeugen" class="eingabe">
     <label for="beschreibung">
       Welche Testdaten brauchst du? Deutsch oder Englisch, ein Satz genügt.
