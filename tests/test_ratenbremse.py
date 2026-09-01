@@ -11,11 +11,35 @@ import threading
 from synthfhir.web.ratenbremse import Ratenbremse, kennung_aus_anfrage
 
 
+class FalscheKopfzeilen(dict):
+    """Nachbau von Starlettes `Headers` — einem **Multidict**.
+
+    Der frühere Stub war ein einfaches `dict`: ein Name, ein Wert. Zwei
+    gleichnamige Kopfzeilen liessen sich damit prinzipiell nicht abbilden,
+    also genau der Fall nicht, in dem `get` und `getlist` auseinandergehen.
+    Ein Stub, der den kritischen Fall nicht darstellen kann, prüft ihn auch
+    nicht.
+    """
+
+    def __init__(self, werte: list[str]):
+        self._werte = list(werte)
+        super().__init__({"x-forwarded-for": werte[0]} if werte else {})
+
+    def getlist(self, name: str) -> list[str]:
+        return list(self._werte) if name == "x-forwarded-for" else []
+
+
 class FalscheAnfrage:
     """Nachbau des Teils von `Request`, den die Kennung braucht."""
 
-    def __init__(self, host: str | None = "1.2.3.4", weitergeleitet: str | None = None):
-        self.headers = {"x-forwarded-for": weitergeleitet} if weitergeleitet else {}
+    def __init__(self, host: str | None = "1.2.3.4", weitergeleitet=None):
+        if weitergeleitet is None:
+            werte: list[str] = []
+        elif isinstance(weitergeleitet, str):
+            werte = [weitergeleitet]
+        else:
+            werte = list(weitergeleitet)
+        self.headers = FalscheKopfzeilen(werte)
         self.client = type("K", (), {"host": host})() if host else None
 
 
@@ -171,3 +195,33 @@ def test_zu_kurze_kette_greift_nicht_ins_leere():
 
 def test_fehlende_adresse_bricht_nicht():
     assert kennung_aus_anfrage(FalscheAnfrage(host=None)) == "unbekannt"
+
+
+def test_zwei_kopfzeilen_werden_zusammengefuehrt():
+    """Der Fall, den der alte Stub nicht darstellen konnte.
+
+    Starlettes `Headers` ist ein Multidict, und `.get()` liefert dort das
+    ERSTE Vorkommen. Hängt ein Proxy die echte Adresse als zweite Kopfzeile
+    an, statt sie in die erste einzureihen, las die Bremse ausschliesslich
+    die vom Aufrufer geschriebene — und zählte je Fälschung neu.
+
+    `api.py` liest den Schlüsselkopf aus genau diesem Grund über `getlist`
+    und begründet es dort. Für die Bremse gilt dieselbe Frage.
+    """
+    anfrage = FalscheAnfrage(
+        host="10.0.0.1", weitergeleitet=["203.0.113.7", "198.51.100.4"]
+    )
+    assert kennung_aus_anfrage(anfrage, vertraute_proxys=1) == "198.51.100.4"
+
+
+def test_rotierende_zweite_kopfzeile_verschiebt_die_kennung_nicht():
+    """Die Eigenschaft dahinter, über mehrere Anfragen geprüft."""
+    echt = "198.51.100.4"
+    kennungen = {
+        kennung_aus_anfrage(
+            FalscheAnfrage(host="10.0.0.1", weitergeleitet=[luege, echt]),
+            vertraute_proxys=1,
+        )
+        for luege in ("203.0.113.1", "8.8.8.8", "1.1.1.1")
+    }
+    assert kennungen == {echt}

@@ -119,3 +119,88 @@ def test_die_beschreibung_sprengt_das_kontingent_nicht(beschreibung):
     system, benutzer = baue_prompt(beschreibung, max_patienten=25)
     gesamt = geschaetzte_token(system, benutzer) + STANDARD_MAX_TOKENS
     assert gesamt <= GRATISTARIF_TOKEN_JE_MINUTE, gesamt
+
+
+# --- Was das Werkzeug selbst nicht messen konnte ---------------------------
+
+
+def test_fester_client_geht_aus_wenn_eine_liste_vorgegeben_ist():
+    """Die Schutzabfrage in `FesterClient` war toter Code.
+
+    `self.antworten.pop(0) if len(self.antworten) > 1 else self.antworten[0]`
+    hörte beim letzten Eintrag auf zu entnehmen: Die Liste wurde nie leer,
+    also feuerte `if not self.antworten` nach der Konstruktion nie. Ein
+    Test, der drei Antworten hinterlegt und fünf Aufrufe auslöst, bekam
+    stillschweigend die dritte zweimal — „der Code hat öfter gefragt als
+    vorgesehen" liess sich grundsätzlich nicht bemerken.
+    """
+    from synthfhir.llm import FesterClient, LLMFehler
+
+    client = FesterClient(["eins", "zwei"])
+    assert client.frage(system="s", benutzer="b").text == "eins"
+    assert client.frage(system="s", benutzer="b").text == "zwei"
+    with pytest.raises(LLMFehler, match="3 Mal gefragt"):
+        client.frage(system="s", benutzer="b")
+
+
+def test_eine_einzelne_antwort_darf_sich_wiederholen():
+    """Die übliche Attrappe für „der Aufruf gelingt" bleibt, wie sie war."""
+    from synthfhir.llm import FesterClient
+
+    client = FesterClient("immer dasselbe")
+    assert [client.frage(system="s", benutzer="b").text for _ in range(5)] == [
+        "immer dasselbe"
+    ] * 5
+
+
+def test_unlesbare_umgebungsvariable_wird_zum_llmfehler(monkeypatch):
+    """`int(os.environ.get(...))` warf einen ValueError.
+
+    Alle Aufrufer fangen ausschliesslich `LLMFehler` — die Kommandozeile
+    brach mit einem Traceback ab, die Weboberfläche antwortete mit 500
+    statt 503. `SYNTHFHIR_LLM_MAX_TOKENS` wird in `.env.example`
+    ausdrücklich als Stellschraube beworben; `4.5k` ist eine naheliegende
+    Schreibweise.
+    """
+    from synthfhir.llm import LLMFehler, client_aus_umgebung
+
+    monkeypatch.setenv("SYNTHFHIR_LLM_MODEL", "modell")
+    monkeypatch.setenv("SYNTHFHIR_LLM_BASE_URL", "https://example.invalid/v1")
+    monkeypatch.setenv("SYNTHFHIR_LLM_MAX_TOKENS", "4.5k")
+
+    with pytest.raises(LLMFehler) as exc:
+        client_aus_umgebung()
+    assert exc.value.art == "nicht_konfiguriert"
+    assert "SYNTHFHIR_LLM_MAX_TOKENS" in str(exc.value)
+
+
+@pytest.mark.parametrize("grund", ["length", "LENGTH", "MAX_TOKENS", "model_length"])
+def test_abschneiden_wird_auch_bei_anderer_schreibweise_erkannt(grund):
+    """Der Vergleich war exakt und kleinschreibungsempfindlich.
+
+    Ein Anbieter, der `MAX_TOKENS` meldet, schaltete die Erkennung ab, und
+    der Fehlschlag wurde als „kein Feld 'patienten' — vermutlich ein
+    Bruchstück" verbucht. Der Betreiber suchte dann beim Modell statt bei
+    `max_tokens` — genau die Unterscheidung, die in Phase 0 eine ganze
+    Messreihe gekostet hat.
+    """
+    from synthfhir.llm import FINISH_REASON
+
+    assert FINISH_REASON.get(grund.strip().lower()) == "max_tokens"
+
+
+def test_ausgeschoepfte_grenze_gilt_auch_ohne_bekannten_abbruchgrund():
+    """Der Rückfall für Anbieter mit unbekannter Schreibweise: Wer die
+    Grenze ausgeschöpft hat, wurde abgeschnitten — auch wenn er es anders
+    nennt."""
+    from synthfhir.llm import LLMAntwort
+
+    a = LLMAntwort(text="x", modell="m", eingabe_token=10, ausgabe_token=4500,
+                   dauer_s=0.0, abbruchgrund="voellig-unbekannt",
+                   token_grenze=4500)
+    assert a.abgeschnitten
+
+    b = LLMAntwort(text="x", modell="m", eingabe_token=10, ausgabe_token=120,
+                   dauer_s=0.0, abbruchgrund="voellig-unbekannt",
+                   token_grenze=4500)
+    assert not b.abgeschnitten

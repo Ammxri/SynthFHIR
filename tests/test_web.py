@@ -628,3 +628,34 @@ def test_fusstext_nennt_alle_erzeugten_ressourcentypen(klient):
     text = klient.get("/").text
     fehlend = [t for t in erzeugte if t not in text]
     assert not fehlend, f"im Fusstext nicht genannt: {fehlend}"
+
+
+def test_dateiname_mit_nicht_ascii_wird_gefiltert_statt_zu_scheitern(klient):
+    """`c.isalnum()` ist unicode-bewusst und liess alles durch, was
+    irgendwo ein Buchstabe ist.
+
+    Nachgemessen: `dateiname=日本語` ergab `日本語.json`, und Starlette
+    schreibt Kopfzeilenwerte als latin-1 — die Antwort endete als
+    Serverfehler statt als Datei. Der Pfaddurchquerungsschutz war davon
+    nicht betroffen und bleibt.
+    """
+    antwort = klient.post(
+        "/export",
+        data={"bundle": '{"resourceType":"Bundle","entry":[]}',
+              "art": "json", "dateiname": "日本語"},
+    )
+    assert antwort.status_code == 200
+    zuordnung = antwort.headers["content-disposition"]
+    assert "日本語" not in zuordnung
+    assert "synthfhir" in zuordnung, "ohne brauchbare Zeichen greift die Vorgabe"
+
+
+def test_pfaddurchquerung_im_dateinamen_bleibt_wirkungslos(klient):
+    antwort = klient.post(
+        "/export",
+        data={"bundle": '{"resourceType":"Bundle","entry":[]}',
+              "art": "json", "dateiname": "../../etc/passwd"},
+    )
+    assert antwort.status_code == 200
+    zuordnung = antwort.headers["content-disposition"]
+    assert ".." not in zuordnung and "/" not in zuordnung.split("filename=")[1]

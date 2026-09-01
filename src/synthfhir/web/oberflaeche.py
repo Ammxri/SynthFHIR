@@ -363,7 +363,19 @@ def _sicherer_name(dateiname: str, endung: str) -> str:
         if roh.lower().endswith(bekannt):
             roh = roh[: -len(bekannt)]
             break
-    basis = "".join(c for c in roh if c.isalnum() or c in "-_")[:60]
+    # `isalnum()` allein ist unicode-bewusst und liess damit alles durch,
+    # was irgendwo auf der Welt ein Buchstabe oder eine Ziffer ist.
+    # Nachgemessen: `_sicherer_name("日本語", ".json")` ergab `日本語.json`,
+    # und Starlette schreibt Kopfzeilenwerte als latin-1 — die Antwort
+    # endete als Serverfehler statt als Datei oder als 400. Gleiches für
+    # arabisch-indische Ziffern (`٠١`) und `Ⅸ`.
+    #
+    # Der Schutz gegen Pfaddurchquerung war davon nicht betroffen und
+    # bleibt: Kein Steuerzeichen ist alphanumerisch, `../../etc/passwd`
+    # wird zu `etcpasswd`.
+    basis = "".join(
+        c for c in roh if (c.isascii() and c.isalnum()) or c in "-_"
+    )[:60]
     return f"{basis or 'synthfhir'}{endung}"
 
 

@@ -147,11 +147,26 @@ def kennung_aus_anfrage(request, vertraute_proxys: int | None = None) -> str:
     30 Aufrufe, kein 429.
     """
     hops = VERTRAUTE_PROXYS if vertraute_proxys is None else vertraute_proxys
-    glieder = [
-        g.strip()
-        for g in request.headers.get("x-forwarded-for", "").split(",")
-        if g.strip()
-    ]
+
+    # Mehrfach gesendete Kopfzeilen zusammenführen, statt still die erste zu
+    # nehmen. Starlettes `Headers` ist ein Multidict, und `.get()` liefert
+    # dort das erste Vorkommen. `api.py` liest den Schlüsselkopf aus genau
+    # diesem Grund über `getlist` und begründet es dort: „Bei einer Frage,
+    # die über fremde Abrechnung entscheidet, ist ‚still den ersten nehmen'
+    # die falsche Vorgabe." Für die Bremse gilt dieselbe Frage, hier stand
+    # aber `get`.
+    #
+    # Zusammengeführt und nicht bloss ersetzt: Hängt ein Proxy die echte
+    # Adresse als ZWEITE Kopfzeile an, statt sie in die erste einzureihen,
+    # stünde sie sonst nirgends — und gezählt würde ausschliesslich die
+    # gefälschte.
+    kopfzeilen = request.headers
+    if hasattr(kopfzeilen, "getlist"):
+        roh = ", ".join(kopfzeilen.getlist("x-forwarded-for"))
+    else:
+        roh = kopfzeilen.get("x-forwarded-for", "")
+
+    glieder = [g.strip() for g in roh.split(",") if g.strip()]
     if glieder and hops > 0:
         # min(): Sind weniger Glieder da als erwartet, ist das linkeste das
         # beste, was zu haben ist — und nicht etwa ein Griff ins Leere.

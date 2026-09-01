@@ -79,6 +79,17 @@ _DATE_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
 FALLBACK_VORNAME = "Unbekannt"
 FALLBACK_NACHNAME = "Testperson"
 
+# Das Rückfalldatum, wenn das Modell keines oder ein unlesbares liefert.
+#
+# EINE Konstante für das ganze Modul, und das ist keine Aufräumarbeit:
+# `baue_condition` fiel auf 2020-01-01 zurück, `_kontaktdatum` auf
+# 2024-01-01. Lieferte das Modell ein unbrauchbares Diagnosedatum — etwa
+# „01.03.2021" im deutschen Format —, entstand eine Diagnose von 2020 und
+# ein vom Code ergänzter Kontakt von 2024: vier Jahre nach der Diagnose,
+# die er dokumentieren soll. Kein Validierungsfehler, aber ein
+# unplausibler Datensatz, den keine Prüfschicht meldet.
+RUECKFALLDATUM = "2020-01-01"
+
 
 @dataclass
 class Beanstandung:
@@ -235,7 +246,7 @@ def baue_condition(
     weiterhin gültiges FHIR.
     """
     spec = _diagnosecode(params.get("code"), index, beanstandungen)
-    beginn = _datum(params.get("beginn"), "2020-01-01", beanstandungen, "beginn")
+    beginn = _datum(params.get("beginn"), RUECKFALLDATUM, beanstandungen, "beginn")
 
     codings = [{"system": SNOMED_SYSTEM, "code": spec.code, "display": spec.display}]
     if spec.hat_icd:
@@ -304,7 +315,7 @@ def baue_observation(
             "text": spec.display_de,
         },
         "subject": {"reference": f"Patient/tmp-pat-{patient_index}"},
-        "effectiveDateTime": _datum(params.get("datum"), "2024-01-01", beanstandungen, "datum"),
+        "effectiveDateTime": _datum(params.get("datum"), RUECKFALLDATUM, beanstandungen, "datum"),
         "valueQuantity": {
             "value": wert,
             "unit": spec.unit,       # menschenlesbar
@@ -361,7 +372,7 @@ def _kontaktdatum(patient: dict) -> str:
                 wert = e.get(schluessel) if isinstance(e, dict) else None
                 if isinstance(wert, str) and _DATE_RE.match(wert.strip()):
                     return wert.strip()
-    return "2024-01-01"
+    return RUECKFALLDATUM
 
 
 def baue_encounter(
@@ -392,7 +403,7 @@ def baue_encounter(
     das Gegenteil dessen, was sechs Zeilen weiter unten geschieht.
     """
     art = _begegnungsart(params.get("art"), beanstandungen)
-    datum = _datum(params.get("datum"), "2024-01-01", beanstandungen, "datum")
+    datum = _datum(params.get("datum"), RUECKFALLDATUM, beanstandungen, "datum")
     return {
         "resourceType": "Encounter",
         "id": f"tmp-enc-{teil}-{index}",

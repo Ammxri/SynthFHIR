@@ -645,3 +645,55 @@ def test_archiv_haelt_die_ladereihenfolge(kohorte):
     assert im_archiv == typen
     manifest = json.loads(archiv.read(MANIFEST_NAME))
     assert [o["type"] for o in manifest["output"]] == typen
+
+
+# --- Was ein Abbruch zurücklässt -------------------------------------------
+
+
+def test_abgebrochener_export_laesst_kein_luegendes_manifest_zurueck(
+    kohorte, tmp_path, monkeypatch
+):
+    """Die Rücknahme nahm die Datendateien weg und liess das Manifest stehen.
+
+    Es stand unter `behalten`, weil dieser Lauf es „gleich überschreibt" —
+    was nach dem Abbruch nie geschieht. Zurück blieb ein Verzeichnis mit
+    nichts als einem Manifest, das zwei `output`-Einträge und zwei
+    `file:`-URLs behauptet, die auf nichts mehr zeigen. Genau das lügende
+    Manifest, das ADR-005 als behobenen Fehler führt — nur über den Weg des
+    Abbruchs statt über `manifest=False`.
+    """
+    schreibe_ndjson(kohorte, tmp_path)
+    assert (tmp_path / MANIFEST_NAME).exists(), "der Vorlauf muss stehen"
+
+    echt = Path.write_bytes
+    geschrieben = {"n": 0}
+
+    def bricht_beim_zweiten_ab(self, daten):
+        geschrieben["n"] += 1
+        if geschrieben["n"] >= 2:
+            raise OSError("kein Platz auf dem Gerät")
+        return echt(self, daten)
+
+    monkeypatch.setattr(Path, "write_bytes", bricht_beim_zweiten_ab)
+    with pytest.raises(ExportFehler, match="abgebrochen"):
+        schreibe_ndjson(kohorte, tmp_path, ueberschreiben=True)
+    monkeypatch.undo()
+
+    uebrig = sorted(p.name for p in tmp_path.iterdir())
+    assert uebrig == [], f"zurückgeblieben: {uebrig}"
+
+
+def test_zeitpunkt_ohne_zeitzone_schreibt_gar_nichts(kohorte, tmp_path):
+    """Die Prüfung stand in `_schreibe_manifest` — also nach allen
+    NDJSON-Dateien und ausserhalb der Rücknahme.
+
+    Ergebnis war der halbe Export ohne Manifest, den ADR-005 als behoben
+    führt: Für einen Empfänger von einem vollständigen nicht zu
+    unterscheiden. `baue_archiv` prüft seit jeher vorab — die beiden
+    Ausgabewege waren nicht gleich streng.
+    """
+    with pytest.raises(ExportFehler, match="Zeitzone"):
+        schreibe_ndjson(kohorte, tmp_path, zeitpunkt=datetime(2026, 1, 1, 12, 0, 0))
+
+    uebrig = sorted(p.name for p in tmp_path.iterdir())
+    assert uebrig == [], f"geschrieben trotz Abbruch: {uebrig}"

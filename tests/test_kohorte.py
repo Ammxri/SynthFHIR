@@ -368,3 +368,124 @@ def test_teilgroesse_traegt_die_gemessene_ausgabe():
         f"{TEILGROESSE} Patienten brauchen rund "
         f"{TEILGROESSE * ausgabe_je_patient} Token, erlaubt sind {max_tokens}"
     )
+
+
+# --- Was der Bericht verschwieg --------------------------------------------
+
+
+class LeererClient(LLMClient):
+    """Antwortet gültig, aber ohne Patienten — der stille Teilausfall."""
+
+    def frage(self, *, system: str, benutzer: str) -> LLMAntwort:
+        text = json.dumps({"verstanden": {"anzahl_patienten": 0,
+                                          "kernkriterien": []},
+                           "patienten": []})
+        return LLMAntwort(text=text, modell="test", eingabe_token=10,
+                          ausgabe_token=10, dauer_s=0.0, abbruchgrund="end_turn")
+
+
+class AbgelehnterClient(LLMClient):
+    """Ein Schlüssel, der abgelehnt wird — und daran ändert sich nichts."""
+
+    def __init__(self) -> None:
+        self.aufrufe = 0
+
+    def frage(self, *, system: str, benutzer: str) -> LLMAntwort:
+        self.aufrufe += 1
+        raise LLMFehler("Der Anbieter hat den Schlüssel abgewiesen.",
+                        art="abgelehnt")
+
+
+def test_stiller_teilausfall_nennt_seinen_grund():
+    """„Teil 2 ausgefallen: None" war die ganze Auskunft.
+
+    `_hole_teil` fand das Feld `patienten` und war zufrieden; dass es leer
+    war, merkte erst der Bau. `teil.fehler` blieb None, `erfolgreich` wurde
+    trotzdem False, und die einzige Erklärung stand in der Beanstandungs-
+    liste, die `to_dict()` wegwarf.
+    """
+    e = generiere_kohorte(LeererClient(), "Testkohorte", anzahl=4, teilgroesse=2)
+
+    assert e.patienten == 0
+    ausgefallen = [t for t in e.teile if not t.erfolgreich]
+    assert ausgefallen, "der Teil gilt als ausgefallen"
+    for t in ausgefallen:
+        assert t.fehler, "und sagt jetzt, woran er gescheitert ist"
+        assert t.fehler != "None"
+
+    bericht = e.to_dict()
+    assert "beanstandungen" in bericht, "die Liste wurde weggeworfen"
+    assert bericht["beanstandungen"], "und war der einzige Ort mit der Erklärung"
+
+
+def test_abgelehnter_schluessel_bricht_ab_statt_durchzumahlen():
+    """`except LLMFehler: letzter_fehler = str(exc)` warf `exc.art` weg.
+
+    Ein abgelehnter Schlüssel wurde damit wie ein vorübergehender Fehler
+    behandelt: zwei Versuche je Teil mit Wartepause, und das über alle
+    Teile. Bei `-n 200 --pause 60` waren das rund 31 Minuten garantiert
+    erfolgloser Aufrufe, bevor „0 von 200 Patienten" herauskam.
+    """
+    client = AbgelehnterClient()
+    e = generiere_kohorte(client, "Testkohorte", anzahl=40, teilgroesse=8,
+                          versuche_je_teil=2)
+
+    assert e.patienten == 0
+    assert e.fehlerart == "abgelehnt", "die Art muss oben ankommen"
+    assert e.abgebrochen_nach == 1, "und zwar nach dem ersten Teil"
+    assert client.aufrufe == 1, (
+        f"{client.aufrufe} Aufrufe — weder Wiederholung noch weitere Teile "
+        "können an einem abgelehnten Schlüssel etwas ändern"
+    )
+    assert len(e.teile) == 1, "die übrigen vier Teile wurden gar nicht erst versucht"
+
+
+def test_namensvielfalt_misst_das_modell_nicht_den_ersatz():
+    """100 % im denkbar schlechtesten Fall.
+
+    Der Ersatznachname trägt den globalen Patientenindex und ist damit je
+    Patient verschieden. Liefert das Modell gar keine Namen, erzeugte der
+    Code künstliche Eindeutigkeit, und die Kennzahl zeigte den Bestwert für
+    eine Kohorte, die als Testdaten wertlos ist.
+    """
+    from synthfhir.domain.identity import assign_ids
+    from synthfhir.domain.templates import baue_aus_parametern
+    from synthfhir.kohorte import Kohortenergebnis
+
+    ohne_namen = {"patienten": [
+        {"geschlecht": "female", "geburtsdatum": "1970-01-01"} for _ in range(30)
+    ]}
+    res = assign_ids(baue_aus_parametern(ohne_namen).ressourcen).resources
+    e = Kohortenergebnis(beschreibung="x", angefragt=30, ressourcen=res)
+    assert e.namensvielfalt < 0.1, (
+        f"namensvielfalt = {e.namensvielfalt} für eine Kohorte ganz ohne Namen"
+    )
+
+    gleicher_name = {"patienten": [
+        {"vorname": "Anna", "nachname": "Muster", "geschlecht": "female",
+         "geburtsdatum": "1970-01-01"} for _ in range(30)
+    ]}
+    res2 = assign_ids(baue_aus_parametern(gleicher_name).ressourcen).resources
+    e2 = Kohortenergebnis(beschreibung="x", angefragt=30, ressourcen=res2)
+    assert abs(e.namensvielfalt - e2.namensvielfalt) < 1e-9, (
+        "kein Name und immer derselbe Name sind gleich wenig Vielfalt"
+    )
+
+
+def test_beschaedigte_aufzeichnung_wird_abgewiesen_nicht_halb_verstanden():
+    """`TeilParameter.from_dict` prüfte `angefragt`, aber nicht `parameter`.
+
+    Eine Aufzeichnung mit `"parameter": "kaputt"` wurde angenommen, und erst
+    `gib_wieder` lief in ein ungefangenes AttributeError. `cli.py` ruft
+    `gib_wieder` ohne `try` — die Wiedergabe brach mit einem Traceback ab.
+    """
+    from synthfhir.aufzeichnung import Aufzeichnung, AufzeichnungFehler, FORMAT_VERSION
+
+    roh = {
+        "format_version": FORMAT_VERSION,
+        "beschreibung": "x",
+        "angefragt": 10,
+        "teile": [{"angefragt": 10, "parameter": "kaputt"}],
+    }
+    with pytest.raises(AufzeichnungFehler, match="unvollständig"):
+        Aufzeichnung.from_dict(roh)

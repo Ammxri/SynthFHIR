@@ -405,3 +405,30 @@ def test_uebersprungener_eintrag_verbraucht_seinen_kennungsplatz():
     syn = _identifier(res, "Patient")
     assert len(syn) == 5, "fünf gebaute Patienten aus sechs Einträgen"
     assert len(set(syn)) == 5, f"doppelte Patientennummern: {sorted(syn)}"
+
+
+def test_ein_rueckfalldatum_fuer_diagnose_und_ergaenzten_kontakt():
+    """Zwei verschiedene Rückfalldaten ergaben einen Kontakt vier Jahre
+    nach der Diagnose, die er dokumentieren soll.
+
+    `baue_condition` fiel auf 2020-01-01 zurück, `_kontaktdatum` auf
+    2024-01-01. Ein Diagnosedatum im deutschen Format — „01.03.2021" — traf
+    beide Rückfälle zugleich. Kein Validierungsfehler, aber ein
+    unplausibler Datensatz, den keine Prüfschicht meldet.
+    """
+    from synthfhir.domain.templates import RUECKFALLDATUM
+
+    bau = baue_aus_parametern({"patienten": [{
+        "vorname": "Anna", "nachname": "Muster", "geschlecht": "female",
+        "geburtsdatum": "1970-01-01",
+        # Unbrauchbares Datum: deutsches Format statt YYYY-MM-DD.
+        "diagnosen": [{"code": "44054006", "beginn": "01.03.2021"}],
+    }]})
+    res = assign_ids(bau.ressourcen).resources
+    diagnose = next(r for r in res if r["resourceType"] == "Condition")
+    kontakt = next(r for r in res if r["resourceType"] == "Encounter")
+
+    assert diagnose["onsetDateTime"] == RUECKFALLDATUM
+    assert kontakt["period"]["start"] == RUECKFALLDATUM, (
+        "der ergänzte Kontakt liegt nicht mehr Jahre neben seiner Diagnose"
+    )
