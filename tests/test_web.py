@@ -299,11 +299,19 @@ def test_eigener_schluessel_erscheint_nirgends_in_der_antwort(klient, monkeypatc
     """Er wird nicht gespeichert, nicht protokolliert und nicht in die Seite
     zurückgeschrieben - anders als die Beschreibung, die absichtlich stehen
     bleibt."""
-    _mit_eigenem_schluessel(monkeypatch)
+    gebaute: list[str] = []
+    _mit_eigenem_schluessel(monkeypatch, gebaute)
     antwort = klient.post(
         "/erzeugen",
         data={"beschreibung": "Eine Patientin", "eigener_schluessel": "gsk_streng_geheim"},
     )
+    # Ohne diese beiden Zusicherungen war der Test wertlos: Dreht man den
+    # Fix zurueck (Konstruktor statt Fabrik), greift die Attrappe nicht,
+    # der echte Client scheitert am Netz, der Schluessel steht ZUFAELLIG
+    # nicht in der Seite - und der Test bliebe gruen. `gebaute` belegt, dass
+    # die Fabrik den Client wirklich mit dem Schluessel gebaut hat.
+    assert antwort.status_code == 200
+    assert gebaute == ["gsk_streng_geheim"], "die Fabrik wurde nicht durchlaufen"
     assert "gsk_streng_geheim" not in antwort.text
     assert "Eine Patientin" in antwort.text, "Die Beschreibung soll dagegen stehen bleiben"
 
@@ -407,16 +415,66 @@ def test_eigener_schluessel_hat_jetzt_auch_einen_deckel(klient, monkeypatch):
     Oberfläche kam derselbe Aufrufer mit demselben Schlüssel ohne Deckel
     und ohne Bremse durch.
     """
-    import synthfhir.web.api as api_modul
-
     _mit_eigenem_schluessel(monkeypatch)
-    monkeypatch.setattr(api_modul._plaetze, "acquire", lambda blocking=True: False)
+    # Der Deckel der OBERFLAECHE, nicht der von /api - seit der Entkopplung
+    # ein eigenes Semaphor.
+    monkeypatch.setattr(app_modul._web_plaetze, "acquire", lambda blocking=True: False)
     antwort = klient.post(
         "/erzeugen",
         data={"beschreibung": "Test", "eigener_schluessel": "gsk_geheim"},
     )
     assert antwort.status_code == 429
     assert antwort.headers["Retry-After"] == "30"
+
+
+def test_der_demopfad_ist_jetzt_auch_gedeckelt(klient, monkeypatch):
+    """Frueher sass der Deckel nur im eigenen-Schluessel-Zweig. 30
+    gleichzeitige Demo-Laeufe liefen alle in den Threadpool. Jetzt deckelt
+    dasselbe Semaphor auch den Demopfad - zusaetzlich zur Bremse, die nur
+    die Rate zaehlt."""
+    _mit_fester_antwort(monkeypatch, _antwort())
+    app_modul.BREMSE.zuruecksetzen()
+    monkeypatch.setattr(app_modul._web_plaetze, "acquire", lambda blocking=True: False)
+    antwort = klient.post("/erzeugen", data={"beschreibung": "Eine Patientin"})
+    assert antwort.status_code == 429
+    assert antwort.headers["Retry-After"] == "30"
+
+
+def test_der_web_deckel_ist_von_api_entkoppelt(klient, monkeypatch):
+    """Ein voller Web-Deckel darf /api/v1/erzeugen NICHT sperren. Frueher
+    teilten sie ein Semaphor, und ein 30-min-Oberflaechenlauf sperrte den
+    programmatischen Zugang mit."""
+    import synthfhir.web.api as api_modul
+
+    assert app_modul._web_plaetze is not api_modul._plaetze
+    # Alle Web-Plaetze belegen ...
+    belegt = 0
+    while app_modul._web_plaetze.acquire(blocking=False):
+        belegt += 1
+    try:
+        # ... /api ist trotzdem frei.
+        assert api_modul._plaetze.acquire(blocking=False)
+        api_modul._plaetze.release()
+    finally:
+        for _ in range(belegt):
+            app_modul._web_plaetze.release()
+
+
+def test_der_web_deckel_wird_auch_bei_einem_fehler_freigegeben(klient, monkeypatch):
+    """Ein nicht freigegebener Platz waere fuer die Prozesslaufzeit
+    verloren. Selbst wenn `generiere` wirft, muss der Platz zurueck."""
+    def wirft(*a, **k):
+        raise RuntimeError("kaputt")
+
+    _mit_fester_antwort(monkeypatch, _antwort())
+    monkeypatch.setattr(app_modul, "generiere", wirft)
+    app_modul.BREMSE.zuruecksetzen()
+    frei_vorher = app_modul._web_plaetze._value
+    try:
+        klient.post("/erzeugen", data={"beschreibung": "Eine Patientin"})
+    except RuntimeError:
+        pass
+    assert app_modul._web_plaetze._value == frei_vorher, "Platz nicht zurueckgegeben"
 
 
 # --- Die drei Ausgabewege --------------------------------------------------
@@ -953,3 +1011,98 @@ def test_betreiberschluessel_leckt_nicht_ueber_anbietertext(klient, monkeypatch)
     a = klient.post("/erzeugen", data={"beschreibung": "Ein Patient mit Diabetes"})
     assert GEHEIM not in a.text, "der Betreiberschluessel steht in der Seite"
     assert "Bearer" not in a.text
+
+
+def test_koerpergrenze_faengt_auch_chunked(klient, monkeypatch):
+    """Die alte Fassung pruefte nur Content-Length. Fehlt der Kopf
+    (chunked) oder luegt er, puffert der FormParser bis zu 1000 Feldern je
+    1 MB - rund ein Gigabyte, ein OOM auf der kostenlosen Instanz. Die
+    ASGI-Middleware zaehlt die tatsaechlich gelesenen Bytes.
+
+    Der TestClient sendet immer Content-Length; deshalb hier ein direkter
+    ASGI-Aufruf mit chunked Body (kein Content-Length).
+    """
+    import asyncio
+
+    monkeypatch.setattr(app_modul, "KOERPER_HOECHSTGROESSE", 2 * 1024 * 1024)
+
+    async def sende(body, mit_cl=None):
+        headers = [(b"content-type", b"application/x-www-form-urlencoded")]
+        if mit_cl is not None:
+            headers.append((b"content-length", str(mit_cl).encode()))
+        scope = {"type": "http", "http_version": "1.1", "method": "POST",
+                 "path": "/export", "headers": headers, "query_string": b"",
+                 "client": ("1.2.3.4", 1), "server": ("t", 80), "scheme": "http"}
+        rest = body
+
+        async def receive():
+            nonlocal rest
+            if rest:
+                teil, rest = rest[:65536], rest[65536:]
+                return {"type": "http.request", "body": teil,
+                        "more_body": bool(rest)}
+            return {"type": "http.request", "body": b"", "more_body": False}
+
+        st = {}
+
+        async def send(m):
+            if m["type"] == "http.response.start":
+                st["c"] = m["status"]
+
+        await app_modul.app(scope, receive, send)
+        return st.get("c")
+
+    # 4 MB als viele Felder je unter 1 MB, chunked ohne Content-Length
+    gross = b"&".join(f"f{i}=".encode() + b"A" * (500 * 1024) for i in range(8))
+    assert asyncio.run(sende(gross)) == 413
+    # dasselbe mit luegendem (winzigem) Content-Length
+    assert asyncio.run(sende(gross, mit_cl=10)) == 413
+
+
+def test_beschreibung_grenze_zaehlt_bytes_nicht_zeichen(klient, monkeypatch):
+    """Die Grenze deckelt Token-Kosten, und Token korrelieren mit Bytes.
+    2000 Emoji sind 2000 Zeichen, aber 8000 Bytes — auf Zeichen geprueft
+    schluepften sie durch."""
+    monkeypatch.setattr(app_modul, "client_aus_umgebung",
+                        lambda: (_ for _ in ()).throw(AssertionError("kein Modell")))
+    emoji = "\U0001F389" * 2000   # 8000 Bytes
+    a = klient.post("/erzeugen", data={"beschreibung": emoji})
+    assert a.status_code == 400
+    assert "länger als" in a.text
+
+
+# --- Keine fremde Ressource, strenge CSP (Befund) --------------------------
+
+
+def test_jede_antwort_traegt_eine_strenge_csp(klient):
+    """`default-src 'self'` schliesst fremdes JavaScript aus - der Weg,
+    ueber den die Swagger-UI zum Risiko wurde. Dazu Schutz gegen
+    Einbettung und Referer-Leak."""
+    for pfad in ("/", "/api/v1/szenarien"):
+        h = klient.get(pfad).headers
+        csp = h.get("content-security-policy", "")
+        assert "default-src 'self'" in csp
+        assert "frame-ancestors 'none'" in csp
+        assert "form-action 'self'" in csp
+        assert h.get("x-content-type-options") == "nosniff"
+        assert h.get("referrer-policy") == "no-referrer"
+
+
+def test_die_swagger_ui_ist_abgeschaltet(klient):
+    """Sie lud fremdes JS auf die Seite mit der Schluesseleingabe. Das
+    Schema bleibt - nur die interaktive UI ist weg."""
+    assert klient.get("/api/v1/docs").status_code == 404
+    assert klient.get("/api/v1/openapi.json").status_code == 200
+
+
+def test_die_startseite_laedt_nichts_von_fremden_hosts(klient):
+    """Die Oberflaeche ist selbststaendig: eigenes CSS, Favicon als
+    data-URI, kein externes Skript. Ein CDN-Skript waere auf der
+    Schluesseleingabe dieselbe Klasse wie fremder Text im Fehlerkasten."""
+    import re
+
+    seite = klient.get("/").text
+    geladen = re.findall(r'(?:src|href)="(https?://[^"]+)"', seite)
+    fremd = [u for u in geladen if "/static/" not in u
+             and "console.groq.com" not in u]  # der Groq-Link ist ein href, kein Laden
+    assert not fremd, f"laedt von fremden Hosts: {fremd}"

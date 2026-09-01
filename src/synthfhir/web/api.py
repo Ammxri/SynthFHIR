@@ -113,7 +113,18 @@ _DRUCKBAR = re.compile(r"^[!-~]+$")
 
 # Eine Beschreibung ist ein Satz, kein Dokument. Von Hand geprüft und
 # nicht über Pydantic, damit der Wert nicht in einer 422 zurückkommt.
+#
+# Gezählt werden UTF-8-BYTES, nicht Zeichen. Der Zweck der Grenze ist, den
+# Token-Verbrauch auf Rechnung des Betreibers zu deckeln, und Token
+# korrelieren mit Bytes, nicht mit Codepunkten: 2000 Emoji sind 2000
+# `len()`, aber rund 8000 Bytes und ein Vielfaches an Token. Auf Zeichen
+# geprüft schlüpfte genau dieser Fall durch.
 BESCHREIBUNG_HOECHSTLAENGE = 2000
+
+
+def beschreibung_zu_lang(beschreibung: str) -> bool:
+    """True, wenn die Beschreibung die Grenze (in UTF-8-Bytes) sprengt."""
+    return len(beschreibung.encode("utf-8")) > BESCHREIBUNG_HOECHSTLAENGE
 
 # Der Rumpf trägt nur Text — kein Bundle, keine Aufzeichnung. 64 KB sind
 # das Dreißigfache dessen, was die längste zulässige Beschreibung braucht.
@@ -418,11 +429,12 @@ async def erzeugen(
         return _fehler(
             400, "beschreibung_fehlt", "Die Beschreibung ist leer.", "aufrufer"
         )
-    if len(beschreibung) > BESCHREIBUNG_HOECHSTLAENGE:
+    if beschreibung_zu_lang(beschreibung):
         return _fehler(
             400,
             "beschreibung_zu_lang",
-            f"Die Beschreibung ist länger als {BESCHREIBUNG_HOECHSTLAENGE} Zeichen.",
+            f"Die Beschreibung ist länger als {BESCHREIBUNG_HOECHSTLAENGE} Zeichen "
+            "(gemessen in UTF-8-Bytes).",
             "aufrufer",
         )
 

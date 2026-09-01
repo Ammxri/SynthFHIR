@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import json
 import os
+import threading
 from pathlib import Path
 
 from dotenv import load_dotenv
@@ -56,15 +57,18 @@ app = FastAPI(
     # "0.1.0" ein, und das Schema ist schlüsselfrei abrufbar — die
     # Zusage dieses Feldes gilt der Schnittstelle, nicht dem Build.
     version="v1",
-    # Beides lag zuvor auf None, in der Absicht, nichts auszuliefern. Die
-    # Absicht war richtig, die Umsetzung unvollständig: `docs_url=None`
-    # schaltet nur die Swagger-Oberfläche ab, nicht das Schema.
-    # Nachgemessen antwortete `/openapi.json` mit 200 und listete unter
-    # anderem das Formularfeld `eigener_schluessel`. Jetzt liegt das
-    # Schema unter dem API-Präfix, und die Oberflächenrouten stehen mit
-    # `include_in_schema=False` nicht darin.
+    # Das SCHEMA liegt unter dem API-Präfix; die Oberflächenrouten stehen
+    # mit `include_in_schema=False` nicht darin. `/openapi.json` (ohne
+    # Präfix) ist bewusst 404 — dort listete es einmal das Formularfeld
+    # `eigener_schluessel`.
     openapi_url="/api/v1/openapi.json",
-    docs_url="/api/v1/docs",
+    # Die interaktive Swagger-UI ist ABGESCHALTET, und das ist eine
+    # Sicherheitsentscheidung: Sie lädt `swagger-ui-bundle.js` von einem
+    # CDN nach — fremdes Skript mit vollem DOM-Zugriff auf genau der Seite,
+    # in die ein Aufrufer seinen API-Schlüssel einträgt. Die strenge CSP
+    # unten würde es ohnehin blocken. Wer die Schnittstelle erkunden will,
+    # lädt das Schema (`/api/v1/openapi.json`) in ein eigenes Werkzeug.
+    docs_url=None,
     redoc_url=None,
 )
 app.mount("/static", StaticFiles(directory=HIER / "static"), name="static")
@@ -103,6 +107,16 @@ GESAMT = "betreiberschluessel"
 EIGENER_TIMEOUT_S = 180.0
 EIGENER_VERSUCHE = 3
 
+# Der Gleichzeitigkeitsdeckel der OBERFLÄCHE — bewusst ein eigenes
+# Semaphor, nicht das von `/api/v1`. Frueher lieh sich diese Seite
+# `_plaetze` aus api.py; weil sie einen Platz mit viel weiteren Timeouts
+# haelt (180s x 3 statt 40s x 1), sperrte ein einziger langsamer
+# Oberflaechenlauf den programmatischen Zugang mit. Getrennt kann das
+# nicht mehr passieren. Vier Plaetze, dazu die vier von `/api` und die
+# zwei von `/wiedergeben`, bleiben weit unter dem Threadpool (40).
+WEB_GLEICHZEITIG = int(os.environ.get("SYNTHFHIR_WEB_GLEICHZEITIG", "4"))
+_web_plaetze = threading.BoundedSemaphore(WEB_GLEICHZEITIG)
+
 # Grösse des Anfragekörpers. Starlette begrenzt nichts: Es sammelt
 # sämtliche Teile mit `b"".join(chunks)`, ohne je die Grösse zu prüfen.
 # `/export` nahm damit beliebig grosse Körper an, parste sie als JSON und
@@ -120,32 +134,145 @@ EIGENER_VERSUCHE = 3
 # spät — der Speicher wäre schon belegt.
 KOERPER_HOECHSTGROESSE = 8 * 1024 * 1024
 
-@app.middleware("http")
-async def begrenze_koerper(request: Request, call_next):
-    """Weist zu grosse Anfragekörper ab, bevor sie im Speicher landen.
 
-    Geprüft wird `Content-Length`, nicht der gelesene Körper — der Sinn
-    der Grenze ist ja gerade, ihn nicht zu lesen. Fehlt der Kopf, wird
-    nichts abgewiesen: Browser senden ihn bei Formularen immer, und ein
-    Abweisen ohne Kopf träfe nur redliche Sonderfälle.
+class _KoerperZuGross(Exception):
+    """Der gelesene Anfragekörper überschreitet die Grenze."""
 
-    Der programmatische Zugang hat seine eigene, viel engere Grenze von
-    64 KB. Diese hier ersetzt sie nicht, sie liegt darüber.
+
+class Koerpergrenze:
+    """Begrenzt den Anfragekörper an den TATSÄCHLICH gelesenen Bytes.
+
+    Eine frühere Fassung prüfte nur `Content-Length`. Das genügt nicht:
+    Bei `Transfer-Encoding: chunked` fehlt der Kopf, und dann puffert der
+    FormParser bis zu 1000 Feldern je 1 MB — rund ein Gigabyte, genug für
+    einen OOM auf der kostenlosen Instanz. Ein gefälschtes (zu kleines)
+    Content-Length wäre derselbe Weg.
+
+    Deshalb eine ASGI-Middleware statt einer Kopfprüfung: Sie schiebt einen
+    zählenden `receive` unter die Anwendung. Der Kopf wird weiterhin zuerst
+    geprüft — das spart das Lesen im ehrlichen Fall —, aber die Bytes
+    entscheiden.
+
+    Der programmatische Zugang hat seine eigene, viel engere Grenze
+    (64 KB / 512 KB, ADR-011/012). Diese hier ersetzt sie nicht, sie liegt
+    darüber und schützt die Oberflächenrouten (`/export` vor allem).
     """
-    laenge = request.headers.get("content-length")
-    if laenge is not None:
-        try:
-            zu_gross = int(laenge) > KOERPER_HOECHSTGROESSE
-        except ValueError:
-            # Ein unlesbares Content-Length ist selbst schon ein Grund.
-            zu_gross = True
-        if zu_gross:
-            return PlainTextResponse(
-                f"Der Anfragekörper ist grösser als "
-                f"{KOERPER_HOECHSTGROESSE // (1024 * 1024)} MB.",
-                status_code=413,
-            )
-    return await call_next(request)
+
+    def __init__(self, app) -> None:
+        self.app = app
+
+    async def __call__(self, scope, receive, send):
+        # Die Grenze wird bei JEDEM Aufruf aus der Modulkonstante gelesen,
+        # nicht im Konstruktor gebunden: So gilt ein zur Laufzeit ersetzter
+        # Wert auch hier (dieselbe Eigenschaft wie beim Deckel `_plaetze`),
+        # und ein Test kann `KOERPER_HOECHSTGROESSE` monkeypatchen.
+        hoechstens = KOERPER_HOECHSTGROESSE
+        if scope["type"] != "http":
+            return await self.app(scope, receive, send)
+
+        for name, wert in scope["headers"]:
+            if name == b"content-length":
+                try:
+                    zu_gross = int(wert) > hoechstens
+                except ValueError:
+                    zu_gross = True  # unlesbares Content-Length ist Grund genug
+                if zu_gross:
+                    return await self._ablehnen(send)
+                break
+
+        # Den Körper hier lesen, nicht die Anwendung lesen lassen: FastAPIs
+        # `request.form()` fängt JEDE Ausnahme aus `receive` und macht 400
+        # daraus, bevor eine Middleware sie sähe. Ein `raise` im
+        # `receive`-Wrapper käme also nie an. Stattdessen puffert die
+        # Middleware selbst — höchstens bis zur Grenze, dann bricht sie ab
+        # und liest den Rest gar nicht erst.
+        stuecke: list[bytes] = []
+        gelesen = 0
+        weiter = True
+        while weiter:
+            nachricht = await receive()
+            typ = nachricht.get("type")
+            if typ == "http.disconnect":
+                # Der Client ist weg. Die gepufferten Stücke an die
+                # Anwendung geben und sie selbst entscheiden lassen.
+                break
+            if typ != "http.request":
+                stuecke.append(b"")
+                break
+            gelesen += len(nachricht.get("body", b""))
+            if gelesen > hoechstens:
+                # Der Rest wird NICHT gelesen — mehr als die Grenze landet
+                # nie im Speicher.
+                return await self._ablehnen(send)
+            stuecke.append(nachricht.get("body", b""))
+            weiter = nachricht.get("more_body", False)
+
+        gepuffert = b"".join(stuecke)
+        schon = False
+
+        async def receive_gepuffert():
+            nonlocal schon
+            if not schon:
+                schon = True
+                return {"type": "http.request", "body": gepuffert,
+                        "more_body": False}
+            return {"type": "http.request", "body": b"", "more_body": False}
+
+        await self.app(scope, receive_gepuffert, send)
+
+    async def _ablehnen(self, send) -> None:
+        text = (
+            f"Der Anfragekörper ist grösser als "
+            f"{KOERPER_HOECHSTGROESSE // (1024 * 1024)} MB."
+        ).encode("utf-8")
+        await send({
+            "type": "http.response.start", "status": 413,
+            "headers": [(b"content-type", b"text/plain; charset=utf-8"),
+                        (b"content-length", str(len(text)).encode())],
+        })
+        await send({"type": "http.response.body", "body": text})
+
+
+# Eine strenge Content-Security-Policy auf jede Antwort. Die Oberfläche
+# braucht nichts Fremdes: eigenes Stylesheet, Favicon als data-URI, kein
+# externes Skript. `default-src 'self'` schließt damit fremdes JavaScript
+# aus (der Weg, über den Swagger-UI zum Risiko wurde), `frame-ancestors`
+# das Einbetten (Clickjacking), `form-action 'self'` das Abfließen des
+# Formulars, `Referrer-Policy` das Verraten der Seite an Dritte.
+_CSP = (
+    "default-src 'self'; img-src 'self' data:; style-src 'self'; "
+    "script-src 'self'; base-uri 'none'; form-action 'self'; "
+    "frame-ancestors 'none'"
+)
+
+
+class Sicherheitskopf:
+    """Hängt die Sicherheits-Kopfzeilen an jede HTTP-Antwort."""
+
+    def __init__(self, app) -> None:
+        self.app = app
+
+    async def __call__(self, scope, receive, send):
+        if scope["type"] != "http":
+            return await self.app(scope, receive, send)
+
+        async def send_mit_kopf(nachricht):
+            if nachricht["type"] == "http.response.start":
+                kopf = list(nachricht.get("headers", []))
+                kopf += [
+                    (b"content-security-policy", _CSP.encode("ascii")),
+                    (b"x-content-type-options", b"nosniff"),
+                    (b"referrer-policy", b"no-referrer"),
+                    (b"x-frame-options", b"DENY"),
+                ]
+                nachricht = {**nachricht, "headers": kopf}
+            await send(nachricht)
+
+        await self.app(scope, receive, send_mit_kopf)
+
+
+app.add_middleware(Koerpergrenze)
+app.add_middleware(Sicherheitskopf)
 
 
 BEISPIELE = [
@@ -186,7 +313,7 @@ def erzeugen(
     # soll — siehe `_haenge_api_ein` am Dateiende. Der lokale Import hat
     # nebenbei den Vorzug, dass ein zur Laufzeit ersetzter Deckel auch
     # hier gilt.
-    from .api import BESCHREIBUNG_HOECHSTLAENGE, GLEICHZEITIG, _plaetze
+    from .api import BESCHREIBUNG_HOECHSTLAENGE, beschreibung_zu_lang
 
     kontext: dict = {
         "beispiele": BEISPIELE,
@@ -210,7 +337,7 @@ def erzeugen(
         return vorlagen.TemplateResponse(
             request, "index.html", kontext, status_code=400
         )
-    if len(beschreibung) > BESCHREIBUNG_HOECHSTLAENGE:
+    if beschreibung_zu_lang(beschreibung):
         # Ohne Grenze ging die Beschreibung ungeprüft in den Prompt — auf
         # Rechnung des Betreibers. Die Bremse zählt Anfragen, nicht Token:
         # Fünf erlaubte Anfragen einer Adresse konnten damit ein
@@ -218,7 +345,7 @@ def erzeugen(
         # begrenzt seit ADR-011 auf denselben Wert, die Oberfläche nicht.
         kontext["eingabefehler"] = (
             f"Die Beschreibung ist länger als "
-            f"{BESCHREIBUNG_HOECHSTLAENGE} Zeichen."
+            f"{BESCHREIBUNG_HOECHSTLAENGE} Zeichen (gemessen in UTF-8-Bytes)."
         )
         # Nicht ungekürzt zurückschreiben: Sonst trüge die Antwort die
         # ganze überlange Eingabe noch einmal aus.
@@ -263,25 +390,6 @@ def erzeugen(
             kontext["konfigurationsfehler"] = str(exc)
             return vorlagen.TemplateResponse(request, "index.html", kontext, status_code=503)
 
-        # Der Gleichzeitigkeitsdeckel, den bisher nur `/api/v1` hatte.
-        #
-        # Alle Routen dieser App sind synchron definiert, FastAPI führt sie
-        # also im Threadpool aus (Vorgabe 40 Plätze) — geteilt mit dem
-        # API-Pfad. Ein Lauf kann Minuten belegen. Die Begründung des
-        # Deckels in ADR-011 lautet wörtlich: „Ohne diesen Deckel könnte
-        # ein Aufrufer mit gültigem eigenem Schlüssel die Seite für alle
-        # anderen unbenutzbar machen." Das trifft auf diese Stelle genauso
-        # zu — nur stand der Deckel bisher nicht hier.
-        #
-        # Der Betreiberpfad braucht ihn nicht: Dort deckeln die Bremsen.
-        if not _plaetze.acquire(blocking=False):
-            kontext["ausgelastet"] = True
-            kontext["gleichzeitig"] = GLEICHZEITIG
-            return vorlagen.TemplateResponse(
-                request, "index.html", kontext, status_code=429,
-                headers={"Retry-After": "30"},
-            )
-        platz_belegt = True
     else:
         # Reihenfolge mit Absicht: Die Bremse je Adresse zuerst, denn nur
         # eine erlaubte Anfrage verbraucht dort einen Platz. Andersherum
@@ -304,6 +412,21 @@ def erzeugen(
             kontext["konfigurationsfehler"] = str(exc)
             return vorlagen.TemplateResponse(request, "index.html", kontext, status_code=503)
 
+    # Der Deckel gilt fuer BEIDE Wege — Demo wie eigener Schluessel. Er
+    # sitzt hier, NACH Bremse und Client-Bau: Nur ein Lauf, der wirklich
+    # `generiere` erreicht, belegt einen Platz. Beim Demopfad deckelt er
+    # zusaetzlich zur Bremse, weil die Bremse die RATE zaehlt, nicht die
+    # Gleichzeitigkeit — 30 gleichzeitig erlaubte Anfragen liefen sonst
+    # alle zugleich in den Threadpool.
+    if not _web_plaetze.acquire(blocking=False):
+        kontext["ausgelastet"] = True
+        kontext["gleichzeitig"] = WEB_GLEICHZEITIG
+        return vorlagen.TemplateResponse(
+            request, "index.html", kontext, status_code=429,
+            headers={"Retry-After": "30"},
+        )
+    platz_belegt = True
+
     try:
         ergebnis = generiere(client, beschreibung)
     finally:
@@ -311,7 +434,7 @@ def erzeugen(
         # nicht freigegebener Platz wäre für die Laufzeit des Prozesses
         # verloren, und vier davon legten den eigenen Schlüsselpfad still.
         if platz_belegt:
-            _plaetze.release()
+            _web_plaetze.release()
 
     kontext["ergebnis"] = ergebnis
     kontext["ansicht"] = _ansicht(ergebnis)
