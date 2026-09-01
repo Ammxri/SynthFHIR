@@ -8,6 +8,8 @@
 #   docker compose -f docker-compose.isik.yml up -d
 services:
   hapi-isik:
+    # Feste Fassung: Mit `:latest` misst der naechste Lauf gegen ein
+    # anderes Werkzeug, ohne dass es im Bericht steht.
     image: hapiproject/hapi:v8.10.0-3
     container_name: synthfhir-hapi-isik
     ports:
@@ -20,6 +22,13 @@ services:
       # Geprüft am 2026-08-30 auf simplifier.net: aktuelle Fassung 4.0.3.
       - hapi.fhir.implementationguides.isik.name=de.gematik.isik-basismodul
       - hapi.fhir.implementationguides.isik.version=4.0.3
+      # Die Module für Observation und MedicationStatement (ADR-014).
+      # Das Basismodul profiliert beide Typen nicht; ohne diese Pakete
+      # meldete der Server für sie Fehler statt Befunde.
+      - hapi.fhir.implementationguides.vital.name=de.gematik.isik-vitalparameter
+      - hapi.fhir.implementationguides.vital.version=4.0.2
+      - hapi.fhir.implementationguides.medi.name=de.gematik.isik-medikation
+      - hapi.fhir.implementationguides.medi.version=4.0.3
       # Ohne die Basisprofile DE fehlen dem ISiK-Paket seine Abhängigkeiten.
       - hapi.fhir.implementationguides.basisprofil.name=de.basisprofil.r4
       - hapi.fhir.implementationguides.basisprofil.version=1.5.3

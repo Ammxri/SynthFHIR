@@ -1,4 +1,4 @@
-# ADR-012: Die Profilmessung als Auflage der CI — und was sie nicht verspricht
+# ADR-016: Die Profilmessung als Auflage der CI — und was sie nicht verspricht
 
 | | |
 |---|---|
@@ -109,13 +109,18 @@ Gemessen am 2026-09-01, lokal, beide auf `v8.10.0-3`:
 | | bereit nach |
 |---|---|
 | `hapiproject/hapi` ohne Pakete | **53,18 s** |
-| derselbe mit den beiden ISiK-Paketen | **56,01 s** |
+| derselbe mit zwei ISiK-Paketen | 56,01 s |
+| derselbe mit **vier** (Basismodul, Vitalparameter, Medikation, Basisprofile) | **57,33 s** |
 
-**Der Aufschlag beträgt 2,8 Sekunden.** Das ist deutlich weniger, als die
-Formulierung „lädt zwei Pakete" vermuten lässt, und es entscheidet die
+**Der Aufschlag beträgt gut vier Sekunden.** Das ist deutlich weniger, als
+die Formulierung „lädt vier Pakete" vermuten lässt, und es entscheidet die
 Frage: Der zweite Container kostet in der CI praktisch nichts, weil er
 parallel startet und das Laden im Anlauf des Servers untergeht. Die
 Wartezeit bleibt die des langsameren von beiden.
+
+Die mittlere Zeile ist der Stand vor ADR-014, als der Messaufbau nur das
+Basismodul lud. Sie steht hier, weil sie zeigt, wie flach die Kurve ist:
+Zwei zusätzliche Pakete kosten gut eine Sekunde.
 
 Die Zahl stand in der ersten Fassung dieses ADR als offene Lücke — der
 Messcontainer war zum Zeitpunkt der Niederschrift nicht mehr vorhanden. Sie
@@ -143,6 +148,22 @@ tun hat.
 
 `latest` zeigt am 2026-09-01 auf `v8.10.0-3`. Das ist der naheliegende
 Kandidat, und beide Compose-Dateien sollten dieselbe Version tragen.
+
+> **Nachtrag.** Diese Vorbedingung war beim Zusammenführen bereits
+> erfüllt: Die Arbeit an den ISiK-Modulen hat dasselbe Bedürfnis gehabt
+> und dieselbe Fassung festgenagelt — „Mit `:latest` misst der nächste
+> Lauf gegen ein anderes Werkzeug, ohne dass es im Bericht steht." Zwei
+> Wege, dieselbe Begründung. Geblieben ist die Fassung von dort; dieses
+> ADR trägt nur den zusätzlichen Grund nach, dass an derselben Version
+> jetzt auch ein Gate hängt.
+>
+> Nachgezogen werden musste dafür der **Workflow**: Er startete den
+> Profilserver zunächst mit zwei Paketen, während der Messaufbau seit
+> ADR-014 vier lädt. Eine CI, die gegen einen anderen Aufbau misst als
+> der dokumentierte Befehl, prüft etwas anderes als sie behauptet — und
+> das ist genau die Fehlerklasse, gegen die dieses ADR antritt. Beide
+> Listen sind jetzt deckungsgleich, und der Kommentar über dem Dienst
+> sagt, dass sie es bleiben müssen.
 
 ---
 

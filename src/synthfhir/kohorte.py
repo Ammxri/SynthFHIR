@@ -135,28 +135,32 @@ class TeilParameter:
 
     @classmethod
     def from_dict(cls, d: dict) -> "TeilParameter":
-        """Nimmt an oder weist ab — aber versteht nichts halb.
+        """Liest einen Teil und prüft dabei die Form.
 
-        `angefragt` wurde geprüft, `parameter` nicht. Eine Aufzeichnung mit
-        `{"angefragt": 10, "parameter": "kaputt"}` — Handbearbeitung,
-        abgeschnittene Datei, fremdes Werkzeug — wurde damit angenommen,
-        und erst `gib_wieder` lief in ein ungefangenes
-        `AttributeError: 'str' object has no attribute 'get'`. `cli.py`
-        ruft `gib_wieder` ohne `try`, also brach die Wiedergabe mit einem
-        Traceback ab statt mit „Aufzeichnung ist unvollständig".
+        Ohne diese Prüfung kam `{"angefragt": 1, "parameter": "hallo"}`
+        unbeanstandet durch und stürzte erst viel später in
+        `baue_aus_parametern` mit `AttributeError: 'str' object has no
+        attribute 'get'` ab — auf der Kommandozeile als Traceback, über
+        das Netz als HTTP 500 für sechzig Bytes Eingabe.
 
-        Das widerspricht dem Grundsatz dieses Moduls, der eine Datei weiter
-        oben steht: abgewiesen statt halb verstanden. Der `TypeError` hier
-        wird von `Aufzeichnung.from_dict` gefangen und zu einem
-        `AufzeichnungFehler`.
+        Die Meldungen nennen den empfangenen **Typ**, nie den Wert:
+        `int("GEHEIM-XY")` schrieb ihn wörtlich in die Ausnahme, und die
+        wandert bis in den Antwortkörper.
         """
-        parameter = d["parameter"]
+        if not isinstance(d, dict):
+            raise ValueError(f"Teil ist kein Objekt, sondern {type(d).__name__}.")
+        parameter = d.get("parameter")
         if not isinstance(parameter, dict):
-            raise TypeError(
-                f"'parameter' muss ein Objekt sein, ist aber "
-                f"{type(parameter).__name__}"
+            raise ValueError(
+                f"'parameter' ist kein Objekt, sondern {type(parameter).__name__}."
             )
-        return cls(angefragt=int(d["angefragt"]), parameter=parameter)
+        angefragt = d.get("angefragt")
+        if isinstance(angefragt, bool) or not isinstance(angefragt, int):
+            raise ValueError(
+                f"'angefragt' ist keine ganze Zahl, sondern "
+                f"{type(angefragt).__name__}."
+            )
+        return cls(angefragt=angefragt, parameter=parameter)
 
 
 @dataclass
@@ -275,6 +279,22 @@ class Kohortenergebnis:
                 nachname = FALLBACK_NACHNAME
             namen.append(f"{vorname} {nachname}")
         return len(set(namen)) / len(namen) if namen else 0.0
+
+
+    @property
+    def mengengrenze_gegriffen(self) -> bool:
+        """Hat die Mengengrenze Ressourcen verworfen?
+
+        Ohne diese Eigenschaft wäre die Grenze **still**: `mengentreue`
+        zählt nur Patienten, `fertig` sieht Beanstandungen gar nicht an.
+        Ein Lauf, der 19.921 Messwerte verwirft, meldete sonst
+        „Mengentreue 100 %" und Rückgabewert 0.
+
+        Präfix statt Aufzählung — derselbe Grund wie bei
+        `erfundene_codes`: Mit `mengengrenze_bauaufruf` kam eine zweite
+        Art hinzu, und eine Aufzählung von Hand hätte sie übersehen.
+        """
+        return any(b.art.startswith("mengengrenze") for b in self.beanstandungen)
 
     @property
     def erfundene_codes(self) -> int:

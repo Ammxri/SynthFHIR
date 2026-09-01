@@ -9,7 +9,7 @@
 # nicht erreichbarer Server zum Fehlschlag statt zu einem stillen
 # Übersprung, und die Auflage kann nicht versehentlich verfallen.
 #
-# Seit ADR-012 gilt dasselbe für den ZWEITEN Server, den mit den
+# Seit ADR-016 gilt dasselbe für den ZWEITEN Server, den mit den
 # ISiK-Paketen. Er sichert die Zusage aus ADR-009 — die fünf Felder und
 # den Kontakt zu jeder kodierten Diagnose. Was er ausdrücklich NICHT
 # verspricht: dass SynthFHIR ISiK-konform ist. Das ist eine offene
@@ -17,8 +17,8 @@
 # Entscheidung stillschweigend zurückgeht.
 #
 # Beide Server starten parallel. Gemessen am 2026-09-01: der einfache ist
-# nach 53,2 s bereit, der mit den zwei Paketen nach 56,0 s — der Aufschlag
-# beträgt knapp drei Sekunden, nicht die doppelte Wartezeit.
+# nach 53,2 s bereit, der mit den vier Paketen nach 57,3 s — der Aufschlag
+# beträgt gut vier Sekunden, nicht die doppelte Wartezeit.
 
 name: CI
 
@@ -55,6 +55,11 @@ jobs:
           hapi.fhir.enforce_referential_integrity_on_write: "false"
           hapi.fhir.implementationguides.isik.name: de.gematik.isik-basismodul
           hapi.fhir.implementationguides.isik.version: 4.0.3
+          # Die Module für Observation und MedicationStatement (ADR-014).
+          hapi.fhir.implementationguides.vital.name: de.gematik.isik-vitalparameter
+          hapi.fhir.implementationguides.vital.version: 4.0.2
+          hapi.fhir.implementationguides.medi.name: de.gematik.isik-medikation
+          hapi.fhir.implementationguides.medi.version: 4.0.3
           hapi.fhir.implementationguides.basisprofil.name: de.basisprofil.r4
           hapi.fhir.implementationguides.basisprofil.version: 1.5.3
 
@@ -63,7 +68,7 @@ jobs:
       # scheitern - siehe tests/conftest.py.
       SYNTHFHIR_REQUIRE_HAPI: "1"
       SYNTHFHIR_FHIR_BASE_URL: http://localhost:8080/fhir
-      # Dasselbe für die Profilmessung, seit ADR-012. Ohne die Variable
+      # Dasselbe für die Profilmessung, seit ADR-016. Ohne die Variable
       # liefe in der CI weder die Messung noch ihre Negativkontrolle.
       SYNTHFHIR_REQUIRE_PROFIL: "1"
       SYNTHFHIR_PROFIL_URL: http://localhost:8090/fhir
@@ -85,7 +90,7 @@ jobs:
         #
         # Nacheinander gewartet, aber parallel gestartet: Wenn 8080
         # antwortet, hat 8090 dieselbe Zeit gehabt. Gemessen ist der
-        # Unterschied knapp drei Sekunden, das Paketladen fällt also kaum
+        # Unterschied gut vier Sekunden, das Paketladen fällt also kaum
         # ins Gewicht.
         run: |
           for port in 8080 8090; do

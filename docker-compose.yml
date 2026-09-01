@@ -9,20 +9,13 @@
 # erzeugten Daten die Maschine (Abschnitt 11).
 #
 # Reproduzierbarkeit: `latest` kann sich zwischen Messreihen ändern und damit
-# das Validierungsverhalten verschieben. Die vom Server gemeldete
-# FHIR-Version steht in jeder session.json und im Bericht.
-#
-# Festgenagelt am 2026-09-01, worauf `latest` an diesem Tag zeigte. Der
-# Anlass war ADR-012: Seit die Profilmessung eine Auflage der CI ist, hinge
-# ein Gate sonst an einer Version, die sich unter der Hand ändert — und die
-# Einstufung in `profil.py` hängt am WORTLAUT der Validatormeldungen, nicht
-# nur an ihrem Vorhandensein. Ein HAPI-Update färbte die CI dann rot, ohne
-# dass sich eine Zeile Code geändert hätte.
-#
-# Wer die Version hochsetzt, setzt damit auch die Messung neu an: Der
-# Beleg unter docs/belege/ ist gegen genau diese Fassung erhoben.
+# das Validierungsverhalten verschieben. Sobald eine Version läuft, sollte
+# sie festgenagelt werden (z. B. hapiproject/hapi:v8.10.0-3). Die vom Server
+# gemeldete FHIR-Version steht in jeder session.json und im Bericht.
 services:
   hapi:
+    # Feste Fassung: Mit `:latest` misst der naechste Lauf gegen ein
+    # anderes Werkzeug, ohne dass es im Bericht steht.
     image: hapiproject/hapi:v8.10.0-3
     container_name: synthfhir-hapi
     ports:

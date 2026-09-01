@@ -75,3 +75,16 @@ services:
       # des einen Prozesses belegt und die Weboberfläche mitreisst.
       - key: SYNTHFHIR_API_GLEICHZEITIG
         value: "4"
+
+      # Grenzen der Wiedergabe (ADR-012). Sie ist der einzige Weg, auf dem
+      # der Aufrufer die Parameterobjekte selbst schreibt; nachgemessen
+      # ergaben 64 KB unförmiger Einträge 21.810 Ressourcen und 120 MB.
+      # Der teuerste erlaubte Aufruf kostet rund 8 s und 40 MB.
+      - key: SYNTHFHIR_API_WIEDERGABE_KOERPER
+        value: "524288"
+      - key: SYNTHFHIR_API_WIEDERGABE_TEILE
+        value: "200"
+      - key: SYNTHFHIR_API_WIEDERGABE_RESSOURCEN
+        value: "5000"
+      - key: SYNTHFHIR_API_WIEDERGABE_GLEICHZEITIG
+        value: "2"

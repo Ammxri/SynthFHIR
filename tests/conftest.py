@@ -73,7 +73,7 @@ def profilserver() -> str:
     über das noch gar nicht entschieden ist. `SYNTHFHIR_REQUIRE_PROFIL=1`
     kehrt das für einen gezielten Lauf um.
 
-    **Diese Begründung deckte zwei verschiedene Dinge zu**, und ADR-012
+    **Diese Begründung deckte zwei verschiedene Dinge zu**, und ADR-016
     trennt sie: Unentschieden ist, ob SynthFHIR ISiK-Konformität *bewirbt*.
     Entschieden ist dagegen ADR-009 — die fünf Felder und die strukturelle
     Zusage sind gebaut und ausgeliefert, und nichts in der CI schützte sie.
@@ -119,3 +119,48 @@ def kein_echter_schluessel(monkeypatch):
     monkeypatch.setenv("SYNTHFHIR_LLM_API_KEY", BETREIBER_PLATZHALTER)
     monkeypatch.setenv("SYNTHFHIR_LLM_BASE_URL", "https://anbieter.invalid/v1")
     monkeypatch.setenv("SYNTHFHIR_LLM_MODEL", "test-modell")
+
+
+@pytest.fixture(scope="session")
+def terminologieserver() -> str:
+    """Ein öffentlicher Terminologieserver, oder ein Übersprung.
+
+    Dieselbe Haltung wie beim HAPI-Server (ADR-002): Lokal ohne Netz wird
+    übersprungen, mit `SYNTHFHIR_REQUIRE_TERMINOLOGIE=1` ist ein
+    Fehlschlag ein Fehler. Der Unterschied zu HAPI ist, dass hier ein
+    **fremder** Dienst antwortet, den niemand betreibt und für den es
+    keine Betriebszusage gibt — deshalb ist der Übersprung hier die
+    Vorgabe und nicht die Ausnahme.
+    """
+    import requests
+
+    from synthfhir.terminologie import STANDARD_SERVER as TX
+
+    url = os.environ.get("SYNTHFHIR_TERMINOLOGIE_URL", TX)
+    pflicht = os.environ.get("SYNTHFHIR_REQUIRE_TERMINOLOGIE", "").strip() in (
+        "1", "true", "yes",
+    )
+    # Ohne ausdrückliche Anforderung wird übersprungen, auch wenn der
+    # Server gerade erreichbar wäre. Andernfalls hinge die Prüfkette bei
+    # jedem Commit an einem fremden Dienst ohne Betriebszusage — und
+    # genau das schliesst ADR-013 aus.
+    if not pflicht:
+        pytest.skip(
+            "Terminologiemessung übersprungen. Sie hängt an einem fremden "
+            "Dienst ohne Betriebszusage und gehört deshalb nicht in den "
+            "Commit-Pfad. Anfordern mit SYNTHFHIR_REQUIRE_TERMINOLOGIE=1."
+        )
+    try:
+        erreichbar = requests.get(f"{url}/metadata", timeout=20).status_code == 200
+    except requests.exceptions.RequestException:
+        erreichbar = False
+    if not erreichbar:
+        meldung = (
+            f"Terminologieserver {url} nicht erreichbar. Er ist ein fremder "
+            "Dienst ohne Betriebszusage; für einen Lauf ohne Netz ist das "
+            "kein Fehler."
+        )
+        if pflicht:
+            pytest.fail(meldung)
+        pytest.skip(meldung)
+    return url
