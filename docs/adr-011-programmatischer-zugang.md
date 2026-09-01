@@ -357,3 +357,81 @@ zweiten Gegenversuch gar nicht mehr durch und ist ersetzt.
   nachgemessen**, nur hergeleitet. Die Gesamtbremse hält unabhängig davon.
 - **Kein Gesamtzeitbudget je Anfrage**, nur kürzere Einzelzeitgrenzen. Ein
   Gegenüber, das langsam tropft, hält seinen Platz länger als gedacht.
+
+---
+
+## 7. Nachtrag vom 2026-09-01: Der Deckel gilt je Wachphase, nicht je Stunde
+
+Aus einer gegnerischen Durchsicht des Codes.
+
+### Was gefunden wurde
+
+Beide Bremsen halten ihre Zähler im Arbeitsspeicher. Das Moduldoc von
+`ratenbremse.py` nennt dazu zwei Folgen: „Ein Neustart setzt alle Zähler
+zurück" und „Bei mehreren Instanzen zählt jede für sich". Beides stimmt,
+und beides klingt nach einem seltenen Ereignis.
+
+Die dritte Folge stand dort nicht, und sie ist die schärfste:
+`render.yaml` betreibt den Dienst auf `plan: free`, und der legt ihn nach
+15 Minuten ohne Zugriff schlafen. Der Neustart ist damit kein Zufall,
+sondern **vorhersagbar und vom Aufrufer auslösbar**. Dreissig Anfragen
+absetzen, eine Viertelstunde nichts tun, eine Anfrage zum Aufwecken,
+wieder dreissig — beliebig oft.
+
+Der Deckel „30 Modellaufrufe je Stunde auf Betreiberrechnung" ist in
+Wirklichkeit „30 je Wachphase". Die Gesamtbremse ist in Abschnitt 3
+ausdrücklich als die eine Sicherung eingeführt, die nicht an einer
+fälschbaren Kopfzeile hängt. Sie hängt stattdessen am Betriebsmodus, und
+das war nirgends gesagt.
+
+### Entscheidung
+
+**Keine Persistenz.** Der Zähler bleibt im Arbeitsspeicher. Berichtigt wird
+die **Zusage**, nicht der Code: Der Deckel gilt je Wachphase, und das
+gehört dorthin, wo heute „je Stunde" steht.
+
+Die Entscheidung ist an einen Auslöser gebunden (siehe unten). Sie ist
+nicht „das ist schon in Ordnung", sondern „das trägt unter genau diesen
+Bedingungen".
+
+### Begründung
+
+**Das PRD schliesst Persistenz für den MVP aus** (Block 9). Für einen
+Demo-Zähler eine Datenbank einzuführen widerspräche einer dokumentierten
+Zuschnittsentscheidung. Eine Datei wäre keine Abhilfe: Auf dem Gratistarif
+überlebt das Dateisystem den Neustart ohnehin nicht — dieselbe Ursache,
+die den Zähler leert, löschte auch seine Datei.
+
+**Der Schaden ist heute Verfügbarkeit, nicht Geld.** Der Anbieter läuft im
+Gratistarif. Ist das Kontingent leer, ist die Demo aus; es entsteht keine
+unerwartete Rechnung. Das ist ein Ärgernis, aber ein anderes Kaliber als
+das, wogegen die Bremse gebaut wurde. Die Auflage des Betreibers lautet
+wörtlich „Mein kostenloses Ratenlimit soll für mich aufrechterhalten
+bleiben" — verletzt wird sie durch ein erschöpftes Kontingent, und das
+erschöpft sich auf einem Gratistarif ohne Bremse ohnehin.
+
+**Der dokumentierte Weg für Vielnutzer funktioniert.** Das PRD nennt den
+eigenen Schlüssel als Mitigation im Risikoregister, und dieser Weg ist seit
+diesem ADR gebaut, geprüft und seit dem 2026-09-01 zusätzlich gedeckelt.
+Wer mehr braucht, als die Demo hergibt, hat einen Weg, der niemanden
+sonst betrifft.
+
+### Wann diese Entscheidung neu zu treffen ist
+
+**Sobald der Dienst auf einen bezahlten Anbietertarif oder einen bezahlten
+Render-Plan wechselt.**
+
+Dann kippen beide Begründungen zugleich: Aus „das Kontingent ist leer"
+wird „die Rechnung wächst", und ein bezahlter Render-Plan schläft nicht
+mehr, wodurch der Zähler zwar länger hält — aber nicht mehr in dem Fall,
+der dann zählt, nämlich bei mehreren Instanzen. Ein Deckel im
+Arbeitsspeicher ist dann nicht mehr vertretbar.
+
+### Was noch nachzurechnen ist
+
+Wie viele Wachphasen passen in das **Tageskontingent** des Anbieters? Erst
+diese Zahl macht aus der berichtigten Aussage eine belastbare: Wenn
+30 Aufrufe je Wachphase mal der realistischen Zahl von Wachphasen unter dem
+Tageslimit bleiben, ist der Deckel wirksam, auch wenn er sich zurücksetzen
+lässt. Bleibt er es nicht, ist die Zahl 30 zu senken — nicht die Bauform zu
+ändern.

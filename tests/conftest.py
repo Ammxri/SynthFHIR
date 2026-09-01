@@ -72,6 +72,17 @@ def profilserver() -> str:
     Sondierung. Sie zur Auflage zu machen hieße, ein Versprechen zu geben,
     über das noch gar nicht entschieden ist. `SYNTHFHIR_REQUIRE_PROFIL=1`
     kehrt das für einen gezielten Lauf um.
+
+    **Diese Begründung deckt zwei verschiedene Dinge zu**, und ADR-012
+    trennt sie: Unentschieden ist, ob SynthFHIR ISiK-Konformität *bewirbt*.
+    Entschieden ist dagegen ADR-009 — die fünf Felder und die strukturelle
+    Zusage sind gebaut und ausgeliefert, und nichts in der CI schützt sie.
+    Solange dieser Übersprung gilt, läuft dort **weder die Messung noch
+    ihre Negativkontrolle**.
+
+    ADR-012 entscheidet, den Schalter zu setzen — nach dem Festnageln des
+    HAPI-Images, weil die Einstufung am Wortlaut der Validatormeldungen
+    hängt. Bis dahin bleibt es beim Übersprung.
     """
     validator = HapiValidator(PROFIL_BASIS_URL)
     if validator.bereit(wartezeit_s=10.0) is None:

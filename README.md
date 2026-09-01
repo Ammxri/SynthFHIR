@@ -360,6 +360,7 @@ in dieser Reihenfolge:
 | [ADR-009](docs/adr-009-isik-konformitaet.md) | ISiK-Basismodul erfüllen — und was daran nicht additiv war |
 | [ADR-010](docs/adr-010-ausgabewege-in-der-weboberflaeche.md) | Warum der NDJSON-Download ein Archiv ist und die Aufzeichnung nicht gesperrt wird |
 | [ADR-011](docs/adr-011-programmatischer-zugang.md) | Ein API-Zugang, der ausschließlich auf fremde Rechnung läuft |
+| [ADR-012](docs/adr-012-profilmessung-in-der-ci.md) | Die Profilmessung als Auflage der CI — und was sie nicht verspricht |
 | [Konzepte](docs/konzepte.md) | Die FHIR-Grundlagen dahinter, ausführlich erklärt |
 
 ### Die tragenden Entscheidungen in drei Sätzen
