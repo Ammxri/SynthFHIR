@@ -50,33 +50,41 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "src"))
 sys.stdout.reconfigure(encoding="utf-8", errors="replace")
 
-from synthfhir.profil import PROFILE  # noqa: E402
+from synthfhir.profil import MODULE, profil_fuer  # noqa: E402
 from synthfhir.referenzkohorte import baue  # noqa: E402
 
 WURZEL = Path(__file__).resolve().parent.parent
 VALIDATOR = WURZEL / "werkzeuge" / "validator_cli.jar"
 ARBEIT = WURZEL / "messlauf"
 FHIR_VERSION = "4.0.1"
-ISIK_PAKET = "de.gematik.isik-basismodul#4.0.3"
+# Alle Module, die Profile beisteuern. Seit ADR-014 sind es drei: Das
+# Basismodul kennt Observation und MedicationStatement nicht.
+ISIK_PAKETE = [f"{name}#{fassung}" for name, fassung in MODULE.items()]
 TX = "https://tx.fhir.org/r4"
 
 
 def schreibe_kohorte(ziel: Path) -> dict[str, list[Path]]:
-    """Legt die Referenzkohorte als Einzeldateien ab, nach Typ sortiert."""
+    """Legt die Referenzkohorte ab, gruppiert nach **Profil**.
+
+    Nach Profil und nicht nach Typ: Seit ADR-014 tragen zwei Observations
+    desselben Typs verschiedene Profile — ein Vitalparameter eines, ein
+    Laborwert gar keines. Wer nach Typ gruppiert, misst das Panel gegen
+    das falsche Profil oder gar nicht.
+    """
     ziel.mkdir(parents=True, exist_ok=True)
     for alt in ziel.glob("*.json"):
         alt.unlink()
-    nach_typ: dict[str, list[Path]] = {}
+    nach_profil: dict[str, list[Path]] = {}
     for r in baue():
-        typ = r["resourceType"]
-        if typ not in PROFILE:
+        profil = profil_fuer(r)
+        if profil is None:
             continue
-        pfad = ziel / f"{typ}-{r['id']}.json"
+        pfad = ziel / f"{r['resourceType']}-{r['id']}.json"
         pfad.write_text(
             json.dumps(r, ensure_ascii=False, indent=1), encoding="utf-8"
         )
-        nach_typ.setdefault(typ, []).append(pfad)
-    return nach_typ
+        nach_profil.setdefault(profil, []).append(pfad)
+    return nach_profil
 
 
 def _befunde(datei: Path) -> list[dict]:
@@ -102,14 +110,14 @@ def messe(tx: str = TX, sct: str = "intl") -> dict:
     if not shutil.which("java"):
         raise SystemExit("Java fehlt im Pfad. Der Validator braucht Java 17 oder neuer.")
 
-    nach_typ = schreibe_kohorte(ARBEIT)
+    nach_profil = schreibe_kohorte(ARBEIT)
     # Eigener Zwischenspeicher je Server — sonst antwortet beim zweiten
     # Lauf der erste Server.
     cache = ARBEIT / f"txcache-{tx.replace('://', '-').replace('/', '-')}"
 
     bericht: dict = {
         "werkzeug": "org.hl7.fhir.core validator_cli",
-        "paket": ISIK_PAKET,
+        "pakete": ISIK_PAKETE,
         "fhir_version": FHIR_VERSION,
         "terminologieserver": tx,
         "snomed_edition": sct,
@@ -118,32 +126,36 @@ def messe(tx: str = TX, sct: str = "intl") -> dict:
     }
     alle_texte: Counter = Counter()
 
-    for typ, dateien in sorted(nach_typ.items()):
-        ausgabe = ARBEIT / f"ref-{typ}.json"
+    for profil, dateien in sorted(nach_profil.items()):
+        kurz = profil.rsplit("/", 1)[-1]
+        ausgabe = ARBEIT / f"ref-{kurz}.json"
+        pakete = []
+        for paket in ISIK_PAKETE:
+            pakete += ["-ig", paket]
         befehl = [
             "java", "-jar", str(VALIDATOR),
             *[str(p) for p in dateien],
             "-version", FHIR_VERSION,
-            "-ig", ISIK_PAKET,
-            "-profile", PROFILE[typ],
+            *pakete,
+            "-profile", profil,
             "-tx", tx,
             "-sct", sct,
             "-txCache", str(cache),
             "-output", str(ausgabe),
         ]
-        print(f"  {typ} ({len(dateien)}) …", flush=True)
+        print(f"  {kurz} ({len(dateien)}) …", flush=True)
         lauf = subprocess.run(befehl, capture_output=True, text=True, encoding="utf-8",
                               errors="replace")
         if not ausgabe.exists():
             raise SystemExit(
-                f"Der Validator hat für {typ} nichts geschrieben.\n{lauf.stdout[-1500:]}"
+                f"Der Validator hat für {kurz} nichts geschrieben.\n{lauf.stdout[-1500:]}"
             )
         befunde = _befunde(ausgabe)
         fehler = [b for b in befunde if b["severity"] == "error"]
         warnungen = [b for b in befunde if b["severity"] == "warning"]
-        bericht["je_typ"][typ] = {
+        bericht["je_typ"][kurz] = {
             "geprueft": len(dateien),
-            "profil": PROFILE[typ],
+            "profil": profil,
             "fehler": len(fehler),
             "warnungen": len(warnungen),
             "fehlertexte": [
@@ -179,15 +191,16 @@ def main(argv: list[str] | None = None) -> int:
                    default=WURZEL / "docs" / "belege" / "isik-referenzvalidator.json")
     args = p.parse_args(argv)
 
-    print(f"Referenzvalidator gegen {ISIK_PAKET}, Terminologie {args.tx} ({args.sct})")
+    print("Referenzvalidator gegen " + ", ".join(ISIK_PAKETE))
+    print(f"Terminologie {args.tx} ({args.sct})")
     bericht = messe(args.tx, args.sct)
 
     s = bericht["summe"]
-    print(f"\n  {'Typ':<14}{'geprüft':>9}{'Fehler':>9}{'Warnungen':>11}")
-    print(f"  {'-' * 43}")
-    for typ, z in sorted(bericht["je_typ"].items()):
-        print(f"  {typ:<14}{z['geprueft']:>9}{z['fehler']:>9}{z['warnungen']:>11}")
-    print(f"  {'SUMME':<14}{s['geprueft']:>9}{s['fehler']:>9}{s['warnungen']:>11}")
+    print(f"\n  {'Profil':<38}{'geprüft':>9}{'Fehler':>9}{'Warn.':>8}")
+    print(f"  {'-' * 63}")
+    for name, zeile in sorted(bericht["je_typ"].items()):
+        print(f"  {name:<38}{zeile['geprueft']:>9}{zeile['fehler']:>9}{zeile['warnungen']:>8}")
+    print(f"  {'SUMME':<38}{s['geprueft']:>9}{s['fehler']:>9}{s['warnungen']:>8}")
 
     if bericht["ungepruefte_meldungen"]:
         print("\n  ACHTUNG — Befunde blieben ungeprüft:")

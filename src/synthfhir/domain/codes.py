@@ -144,6 +144,32 @@ TESTDATEN_LABEL = {
 }
 
 
+# --- Blutdruck: ein Panel, keine zwei Messwerte ----------------------------
+#
+# Systolisch und diastolisch sind in FHIR **keine** zwei Observations. Das
+# Vitalparameter-Profil `ISiKBlutdruckSystemischArteriell` leitet über
+# `observation-de-vitalsign-blutdruck` von `hl7.org/fhir/StructureDefinition/bp`
+# ab, und das verlangt nachgemessen:
+#
+#   BPCode: magic LOINC code 85354-9 required, but not found
+#   Observation.component: mindestens erforderlich = 2, aber nur gefunden 0
+#   Observation.value[x]: maximal erlaubt = 0, aber gefunden 1
+#
+# Also **eine** Observation mit dem Panel-Code, zwei Komponenten und ohne
+# eigenen Wert. Die beiden Einzelcodes bleiben im Katalog: Das Modell nennt
+# sie weiterhin, und der Code baut daraus die Struktur — dieselbe
+# Arbeitsteilung wie in ADR-001.
+BLUTDRUCK_SYSTOLISCH = "8480-6"
+BLUTDRUCK_DIASTOLISCH = "8462-4"
+
+# Der Panel-Code samt LOINCs amtlicher deutscher Bezeichnung. Sie ist
+# sperrig; sie steht trotzdem in `Coding.display`, weil das Profil genau
+# sie prüft. Der lesbare Text steht daneben in `CodeableConcept.text`.
+BLUTDRUCK_PANEL = "85354-9"
+BLUTDRUCK_PANEL_DE = "Blutdruck (Liste) optional mit allen Unterbegriffen"
+BLUTDRUCK_PANEL_TEXT = "Blutdruck"
+
+
 @dataclass(frozen=True)
 class ObservationCode:
     """Ein zulässiger Laborwert oder Vitalparameter.
@@ -156,12 +182,21 @@ class ObservationCode:
 
     code: str
     display: str          # englischer LOINC-Anzeigetext
-    display_de: str       # deutscher Anzeigetext für die Vorschau
+    display_de: str       # unsere Kurzform für die Vorschau
     unit: str
     unit_code: str        # UCUM — maschinell durch den HAPI-Test gedeckt
     low: float
     high: float
     vital_sign: bool = False
+    # LOINCs **amtliche** deutsche Bezeichnung — nicht dasselbe wie
+    # `display_de`. Die ist unsere Kurzform für die Vorschau („HbA1c"),
+    # dies hier der Text, den LOINC selbst in de-DE führt („Hämoglobin
+    # A1c/Hämoglobin.gesamt in Blut"). Nur letzterer darf in
+    # `Coding.display` stehen: Die deutschen ISiK-Profile prüfen ihn.
+    #
+    # Geholt und geprüft am 2026-09-01 gegen tx.fhir.org, LOINC 2.82.
+    # `tests/test_terminologie.py` hält die Werte dagegen.
+    display_loinc_de: str = ""
 
     @property
     def system(self) -> str:
@@ -204,31 +239,31 @@ class ConditionCode:
 OBSERVATION_CODES: dict[str, ObservationCode] = {
     o.code: o
     for o in [
-        ObservationCode("718-7", "Hemoglobin [Mass/volume] in Blood", "Hämoglobin", "g/dL", "g/dL", 8.0, 17.5),
-        ObservationCode("789-8", "Erythrocytes [#/volume] in Blood", "Erythrozyten", "10*6/uL", "10*6/uL", 3.5, 6.0),
-        ObservationCode("6690-2", "Leukocytes [#/volume] in Blood", "Leukozyten", "10*3/uL", "10*3/uL", 3.0, 15.0),
-        ObservationCode("777-3", "Platelets [#/volume] in Blood", "Thrombozyten", "10*3/uL", "10*3/uL", 120.0, 420.0),
-        ObservationCode("2345-7", "Glucose [Mass/volume] in Serum or Plasma", "Glukose im Serum", "mg/dL", "mg/dL", 60.0, 300.0),
-        ObservationCode("4548-4", "Hemoglobin A1c/Hemoglobin.total in Blood", "HbA1c", "%", "%", 4.5, 14.0),
-        ObservationCode("2160-0", "Creatinine [Mass/volume] in Serum or Plasma", "Kreatinin im Serum", "mg/dL", "mg/dL", 0.5, 4.0),
-        ObservationCode("3094-0", "Urea nitrogen [Mass/volume] in Serum or Plasma", "Harnstoff-Stickstoff", "mg/dL", "mg/dL", 6.0, 60.0),
-        ObservationCode("33914-3", "Glomerular filtration rate/1.73 sq M.predicted", "geschätzte GFR", "mL/min/{1.73_m2}", "mL/min/{1.73_m2}", 10.0, 120.0),
-        ObservationCode("2951-2", "Sodium [Moles/volume] in Serum or Plasma", "Natrium", "mmol/L", "mmol/L", 128.0, 148.0),
-        ObservationCode("2823-3", "Potassium [Moles/volume] in Serum or Plasma", "Kalium", "mmol/L", "mmol/L", 3.0, 6.0),
-        ObservationCode("2075-0", "Chloride [Moles/volume] in Serum or Plasma", "Chlorid", "mmol/L", "mmol/L", 95.0, 112.0),
-        ObservationCode("2093-3", "Cholesterol [Mass/volume] in Serum or Plasma", "Gesamtcholesterin", "mg/dL", "mg/dL", 110.0, 320.0),
-        ObservationCode("2085-9", "Cholesterol in HDL [Mass/volume] in Serum or Plasma", "HDL-Cholesterin", "mg/dL", "mg/dL", 25.0, 95.0),
-        ObservationCode("2571-8", "Triglyceride [Mass/volume] in Serum or Plasma", "Triglyzeride", "mg/dL", "mg/dL", 50.0, 500.0),
-        ObservationCode("1742-6", "Alanine aminotransferase [Enzymatic activity/volume] in Serum or Plasma", "ALAT (GPT)", "U/L", "U/L", 5.0, 150.0),
-        ObservationCode("1920-8", "Aspartate aminotransferase [Enzymatic activity/volume] in Serum or Plasma", "ASAT (GOT)", "U/L", "U/L", 5.0, 150.0),
-        ObservationCode("1975-2", "Bilirubin.total [Mass/volume] in Serum or Plasma", "Bilirubin gesamt", "mg/dL", "mg/dL", 0.2, 4.0),
-        ObservationCode("1988-5", "C reactive protein [Mass/volume] in Serum or Plasma", "C-reaktives Protein", "mg/L", "mg/L", 0.1, 120.0),
-        ObservationCode("3016-3", "Thyrotropin [Units/volume] in Serum or Plasma", "TSH", "mIU/L", "m[IU]/L", 0.2, 12.0),
-        ObservationCode("8867-4", "Heart rate", "Herzfrequenz", "beats/minute", "/min", 45.0, 130.0, vital_sign=True),
-        ObservationCode("8480-6", "Systolic blood pressure", "Blutdruck systolisch", "mmHg", "mm[Hg]", 90.0, 190.0, vital_sign=True),
-        ObservationCode("8462-4", "Diastolic blood pressure", "Blutdruck diastolisch", "mmHg", "mm[Hg]", 50.0, 110.0, vital_sign=True),
-        ObservationCode("29463-7", "Body weight", "Körpergewicht", "kg", "kg", 40.0, 140.0, vital_sign=True),
-        ObservationCode("8302-2", "Body height", "Körpergröße", "cm", "cm", 145.0, 200.0, vital_sign=True),
+        ObservationCode("718-7", "Hemoglobin [Mass/volume] in Blood", "Hämoglobin", "g/dL", "g/dL", 8.0, 17.5, display_loinc_de="Hämoglobin [Masse/Volumen] in Blut"),
+        ObservationCode("789-8", "Erythrocytes [#/volume] in Blood", "Erythrozyten", "10*6/uL", "10*6/uL", 3.5, 6.0, display_loinc_de="Erythrozyten [#/Volumen] in Blut mittels automatisierter Zählung"),
+        ObservationCode("6690-2", "Leukocytes [#/volume] in Blood", "Leukozyten", "10*3/uL", "10*3/uL", 3.0, 15.0, display_loinc_de="Leukozyten [#/Volumen] in Blut mittels automatisierter Zählung"),
+        ObservationCode("777-3", "Platelets [#/volume] in Blood", "Thrombozyten", "10*3/uL", "10*3/uL", 120.0, 420.0, display_loinc_de="Thrombozyten [#/Volumen] in Blut mittels automatisierter Zählung"),
+        ObservationCode("2345-7", "Glucose [Mass/volume] in Serum or Plasma", "Glukose im Serum", "mg/dL", "mg/dL", 60.0, 300.0, display_loinc_de="Glucose [Masse/Volumen] in Serum oder Plasma"),
+        ObservationCode("4548-4", "Hemoglobin A1c/Hemoglobin.total in Blood", "HbA1c", "%", "%", 4.5, 14.0, display_loinc_de="Hämoglobin A1c/Hämoglobin.gesamt in Blut"),
+        ObservationCode("2160-0", "Creatinine [Mass/volume] in Serum or Plasma", "Kreatinin im Serum", "mg/dL", "mg/dL", 0.5, 4.0, display_loinc_de="Creatinin [Masse/Volumen] in Serum oder Plasma"),
+        ObservationCode("3094-0", "Urea nitrogen [Mass/volume] in Serum or Plasma", "Harnstoff-Stickstoff", "mg/dL", "mg/dL", 6.0, 60.0, display_loinc_de="Harnstoff-Stickstoff [Masse/Volumen] in Serum oder Plasma"),
+        ObservationCode("33914-3", "Glomerular filtration rate/1.73 sq M.predicted", "geschätzte GFR", "mL/min/{1.73_m2}", "mL/min/{1.73_m2}", 10.0, 120.0, display_loinc_de="Glomeruläre Filtrationsrate /1.7m2 KO (MDRD)"),
+        ObservationCode("2951-2", "Sodium [Moles/volume] in Serum or Plasma", "Natrium", "mmol/L", "mmol/L", 128.0, 148.0, display_loinc_de="Natrium [Mol/Volumen] in Serum oder Plasma"),
+        ObservationCode("2823-3", "Potassium [Moles/volume] in Serum or Plasma", "Kalium", "mmol/L", "mmol/L", 3.0, 6.0, display_loinc_de="Kalium [Mol/Volumen] in Serum oder Plasma"),
+        ObservationCode("2075-0", "Chloride [Moles/volume] in Serum or Plasma", "Chlorid", "mmol/L", "mmol/L", 95.0, 112.0, display_loinc_de="Chlorid [Mol/Volumen] in Serum oder Plasma"),
+        ObservationCode("2093-3", "Cholesterol [Mass/volume] in Serum or Plasma", "Gesamtcholesterin", "mg/dL", "mg/dL", 110.0, 320.0, display_loinc_de="Cholesterol [Masse/Volumen] in Serum oder Plasma"),
+        ObservationCode("2085-9", "Cholesterol in HDL [Mass/volume] in Serum or Plasma", "HDL-Cholesterin", "mg/dL", "mg/dL", 25.0, 95.0, display_loinc_de="Cholesterol in HDL [Masse/Volumen] in Serum oder Plasma"),
+        ObservationCode("2571-8", "Triglyceride [Mass/volume] in Serum or Plasma", "Triglyzeride", "mg/dL", "mg/dL", 50.0, 500.0, display_loinc_de="Triglycerid [Masse/Volumen] in Serum oder Plasma"),
+        ObservationCode("1742-6", "Alanine aminotransferase [Enzymatic activity/volume] in Serum or Plasma", "ALAT (GPT)", "U/L", "U/L", 5.0, 150.0, display_loinc_de="Alanin-Aminotransferase [Enzymaktivität/Volumen] in Serum oder Plasma"),
+        ObservationCode("1920-8", "Aspartate aminotransferase [Enzymatic activity/volume] in Serum or Plasma", "ASAT (GOT)", "U/L", "U/L", 5.0, 150.0, display_loinc_de="Aspartat-Aminotransferase [Enzymaktivität/Volumen] in Serum oder Plasma"),
+        ObservationCode("1975-2", "Bilirubin.total [Mass/volume] in Serum or Plasma", "Bilirubin gesamt", "mg/dL", "mg/dL", 0.2, 4.0, display_loinc_de="Bilirubin.gesamt [Masse/Volumen] in Serum oder Plasma"),
+        ObservationCode("1988-5", "C reactive protein [Mass/volume] in Serum or Plasma", "C-reaktives Protein", "mg/L", "mg/L", 0.1, 120.0, display_loinc_de="C-reaktives Protein [Masse/Volumen] in Serum oder Plasma"),
+        ObservationCode("3016-3", "Thyrotropin [Units/volume] in Serum or Plasma", "TSH", "mIU/L", "m[IU]/L", 0.2, 12.0, display_loinc_de="Thyreotropin [Einheiten/Volumen] in Serum oder Plasma"),
+        ObservationCode("8867-4", "Heart rate", "Herzfrequenz", "beats/minute", "/min", 45.0, 130.0, vital_sign=True, display_loinc_de="Herzfrequenz"),
+        ObservationCode("8480-6", "Systolic blood pressure", "Blutdruck systolisch", "mmHg", "mm[Hg]", 90.0, 190.0, vital_sign=True, display_loinc_de="Systolischer Blutdruck"),
+        ObservationCode("8462-4", "Diastolic blood pressure", "Blutdruck diastolisch", "mmHg", "mm[Hg]", 50.0, 110.0, vital_sign=True, display_loinc_de="Diastolischer Blutdruck"),
+        ObservationCode("29463-7", "Body weight", "Körpergewicht", "kg", "kg", 40.0, 140.0, vital_sign=True, display_loinc_de="Körpergewicht"),
+        ObservationCode("8302-2", "Body height", "Körpergröße", "cm", "cm", 145.0, 200.0, vital_sign=True, display_loinc_de="Körpergröße"),
     ]
 }
 

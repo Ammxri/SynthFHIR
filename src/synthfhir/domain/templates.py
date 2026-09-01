@@ -43,6 +43,11 @@ import re
 from dataclasses import dataclass, field
 
 from .codes import (
+    BLUTDRUCK_DIASTOLISCH,
+    BLUTDRUCK_PANEL,
+    BLUTDRUCK_PANEL_DE,
+    BLUTDRUCK_PANEL_TEXT,
+    BLUTDRUCK_SYSTOLISCH,
     CONDITION_CODES,
     ENCOUNTER_CLASSES,
     ENCOUNTER_STATUS,
@@ -325,7 +330,23 @@ def baue_observation(
             }
         ],
         "code": {
-            "coding": [{"system": LOINC_SYSTEM, "code": spec.code, "display": spec.display}],
+            # LOINCs **amtliche deutsche** Bezeichnung, nicht die englische.
+            # Die deutschen ISiK-Profile prüfen `Coding.display` gegen die
+            # de-DE-Fassung; nachgemessen ergab „Body weight" bei
+            # `ISiKKoerpergewicht` genau einen Fehler, und der verschwand
+            # mit dem deutschen Text. ADR-003 hatte schon entschieden, dass
+            # Anzeigetexte deutsch werden — nur der Code bleibt LOINC.
+            #
+            # `display_de` bleibt daneben unsere Kurzform für Menschen und
+            # steht in `text`. Beides zu vermischen wäre falsch: „HbA1c"
+            # ist keine LOINC-Bezeichnung.
+            "coding": [
+                {
+                    "system": LOINC_SYSTEM,
+                    "code": spec.code,
+                    "display": spec.display_loinc_de or spec.display,
+                }
+            ],
             "text": spec.display_de,
         },
         "subject": {"reference": f"Patient/tmp-pat-{patient_index}"},
@@ -336,6 +357,117 @@ def baue_observation(
             "system": UCUM_SYSTEM,
             "code": spec.unit_code,  # UCUM — nicht identisch mit `unit`
         },
+    }
+
+
+def _teile_blutdruck(messwerte: list) -> tuple[list[tuple[dict, dict]], list]:
+    """Trennt Blutdruckpaare vom Rest.
+
+    Gibt (Paare, Einzelne) zurück. Ein Paar ist ein systolischer und ein
+    diastolischer Wert **am selben Datum** — das ist die einzige Zuordnung,
+    die aus den Parametern hervorgeht und nicht geraten ist.
+
+    Was sich nicht paaren lässt, bleibt eine eigene Observation. Ein
+    einzelner systolischer Wert ergäbe kein gültiges Panel (das Profil
+    verlangt beide Komponenten), und ihn zu verwerfen wäre schlimmer als
+    ihn stehenzulassen: Er ist als schlichte Observation weiterhin
+    gültiges FHIR, nur eben nicht profilkonform.
+    """
+    syst: dict[str, dict] = {}
+    diast: dict[str, dict] = {}
+    andere: list = []
+    for eintrag in messwerte:
+        if not isinstance(eintrag, dict):
+            andere.append(eintrag)
+            continue
+        code = str(eintrag.get("code") or "").strip()
+        datum = str(eintrag.get("datum") or "")
+        if code == BLUTDRUCK_SYSTOLISCH and datum not in syst:
+            syst[datum] = eintrag
+        elif code == BLUTDRUCK_DIASTOLISCH and datum not in diast:
+            diast[datum] = eintrag
+        else:
+            andere.append(eintrag)
+
+    paare = []
+    # Nach Datum sortiert, damit die Reihenfolge nicht von der
+    # Wörterbuchreihenfolge abhängt — sonst wäre die Ausgabe nicht
+    # wiedergabestabil.
+    for datum in sorted(set(syst) & set(diast)):
+        paare.append((syst.pop(datum), diast.pop(datum)))
+    andere.extend(syst.values())
+    andere.extend(diast.values())
+    return paare, andere
+
+
+def baue_blutdruck(
+    systolisch: dict, diastolisch: dict, patient_index: int, index: int,
+    beanstandungen: list[Beanstandung], teil: int = 0
+) -> dict:
+    """Blutdruck als **eine** Observation mit zwei Komponenten.
+
+    Nicht zwei Observations mit je einem Wert — das war die Form bis
+    ADR-014 und ist mit `ISiKBlutdruckSystemischArteriell` unvereinbar.
+    Nachgemessen ergab die alte Form 12 Fehler, diese hier null.
+
+    Die Observation trägt **keinen** eigenen `valueQuantity`: Das Profil
+    erlaubt dort maximal null.
+    """
+    spec_s = OBSERVATION_CODES[BLUTDRUCK_SYSTOLISCH]
+    spec_d = OBSERVATION_CODES[BLUTDRUCK_DIASTOLISCH]
+    wert_s = _messwert(systolisch.get("wert"), spec_s, beanstandungen)
+    wert_d = _messwert(diastolisch.get("wert"), spec_d, beanstandungen)
+    # Das Datum des systolischen Werts. Beide sind gleich — danach wurden
+    # sie gepaart.
+    datum = _datum(systolisch.get("datum"), "2024-01-01", beanstandungen, "datum")
+
+    def komponente(spec, wert):
+        return {
+            "code": {
+                "coding": [
+                    {
+                        "system": LOINC_SYSTEM,
+                        "code": spec.code,
+                        "display": spec.display_loinc_de or spec.display,
+                    }
+                ]
+            },
+            "valueQuantity": {
+                "value": wert,
+                "unit": spec.unit,
+                "system": UCUM_SYSTEM,
+                "code": spec.unit_code,
+            },
+        }
+
+    return {
+        "resourceType": "Observation",
+        "id": f"tmp-obs-{teil}-{index}",
+        "status": "final",
+        "category": [
+            {
+                "coding": [
+                    {
+                        "system": OBSERVATION_CATEGORY_SYSTEM,
+                        "code": "vital-signs",
+                        "display": "Vital Signs",
+                    }
+                ]
+            }
+        ],
+        "code": {
+            "coding": [
+                {
+                    "system": LOINC_SYSTEM,
+                    "code": BLUTDRUCK_PANEL,
+                    "display": BLUTDRUCK_PANEL_DE,
+                }
+            ],
+            "text": BLUTDRUCK_PANEL_TEXT,
+        },
+        "subject": {"reference": f"Patient/tmp-pat-{patient_index}"},
+        "effectiveDateTime": datum,
+        "component": [komponente(spec_s, wert_s), komponente(spec_d, wert_d)],
     }
 
 
@@ -539,7 +671,13 @@ def zaehle_je_patient(eintrag: object) -> int:
     # Die von ISiK erzwungene Ersatzbegegnung zählt mit: Sie entsteht,
     # wenn es Diagnosen gibt, aber keine Begegnung.
     anzahl += 1 if (not begegnungen and diagnosen) else len(begegnungen)
-    anzahl += len(diagnosen) + len(liste("messwerte")) + len(liste("medikamente"))
+    anzahl += len(diagnosen) + len(liste("medikamente"))
+    # Messwerte sind NICHT eins zu eins: Ein Blutdruckpaar wird zu EINER
+    # Observation mit zwei Komponenten. Diese Zeile mitzuziehen war beim
+    # Umbau die eigentliche Falle — der Zufallstest in test_domaene.py
+    # hält beide Zählweisen gegeneinander und hätte sie gefangen.
+    paare, einzelne = _teile_blutdruck(liste("messwerte"))
+    anzahl += len(paare) + len(einzelne)
     return anzahl
 
 
@@ -708,7 +846,26 @@ def baue_aus_parametern(
                     f"Patient {p_index}: {len(messwerte)} Messwerte geliefert, {soll_m} erwartet",
                 )
             )
-        for eintrag in messwerte[:max(budget, 0)]:
+        # Blutdruckpaare zuerst: Sie werden zu EINER Observation mit zwei
+        # Komponenten, weil das Vitalparameter-Profil nichts anderes
+        # zulässt (ADR-014). Der Sollvergleich oben zählt weiterhin die
+        # gelieferten Einträge, nicht die gebauten Ressourcen — sonst
+        # meldete die Mengentreue eine Abweichung, die der eigene Code
+        # verursacht hat.
+        paare, einzelne = _teile_blutdruck(messwerte)
+        for systolisch, diastolisch in paare:
+            if budget <= 0:
+                break
+            panel = baue_blutdruck(
+                systolisch, diastolisch, p_index, obs_index, b, index_versatz
+            )
+            if erste_begegnung:
+                panel["encounter"] = {"reference": erste_begegnung}
+            ergebnis.ressourcen.append(panel)
+            obs_index += 1
+            budget -= 1
+
+        for eintrag in einzelne[:max(budget, 0)]:
             obs = baue_observation(
                 eintrag if isinstance(eintrag, dict) else {}, p_index, obs_index,
                 b, index_versatz

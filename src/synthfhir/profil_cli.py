@@ -112,7 +112,8 @@ def main(argv: list[str] | None = None) -> int:
 def _tabelle(b: Profilbericht) -> str:
     zeilen = [
         "",
-        f"Profilmessung gegen {b.paket} {b.paketversion}",
+        "Profilmessung gegen "
+        + ", ".join(f"{n} {v}" for n, v in sorted(b.module.items())),
         f"  Server:            {b.server} (FHIR {b.fhir_version})",
         f"  Terminologieserver: {b.terminologieserver}",
         "",

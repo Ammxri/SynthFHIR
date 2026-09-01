@@ -279,13 +279,20 @@ python tools/isik_referenzvalidator.py
 Misst dieselbe Kohorte mit dem Validator, den HL7 selbst veröffentlicht,
 gegen einen Terminologieserver. Gemessen am 2026-09-01:
 
-    Typ             geprüft   Fehler  Warnungen
-    Patient               3        0          3
-    Encounter             4        0          8
-    Condition             4        0         12
-    SUMME                11        0         23
+    Profil                                  geprüft   Fehler   Warn.
+    ISiKBlutdruckSystemischArteriell              1        0       2
+    ISiKDiagnose                                  4        0      12
+    ISiKKontaktGesundheitseinrichtung             4        0       8
+    ISiKMedikationsInformation                    2        0       2
+    ISiKPatient                                   3        0       3
+    SUMME                                        14        0      27
 
     Keine ungeprüften Befunde: Die Terminologie hat entschieden.
+
+Gemessen wird gegen drei Module: Basismodul, Vitalparameter und
+Medikation ([ADR-014](docs/adr-014-isik-module.md)). Die 20 Laborwerte
+des Katalogs bleiben unprofiliert — dafür wäre ISiK Labor zuständig, und
+der Bericht sagt das in jeder Ausgabe.
 
 Damit sind die acht ungeprüften Befunde aus ADR-009 **aufgelöst**, nicht
 wegdefiniert — das Werkzeug sucht ausdrücklich nach den Meldungen, die
@@ -419,6 +426,7 @@ in dieser Reihenfolge:
 | [ADR-011](docs/adr-011-programmatischer-zugang.md) | Ein API-Zugang, der ausschließlich auf fremde Rechnung läuft |
 | [ADR-012](docs/adr-012-mengengrenze-und-wiedergabe.md) | Eine Mengengrenze gegen Verstärkung — und die Wiedergabe über das Netz |
 | [ADR-013](docs/adr-013-terminologienachweis.md) | Die SNOMED-Bindung entscheiden — und beweisen, dass entschieden wurde |
+| [ADR-014](docs/adr-014-isik-module.md) | Die ISiK-Module für Observation und MedicationStatement |
 | [Konzepte](docs/konzepte.md) | Die FHIR-Grundlagen dahinter, ausführlich erklärt |
 
 ### Die tragenden Entscheidungen in drei Sätzen

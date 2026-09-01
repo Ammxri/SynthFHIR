@@ -63,19 +63,63 @@ import requests
 PAKET = "de.gematik.isik-basismodul"
 PAKETVERSION = "4.0.3"
 
+_SD = "https://gematik.de/fhir/isik/StructureDefinition/"
+
 PROFILE = {
-    "Patient": "https://gematik.de/fhir/isik/StructureDefinition/ISiKPatient",
-    "Encounter": (
-        "https://gematik.de/fhir/isik/StructureDefinition/"
-        "ISiKKontaktGesundheitseinrichtung"
-    ),
-    "Condition": "https://gematik.de/fhir/isik/StructureDefinition/ISiKDiagnose",
+    "Patient": _SD + "ISiKPatient",
+    "Encounter": _SD + "ISiKKontaktGesundheitseinrichtung",
+    "Condition": _SD + "ISiKDiagnose",
+    # Das Medikationsmodul profiliert MedicationStatement. Nachgemessen
+    # erfüllt unsere Ausgabe es bereits ohne jede Änderung — anders als
+    # zunächst aus dem Differential gelesen, verlangt
+    # `medication[x].reference` keine Medication-Ressource, sondern gilt
+    # nur, FALLS eine Referenz benutzt wird.
+    "MedicationStatement": _SD + "ISiKMedikationsInformation",
 }
 
-# Ressourcentypen, für die das Basismodul kein Profil kennt. Sie gehören zu
-# eigenen Modulen (Vitalparameter, Medikation) und werden hier ausgewiesen
-# statt stillschweigend übergangen.
-OHNE_PROFIL = ("Observation", "MedicationStatement")
+# Die weiteren Module. Sie werden vom Messserver zusätzlich geladen.
+MODULE = {
+    "de.gematik.isik-basismodul": "4.0.3",
+    "de.gematik.isik-vitalparameter": "4.0.2",
+    "de.gematik.isik-medikation": "4.0.3",
+}
+
+# Observation ist der Sonderfall: Das Vitalparameter-Modul profiliert nicht
+# „Observation", sondern **je Vitalparameter einzeln**. Welches Profil gilt,
+# entscheidet also der LOINC-Code der einzelnen Ressource — nicht ihr Typ.
+#
+# Für die 20 Laborwerte des Katalogs gibt es hier nichts: Zuständig wäre
+# das Modul ISiK Labor, und das ist nicht Teil dieses Auftrags. Sie bleiben
+# unprofiliert, und der Bericht sagt das je Ressource.
+VITALPROFILE = {
+    "85354-9": _SD + "ISiKBlutdruckSystemischArteriell",
+    "8867-4": _SD + "ISiKHerzfrequenz",
+    "29463-7": _SD + "ISiKKoerpergewicht",
+    "8302-2": _SD + "ISiKKoerpergroesse",
+}
+
+LOINC = "http://loinc.org"
+
+
+def profil_fuer(ressource: dict) -> str | None:
+    """Das Profil dieser einen Ressource, oder `None`.
+
+    Je **Ressource**, nicht je Typ. Bis ADR-014 genügte eine Zuordnung
+    nach Ressourcentyp; das Vitalparameter-Modul kennt aber für jeden
+    Vitalparameter ein eigenes Profil, und für Laborwerte gar keines.
+    Derselbe Typ trägt damit beides.
+    """
+    typ = ressource.get("resourceType")
+    if typ in PROFILE:
+        return PROFILE[typ]
+    if typ != "Observation":
+        return None
+    for coding in (ressource.get("code") or {}).get("coding", []):
+        if coding.get("system") == LOINC:
+            treffer = VITALPROFILE.get(coding.get("code"))
+            if treffer:
+                return treffer
+    return None
 
 TIMEOUT_S = 180.0
 
@@ -166,6 +210,10 @@ class Profilbericht:
     paket: str
     paketversion: str
     terminologieserver: str
+    # Alle Module, die Profile beisteuern. Seit ADR-014 sind es drei; der
+    # Kopf „gemessen gegen das Basismodul" wäre sonst eine unzutreffende
+    # Angabe über den eigenen Messaufbau.
+    module: dict[str, str] = field(default_factory=dict)
     ergebnisse: list[Profilergebnis] = field(default_factory=list)
     hinweise: list[str] = field(default_factory=list)
 
@@ -193,6 +241,7 @@ class Profilbericht:
             "fhir_version": self.fhir_version,
             "paket": self.paket,
             "paketversion": self.paketversion,
+            "module": self.module,
             "terminologieserver": self.terminologieserver,
             "hinweis": (
                 "Synthetische Testdaten. 'ungeprueft' heißt: Der Validator "
@@ -299,25 +348,32 @@ def pruefe_gegen_profile(
         fhir_version=str(cap.get("fhirVersion") or "unbekannt"),
         paket=PAKET,
         paketversion=PAKETVERSION,
+        module=dict(MODULE),
         # Ohne Terminologieserver bleibt jede Bindung an SNOMED, LOINC,
         # ICD-10-GM und ATC ungeprüft. Das gehört in den Bericht, nicht in
         # eine Fußnote.
         terminologieserver="keiner",
     )
 
-    ohne_profil = sorted(
-        {r["resourceType"] for r in ressourcen if r["resourceType"] in OHNE_PROFIL}
-    )
-    if ohne_profil:
+    # Je RESSOURCE gezählt, nicht je Typ: Ein Observation-Satz kann zur
+    # Hälfte profiliert sein (Vitalparameter) und zur Hälfte nicht
+    # (Laborwerte). Die alte Meldung „für Observation gibt es kein Profil"
+    # wäre jetzt schlicht falsch.
+    unprofiliert: dict[str, int] = {}
+    for r in ressourcen:
+        if profil_fuer(r) is None:
+            typ = str(r.get("resourceType"))
+            unprofiliert[typ] = unprofiliert.get(typ, 0) + 1
+    for typ, anzahl in sorted(unprofiliert.items()):
         bericht.hinweise.append(
-            f"Für {', '.join(ohne_profil)} kennt das Basismodul kein Profil. "
-            "Sie gehören zu eigenen Modulen (Vitalparameter, Medikation) und "
-            "wurden nicht geprüft."
+            f"{anzahl} {typ}-Ressource(n) ohne Profil in den geladenen "
+            "Modulen. Für Laborwerte wäre das Modul ISiK Labor zuständig; "
+            "es ist nicht geladen."
         )
 
     for r in ressourcen:
         typ = r.get("resourceType")
-        profil = PROFILE.get(typ)
+        profil = profil_fuer(r)
         if not profil:
             continue
         antwort = s.post(

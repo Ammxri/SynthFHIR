@@ -223,3 +223,67 @@ def test_die_bindung_haelt_gegen_den_echten_server(terminologieserver):
     assert n.gueltig, n.befund()
     assert n.alle_mitglied, n.befund()
     assert n.snomed_version, "der Bericht muss die SNOMED-Fassung nennen"
+
+
+def test_die_deutschen_loinc_bezeichnungen_stimmen(terminologieserver):
+    """Der Katalog fuehrt LOINCs amtliche deutsche Bezeichnung, und sie
+    steht in `Coding.display`.
+
+    Ein abgeschriebener Text veraltet still: LOINC gibt neue Fassungen
+    heraus, und ein Profil, das den Anzeigenamen prueft, meldet das dann
+    als Fehler — an einer Stelle, an der niemand eine Katalogpflege
+    vermutet. Dieser Test haelt die 25 Werte gegen den Server.
+
+    **Gefragt wird tx.fhir.org, nicht der Vorgabeserver.** Von dort
+    stammen die Werte, und die beiden Server unterscheiden sich: Fuer
+    33914-3 (geschaetzte GFR) fuehrt tx.fhir.de gemessen keine deutsche
+    Bezeichnung und faellt auf den englischen Text zurueck. Gegen den
+    Vorgabeserver zu pruefen hiesse also, eine Luecke jenes Servers als
+    Katalogfehler zu melden.
+
+    Uebersprungen ohne SYNTHFHIR_REQUIRE_TERMINOLOGIE=1, wie jede Messung
+    gegen einen fremden Dienst.
+    """
+    import requests
+
+    from synthfhir.domain.codes import KATALOGE
+    from synthfhir.terminologie import SERVER
+
+    quelle = SERVER["org"]
+    abweichend = []
+    for e in KATALOGE["observations"].values():
+        a = requests.post(
+            quelle + "/CodeSystem/" + chr(36) + "lookup",
+            json={"resourceType": "Parameters", "parameter": [
+                {"name": "system", "valueUri": "http://loinc.org"},
+                {"name": "code", "valueCode": e.code},
+                {"name": "displayLanguage", "valueCode": "de-DE"}]},
+            headers={"Accept": "application/fhir+json"}, timeout=90)
+        amtlich = next(
+            (p.get("valueString") for p in a.json().get("parameter", [])
+             if p["name"] == "display"), None)
+        if amtlich != e.display_loinc_de:
+            abweichend.append((e.code, e.display_loinc_de, amtlich))
+    assert not abweichend, abweichend
+
+
+def test_der_blutdruck_panelcode_traegt_die_amtliche_bezeichnung(terminologieserver):
+    """Er steht als eigene Konstante neben dem Katalog und wuerde von der
+    Schleife oben nicht erfasst."""
+    import requests
+
+    from synthfhir.domain.codes import BLUTDRUCK_PANEL, BLUTDRUCK_PANEL_DE
+
+    from synthfhir.terminologie import SERVER
+
+    a = requests.post(
+        SERVER["org"] + "/CodeSystem/" + chr(36) + "lookup",
+        json={"resourceType": "Parameters", "parameter": [
+            {"name": "system", "valueUri": "http://loinc.org"},
+            {"name": "code", "valueCode": BLUTDRUCK_PANEL},
+            {"name": "displayLanguage", "valueCode": "de-DE"}]},
+        headers={"Accept": "application/fhir+json"}, timeout=90)
+    amtlich = next(
+        (p.get("valueString") for p in a.json().get("parameter", [])
+         if p["name"] == "display"), None)
+    assert amtlich == BLUTDRUCK_PANEL_DE, (BLUTDRUCK_PANEL_DE, amtlich)

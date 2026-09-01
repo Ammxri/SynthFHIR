@@ -332,6 +332,16 @@ def test_die_vorzaehlung_stimmt_mit_dem_bau_ueberein():
 
     wuerfel = random.Random(20260901)
     muell = [0, "text", None, [], {}, 5, "kein array", True]
+    # Blutdruckcodes gehören ausdrücklich hinein: Seit ADR-014 wird ein
+    # Paar zu EINER Observation, die Zählung ist also nicht mehr eins zu
+    # eins. Ein Zufallstest, der nur leere Objekte würfelt, träfe diesen
+    # Pfad nie und bliebe grün, während die Vorzählung falsch zählt.
+    messwertformen = [
+        {}, {"code": "8480-6", "datum": "2024-01-01"},
+        {"code": "8462-4", "datum": "2024-01-01"},
+        {"code": "8480-6", "datum": "2024-06-01"},
+        {"code": "4548-4", "datum": "2024-01-01"},
+    ]
 
     for lauf in range(500):
         patienten = []
@@ -347,7 +357,13 @@ def test_die_vorzaehlung_stimmt_mit_dem_bau_ueberein():
                 if wahl < 0.35:
                     eintrag[feld] = wuerfel.choice(muell)   # falscher Typ
                     continue
-                eintrag[feld] = [{}] * wuerfel.randint(0, 4)
+                if feld == "messwerte":
+                    eintrag[feld] = [
+                        dict(wuerfel.choice(messwertformen))
+                        for _ in range(wuerfel.randint(0, 5))
+                    ]
+                else:
+                    eintrag[feld] = [{}] * wuerfel.randint(0, 4)
             patienten.append(eintrag)
         parameter = {"patienten": patienten}
 
@@ -480,3 +496,111 @@ def test_die_meldung_gibt_keinen_langen_aufruferwert_wieder():
     )
     meldung = next(b for b in bau.beanstandungen if b.art == "ungueltiger_messwert")
     assert len(meldung.detail) < 200, meldung.detail
+
+
+# --- Blutdruck als Panel (ADR-014) -----------------------------------------
+
+
+def _blutdruck(datum="2024-01-15", syst=130, diast=85):
+    return [{"code": "8480-6", "wert": syst, "datum": datum},
+            {"code": "8462-4", "wert": diast, "datum": datum}]
+
+
+def test_blutdruck_wird_eine_observation_mit_zwei_komponenten():
+    """Das Vitalparameter-Profil laesst nichts anderes zu.
+
+    Gemessen gegen ISiKBlutdruckSystemischArteriell ergaben zwei getrennte
+    Observations 12 Fehler, darunter:
+      BPCode: magic LOINC code 85354-9 required, but not found
+      Observation.component: mindestens erforderlich = 2
+      Observation.value[x]: maximal erlaubt = 0, aber gefunden 1
+    """
+    from synthfhir.domain.codes import BLUTDRUCK_PANEL
+
+    bau = baue_aus_parametern({"patienten": [_patient(messwerte=_blutdruck())]}, {})
+    obs = [r for r in bau.ressourcen if r["resourceType"] == "Observation"]
+    assert len(obs) == 1, "aus zwei Messwerten wird EINE Observation"
+
+    panel = obs[0]
+    assert panel["code"]["coding"][0]["code"] == BLUTDRUCK_PANEL
+    assert "valueQuantity" not in panel, "das Profil erlaubt hier maximal null"
+    codes = [k["code"]["coding"][0]["code"] for k in panel["component"]]
+    assert codes == ["8480-6", "8462-4"]
+    for k in panel["component"]:
+        assert k["valueQuantity"]["code"] == "mm[Hg]"
+
+
+def test_ein_einzelner_blutdruckwert_bleibt_eine_eigene_observation():
+    """Ein Panel braucht beide Komponenten. Einen unpaarigen Wert zu
+    verwerfen waere schlimmer als ihn stehenzulassen: Er ist als schlichte
+    Observation weiterhin gueltiges FHIR, nur nicht profilkonform."""
+    bau = baue_aus_parametern(
+        {"patienten": [_patient(messwerte=[{"code": "8480-6", "wert": 130,
+                                            "datum": "2024-01-15"}])]}, {}
+    )
+    obs = [r for r in bau.ressourcen if r["resourceType"] == "Observation"]
+    assert len(obs) == 1
+    assert obs[0]["code"]["coding"][0]["code"] == "8480-6"
+    assert "valueQuantity" in obs[0]
+    assert "component" not in obs[0]
+
+
+def test_gepaart_wird_nur_am_selben_datum():
+    """Die einzige Zuordnung, die aus den Parametern hervorgeht. Alles
+    andere waere geraten."""
+    mw = _blutdruck("2024-01-15") + [{"code": "8480-6", "wert": 140,
+                                      "datum": "2024-06-01"}]
+    bau = baue_aus_parametern({"patienten": [_patient(messwerte=mw)]}, {})
+    obs = [r for r in bau.ressourcen if r["resourceType"] == "Observation"]
+    codes = sorted(o["code"]["coding"][0]["code"] for o in obs)
+    assert codes == ["8480-6", "85354-9"], codes
+
+
+def test_die_paarung_ist_deterministisch():
+    """Ohne das waere eine Kohorte mit Blutdruck nicht wiedergebbar."""
+    p = {"patienten": [_patient(messwerte=_blutdruck("2024-01-15")
+                                + _blutdruck("2024-03-01", 128, 82))]}
+    erst = json.dumps(baue_aus_parametern(p, {}).ressourcen, sort_keys=True)
+    zweit = json.dumps(baue_aus_parametern(p, {}).ressourcen, sort_keys=True)
+    assert erst == zweit
+
+
+def test_loinc_display_ist_die_amtliche_deutsche_bezeichnung():
+    """Die deutschen ISiK-Profile pruefen `Coding.display` gegen LOINCs
+    de-DE-Fassung. Nachgemessen ergab 'Body weight' bei ISiKKoerpergewicht
+    genau einen Fehler, und der verschwand mit 'Koerpergewicht'.
+
+    `display_de` bleibt daneben unsere Kurzform und steht in `text` —
+    'HbA1c' ist keine LOINC-Bezeichnung.
+    """
+    from synthfhir.domain.codes import OBSERVATION_CODES
+
+    bau = baue_aus_parametern(
+        {"patienten": [_patient(messwerte=[{"code": "4548-4", "wert": 7.2}])]}, {}
+    )
+    obs = next(r for r in bau.ressourcen if r["resourceType"] == "Observation")
+    spec = OBSERVATION_CODES["4548-4"]
+    assert obs["code"]["coding"][0]["display"] == spec.display_loinc_de
+    assert obs["code"]["text"] == spec.display_de
+    assert spec.display_loinc_de != spec.display_de, "sonst prueft dieser Test nichts"
+
+
+def test_jeder_messwertcode_hat_eine_amtliche_deutsche_bezeichnung():
+    """Eine Luecke hier hiesse: stiller Rueckfall auf den englischen Text
+    und ein Fehler im deutschen Profil."""
+    from synthfhir.domain.codes import OBSERVATION_CODES
+
+    ohne = [e.code for e in OBSERVATION_CODES.values() if not e.display_loinc_de]
+    assert not ohne, f"ohne deutsche LOINC-Bezeichnung: {ohne}"
+
+
+def test_die_referenzkohorte_traegt_das_blutdruckpanel():
+    """Sie ist die Messgrundlage. Faellt das Panel aus ihr heraus, misst
+    der ISiK-Bericht den Fall nicht mehr, um den es geht."""
+    from synthfhir.referenzkohorte import baue
+
+    res = baue()
+    panels = [r for r in res
+              if r["resourceType"] == "Observation" and r.get("component")]
+    assert len(panels) == 1
+    assert panels[0]["code"]["coding"][0]["code"] == "85354-9"
