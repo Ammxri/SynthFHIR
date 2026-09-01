@@ -337,9 +337,24 @@ def _aus_art(art: str | None) -> JSONResponse:
 # Erst hier, weil die Prüfung vorher stehen muss: Sie hängt am ROUTER und
 # nicht an der Route, damit eine später hinzugefügte Route sie erbt statt
 # sie vergessen zu können.
+# ZWEI Router, und das ist der Kern der Zusage.
+#
+# `router` traegt die Schluesselpruefung als Abhaengigkeit. Jede Route, die
+# ein Modell aufruft, gehoert dorthin — sie kann die Pruefung dann nicht
+# vergessen, denn sie erbt sie.
+#
+# `router_offen` traegt sie nicht. Er ist ausdruecklich benannt, damit eine
+# Route dort nur landet, wenn jemand sie hinschreibt. Eine Ausnahme direkt
+# an einer Route waere die gefaehrlichere Form gewesen: Sie liesse sich
+# beim naechsten Mal mitkopieren, ohne dass es auffaellt.
+#
+# `tests/test_api.py` haelt die Regel: Es geht jede registrierte Route
+# durch und verlangt 401 ohne Schluessel — mit genau einer namentlich
+# genannten Ausnahme.
 router = APIRouter(
     prefix="/api/v1", tags=["api"], dependencies=[Depends(pflicht_schluessel)]
 )
+router_offen = APIRouter(prefix="/api/v1", tags=["api"])
 
 
 @router.post(
@@ -480,11 +495,14 @@ class Wiedergabeanfrage(BaseModel):
     )
 
 
-@router.post(
+@router_offen.post(
     "/wiedergeben",
     summary="Eine Aufzeichnung ohne Modellaufruf nachrechnen",
     openapi_extra={
-        "security": [{"SynthFHIR-LLM-Key": []}],
+        # Ausdruecklich LEER: Diese Route verlangt keinen Schluessel. Ohne
+        # diese Zeile erbte sie die Sicherheitsangabe der App und
+        # behauptete im Schema etwas, das nicht stimmt.
+        "security": [],
         "requestBody": {
             "required": True,
             "content": {
@@ -503,11 +521,17 @@ async def wiedergeben(request: Request) -> JSONResponse:
     Endpunkt gibt. Er funktioniert auch dann, wenn beim Betreiber gar
     kein Anbieter erreichbar ist; ein 503 kommt hier nie vor.
 
-    **Pflichtkopf `X-SynthFHIR-LLM-Key`.** Ehrlich gesagt: Er wird hier
-    weder benutzt noch auf Gültigkeit geprüft — diese Route baut keinen
-    Client. Sie erbt die Prüfung vom Router, und das ist Absicht: Eine
-    Ausnahme wäre die Stelle, an der die nächste modellaufrufende Route
-    ohne Prüfung landet.
+    **Kein Schlüssel nötig.** Diese Route ruft kein Modell auf und
+    berührt kein Kontingent — weder das des Betreibers noch ein fremdes.
+    Ein Schlüssel wäre hier eine Eintrittskarte gewesen, die niemand
+    einliest: Sie wurde nie auf Gültigkeit geprüft, jede druckbare
+    Zeichenkette hätte genügt. Ihn zu verlangen hätte also nichts
+    geschützt und dafür fremde Zugangsdaten eingesammelt, die niemand
+    braucht.
+
+    Geschützt wird diese Route stattdessen durch Grenzen, die tatsächlich
+    greifen: Anfragekörper, Zahl der Teile, Zahl der Ressourcen und
+    gleichzeitige Läufe.
 
     **Der Inhalt stammt vom Aufrufer, nicht von einem Modell.** Namen und
     Beschreibungen aus der Aufzeichnung stehen unverändert im
@@ -712,6 +736,7 @@ def registriere(app: FastAPI) -> None:
         return abbruch.antwort
 
     app.include_router(router)
+    app.include_router(router_offen)
 
 
 def _antwort(

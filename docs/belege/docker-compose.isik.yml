@@ -8,7 +8,9 @@
 #   docker compose -f docker-compose.isik.yml up -d
 services:
   hapi-isik:
-    image: hapiproject/hapi:latest
+    # Feste Fassung: Mit `:latest` misst der naechste Lauf gegen ein
+    # anderes Werkzeug, ohne dass es im Bericht steht.
+    image: hapiproject/hapi:v8.10.0-3
     container_name: synthfhir-hapi-isik
     ports:
       - "8090:8080"

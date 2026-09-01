@@ -10,11 +10,13 @@
 #
 # Reproduzierbarkeit: `latest` kann sich zwischen Messreihen ändern und damit
 # das Validierungsverhalten verschieben. Sobald eine Version läuft, sollte
-# sie festgenagelt werden (z. B. hapiproject/hapi:v8.4.0). Die vom Server
+# sie festgenagelt werden (z. B. hapiproject/hapi:v8.10.0-3). Die vom Server
 # gemeldete FHIR-Version steht in jeder session.json und im Bericht.
 services:
   hapi:
-    image: hapiproject/hapi:latest
+    # Feste Fassung: Mit `:latest` misst der naechste Lauf gegen ein
+    # anderes Werkzeug, ohne dass es im Bericht steht.
+    image: hapiproject/hapi:v8.10.0-3
     container_name: synthfhir-hapi
     ports:
       - "8080:8080"

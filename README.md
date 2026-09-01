@@ -112,8 +112,9 @@ umsonst. Für eine Prüfkette ist das der eigentliche Wert des Zugangs: Er
 funktioniert auch dann, wenn beim Betreiber gar kein Anbieter erreichbar
 ist.
 
-Der Rumpf ist `{"aufzeichnung": …}` mit dem Objekt aus dem Feld
-`aufzeichnung` einer `/erzeugen`-Antwort. Die Antwort trägt `identisch`,
+**Ohne Schlüssel** — diese Route berührt kein Kontingent, weder Ihres
+noch ein fremdes. Der Rumpf ist `{"aufzeichnung": …}` mit dem Objekt aus
+dem Feld `aufzeichnung` einer `/erzeugen`-Antwort. Die Antwort trägt `identisch`,
 `befund` und beide Prüfsummen. Sie antwortet mit **200 für jede
 Prüfsummenlage** — eine Abweichung ist ein Befund, kein Fehler.
 
@@ -250,6 +251,26 @@ SNOMED-Bindung entscheiden kann.
 **Drei Spalten, nicht zwei.** `ungeprüft` heißt: Der Validator konnte es
 nicht entscheiden — nicht, dass es richtig ist. Ohne Terminologieserver
 bleibt jede Bindung an SNOMED, LOINC, ICD-10-GM und ATC in dieser Spalte.
+
+### Die SNOMED-Bindung entscheiden
+
+```bash
+synthfhir-profil --terminologie
+```
+
+Fragt einen öffentlichen Terminologieserver, ob jeder Diagnosecode des
+Katalogs Mitglied des ValueSets ist, das ISiK für `Condition.code`
+verlangt — genau die Frage, die dem Validator ohne SNOMED-Hierarchie
+offenbleibt. Gemessen am 2026-09-01: **25 von 25**, auf tx.fhir.de und
+tx.fhir.org.
+
+Der Nachweis führt zwei **Gegenproben** mit: einen Code, den es gibt, der
+aber kein Befund ist, und einen erfundenen. Beide müssen verneint werden,
+sonst gilt die Messung als ungültig. Das ist kein Beiwerk — der Versuch,
+stattdessen den Validator selbst auf einen Terminologieserver zu zeigen,
+ergab „0 ungeprüft" aus einer abgestürzten Validierung.
+
+Näheres in [ADR-013](docs/adr-013-terminologienachweis.md).
 Solche Befunde als Fehler zu zählen machte das Ergebnis schlechter, als es
 ist; sie zu verschweigen besser. Beides wäre Schönfärberei mit Zahlen.
 
@@ -371,6 +392,7 @@ in dieser Reihenfolge:
 | [ADR-010](docs/adr-010-ausgabewege-in-der-weboberflaeche.md) | Warum der NDJSON-Download ein Archiv ist und die Aufzeichnung nicht gesperrt wird |
 | [ADR-011](docs/adr-011-programmatischer-zugang.md) | Ein API-Zugang, der ausschließlich auf fremde Rechnung läuft |
 | [ADR-012](docs/adr-012-mengengrenze-und-wiedergabe.md) | Eine Mengengrenze gegen Verstärkung — und die Wiedergabe über das Netz |
+| [ADR-013](docs/adr-013-terminologienachweis.md) | Die SNOMED-Bindung entscheiden — und beweisen, dass entschieden wurde |
 | [Konzepte](docs/konzepte.md) | Die FHIR-Grundlagen dahinter, ausführlich erklärt |
 
 ### Die tragenden Entscheidungen in drei Sätzen
@@ -486,3 +508,25 @@ Den eingefrorenen Spike separat prüfen:
 ```bash
 .venv/Scripts/python.exe -m pytest spike/tests -q
 ```
+
+---
+
+## Lizenz
+
+Der **Code** steht unter der MIT-Lizenz (`LICENSE`).
+
+Der **Katalog** in `src/synthfhir/domain/codes.py` führt daneben Codes und
+Bezeichnungen aus SNOMED CT, LOINC, ICD-10-GM und ATC. Für sie gilt die
+MIT-Lizenz nicht — die Bedingungen ihrer Herausgeber stehen in
+[NOTICE.md](NOTICE.md).
+
+Kurz: Die **erzeugten Testdaten** sind eine Anwendung dieser
+Terminologien und unproblematisch. Wer den **Katalog selbst** übernimmt
+oder verändert, handelt mit kuratierter Terminologie und ist an die
+Bedingungen in `NOTICE.md` gebunden.
+
+> This material contains content from LOINC (<https://loinc.org>). LOINC is
+> copyright © 1995-2026, Regenstrief Institute, Inc. and the LOINC
+> Committee and is available at no cost under the license at
+> <https://loinc.org/license/>. LOINC® is a registered United States
+> trademark of Regenstrief Institute, Inc.

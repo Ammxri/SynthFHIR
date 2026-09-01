@@ -540,13 +540,64 @@ def test_wiedergabe_braucht_keinen_modellaufruf(klient, draht):
     assert len(draht.anfragen) == 1, "die Wiedergabe hat doch das Modell gefragt"
 
 
-def test_wiedergabe_ohne_schluessel_wird_abgewiesen(klient):
-    """Die Route haengt am selben Router und erbt die Pflicht. Der
-    Schluessel wird hier nicht benutzt — die Ausnahme waere aber die
-    Stelle, an der die naechste modellaufrufende Route sie verliert."""
+def test_wiedergabe_laeuft_ohne_schluessel(klient):
+    """Diese Route ruft kein Modell auf und beruehrt kein Kontingent.
+
+    Einen Schluessel zu verlangen haette hier nichts geschuetzt: Er wurde
+    nie auf Gueltigkeit geprueft, jede druckbare Zeichenkette genuegte.
+    Er einzusammeln haette also fremde Zugangsdaten aufgenommen, die
+    niemand braucht.
+    """
     antwort = _wiedergabe(klient, _aufzeichnung([{"vorname": "A"}]), schluessel=None)
-    assert antwort.status_code == 401
-    assert antwort.json()["fehlerart"] == "schluessel_fehlt"
+    assert antwort.status_code == 200, antwort.text
+    assert antwort.json()["lauf"]["modellaufrufe"] == 0
+
+
+def test_jede_api_route_verlangt_einen_schluessel_ausser_der_wiedergabe(klient):
+    """Die Regel, die den zweiten Router traegt.
+
+    Sie geht ueber ALLE veroeffentlichten Routen, nicht ueber eine Liste,
+    die jemand hier pflegen muesste. Kommt eine neue Route dazu und
+    verlangt keinen Schluessel, faerbt sich dieser Test rot und zwingt zu
+    einer bewussten Entscheidung.
+
+    Gegengeprueft, mit zwei absichtlichen Fehlern:
+
+    * Eine NEUE Route am offenen Router ohne jede Pruefung -> rot.
+      Das ist der Fall, um den es geht.
+    * `/erzeugen` an den offenen Router gehaengt -> **gruen**, und das ist
+      richtig so: Diese Route traegt `Depends(pflicht_schluessel)` auch in
+      ihrer Signatur, die Pruefung hielt also weiterhin. Der Test misst
+      die Eigenschaft „verlangt einen Schluessel", nicht „haengt am
+      richtigen Router" — und die erste ist die, auf die es ankommt.
+    """
+    OHNE_SCHLUESSEL = {"/api/v1/wiedergeben"}
+
+    # Die Pfadliste kommt aus dem Schema, das die App selbst
+    # veroeffentlicht — nicht aus FastAPI-Interna und nicht aus einer
+    # Liste, die jemand hier pflegen muesste.
+    pfade = klient.get("/api/v1/openapi.json").json()["paths"]
+    gepruefte = 0
+    for pfad, operationen in pfade.items():
+        if "post" not in operationen:
+            continue
+        gepruefte += 1
+        antwort = klient.post(pfad, json={})
+        if pfad in OHNE_SCHLUESSEL:
+            assert antwort.status_code != 401, f"{pfad} verlangt doch einen"
+        else:
+            assert antwort.status_code == 401, (
+                f"{pfad} laesst ohne Schluessel durch (HTTP {antwort.status_code})"
+            )
+    assert gepruefte >= 2, f"nur {gepruefte} Routen gefunden"
+
+
+def test_das_schema_sagt_die_wahrheit_ueber_den_schluessel(klient):
+    """Ein Schema, das an der offenen Route eine Sicherheitsangabe
+    behauptet, waere eine Falschauskunft — und umgekehrt."""
+    pfade = klient.get("/api/v1/openapi.json").json()["paths"]
+    assert pfade["/api/v1/erzeugen"]["post"]["security"]
+    assert pfade["/api/v1/wiedergeben"]["post"]["security"] == []
 
 
 def test_wiedergabe_braucht_keinen_erreichbaren_anbieter(klient, monkeypatch):

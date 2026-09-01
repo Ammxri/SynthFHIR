@@ -6,6 +6,7 @@
 | **Datum** | 2026-09-01 |
 | **Phase** | 3 |
 | **Betrifft** | `domain/templates.py`, `kohorte.py`, `web/api.py`, Weboberfläche, CLI |
+| **Ergänzt** | 2026-09-01: Die Wiedergabe verlangt keinen Schlüssel mehr (Abschnitt 3) |
 | **Baut auf** | ADR-004, ADR-006, ADR-009, ADR-011 |
 
 ---
@@ -79,8 +80,9 @@ Code, der mit ADR-011 bereits ausgeliefert war:
 | `/api/v1/wiedergeben` | Ressourcen gesamt | 5000 |
 | `/api/v1/wiedergeben` | gleichzeitige Läufe | 2 |
 
-Dazu `POST /api/v1/wiedergeben`, am bestehenden Router, mit
-Schlüsselpflicht — und die drei Absturzpfade behoben.
+Dazu `POST /api/v1/wiedergeben` — **ohne Schlüsselpflicht**, an einem
+zweiten, ausdrücklich benannten Router — und die drei Absturzpfade
+behoben.
 
 ---
 
@@ -218,23 +220,42 @@ Die Anhebung des Körperdeckels auf 512 KB und die Ressourcengrenze sind
 64 KB nähme der Endpunkt ausgerechnet die Aufzeichnungen nicht an, für die
 er da ist.
 
-### Der Schlüssel ist hier Eintrittskarte, kein Schloss
+### Die Wiedergabe verlangt keinen Schlüssel
 
-Die Route erbt `Depends(pflicht_schluessel)` vom Router. Sie baut aber
-keinen Client, prüft den Schlüssel also nie auf Gültigkeit — jede
-Zeichenkette aus druckbarem ASCII genügt, dauerhaft.
+Zunächst tat sie es, und der erste Entwurf begründete das damit, dass die
+Prüfung am Router verhindert, dass eine später hinzugefügte,
+**modellaufrufende** Route sie vergisst.
 
-Das ist ehrlich zu benennen, und es ist trotzdem die richtige Wahl: Die
-Prüfung am Router ist die Eigenschaft, die verhindert, dass eine später
-hinzugefügte, **modellaufrufende** Route sie vergisst. Eine Ausnahme wäre
-genau die Stelle, an der das passiert. Der Preis: Wer eine Prüfkette
-betreibt, die nie ein Modell braucht, muss trotzdem ein lebendes
-Anbietergeheimnis mitschicken.
+Der Betreiber hat anders entschieden, und die Entscheidung ist die
+bessere. Der Grund steht schon im ersten Entwurf, nur wurde er dort nicht
+zu Ende gedacht: Der Schlüssel wurde auf dieser Route **nie auf
+Gültigkeit geprüft** — die Route baut keinen Client, jede Zeichenkette
+aus druckbarem ASCII genügte. Er zu verlangen schützte also nichts und
+sammelte dafür fremde Zugangsdaten ein, die niemand braucht. Eine
+Fassade, die man für Schutz hält, ist schlechter als keine.
 
-Der Vorgabe des Betreibers — „ohne eigenen Schlüssel nicht laufen lassen" —
-entspricht das wörtlich. Dem *Zweck* der Vorgabe entspräche auch ein
-schlüsselfreier Endpunkt, denn eine Wiedergabe berührt kein Kontingent.
-Die Entscheidung liegt beim Betreiber und ist mit einer Zeile umkehrbar.
+Geschützt wird die Route durch die Grenzen, die tatsächlich greifen:
+Anfragekörper, Teile, Ressourcen, gleichzeitige Läufe. Die Öffnung ist
+damit **schutzneutral**; sie ändert nur, wer anklopfen darf.
+
+Die berechtigte Sorge des ersten Entwurfs bleibt trotzdem gültig, und sie
+wird jetzt anders beantwortet — **konstruktiv statt durch Verzicht**:
+
+* Es gibt **zwei Router**. `router` trägt die Schlüsselprüfung, jede
+  modellaufrufende Route gehört dorthin. `router_offen` trägt sie nicht
+  und ist so benannt, dass eine Route dort nur landet, wenn jemand sie
+  hinschreibt. Eine Ausnahme direkt an einer Route wäre die gefährlichere
+  Form gewesen — sie liesse sich beim nächsten Mal mitkopieren.
+* Ein Test geht über **alle veröffentlichten Routen** und verlangt 401
+  ohne Schlüssel, mit genau einer namentlich genannten Ausnahme. Eine
+  neue, ungeschützte Route färbt ihn rot.
+
+Gegengeprüft: Eine neu hinzugefügte Route am offenen Router lässt den
+Test fallen. `/erzeugen` versehentlich dorthin zu hängen dagegen nicht —
+diese Route trägt die Prüfung auch in ihrer Signatur, die Sperre hielt
+also weiter. Der Test misst „verlangt einen Schlüssel", nicht „hängt am
+richtigen Router", und die erste Eigenschaft ist die, auf die es
+ankommt.
 
 ---
 
@@ -327,7 +348,8 @@ Fehler geprüft und wird bei beiden rot.
 | Eine Beanstandung je gekapptem Eintrag | 43 678 Beanstandungen für einen Aufruf — die Meldung wäre der Verstärker. |
 | Umgebungsschalter für `GRENZE_JE_PATIENT` | Lüde zum Anheben ein. Dieselbe Falle wie `SYNTHFHIR_LLM_MAX_TOKENS`. |
 | Körperdeckel 512 KB ohne Ressourcengrenze | Ergäbe rund 175 000 Ressourcen aus unförmigen Einträgen. Beide Zahlen sind eine Entscheidung. |
-| `/wiedergeben` ohne Schlüssel | Entspräche dem Zweck der Auflage, nicht ihrem Wortlaut — und risse die Router-Prüfung auf, die verhindert, dass eine spätere Route sie vergisst. |
+| `/wiedergeben` mit Schlüsselpflicht | Der Schlüssel wurde dort nie geprüft — eine Fassade, die man für Schutz hält, ist schlechter als keine. Die Sorge um vergessene Prüfungen wird durch zwei Router und einen Test über alle Routen beantwortet. |
+| Die Ausnahme direkt an der Route statt an einem zweiten Router | Liesse sich beim nächsten Mal mitkopieren, ohne dass es auffällt. |
 | Eine Ratenbremse auf `/wiedergeben` | Widerspräche „mit eigenem Schlüssel unbegrenzt" ausdrücklich. Statt dessen ein Gleichzeitigkeitsdeckel — und die Restgefahr steht oben. |
 | Abweichung als HTTP 409 melden | Deutete einen Befund in einen Fehler um. Dieselbe Linie wie `/erzeugen`: Das Urteil ist das Produkt. |
 
