@@ -292,3 +292,116 @@ def test_jeder_messwertcode_baut_ohne_beanstandung(code):
         {"code": code, "wert": round((spec.low + spec.high) / 2, 2), "datum": "2024-01-01"}, 0, 0, b
     )
     assert not b
+
+
+# --- Fachliche Identifier über Teilgrenzen ---------------------------------
+#
+# Die technische `id` und der fachliche Identifier sind zwei verschiedene
+# Dinge und können unabhängig voneinander kaputtgehen. Genau das war der
+# Fall: `assign_ids` machte die `id` über den Teilkenner eindeutig, die
+# Fallnummer hing am teil-lokalen Zähler und begann in jedem Teil neu.
+#
+# Kein Test der Suite sah den fachlichen Identifier je an — `grep` über
+# `tests/` fand weder `FALL-` noch `SYN-`. Gemessen wurde die technische
+# Kennung, also die Nachbarschaft des Fehlers.
+
+
+def _patient_mit_begegnungen(n: int, begegnungen: int = 2) -> dict:
+    return {
+        "vorname": f"Vorname{n}",
+        "nachname": f"Nachname{n}",
+        "geschlecht": "female",
+        "geburtsdatum": "1970-01-01",
+        "begegnungen": [
+            {"art": "AMB", "datum": f"2024-0{i + 1}-01"} for i in range(begegnungen)
+        ],
+        "diagnosen": [{"code": "44054006", "beginn": "2015-01-01"}],
+    }
+
+
+def _baue_in_teilen(teile: list[list]) -> list[dict]:
+    """Setzt mehrere Teile so zusammen, wie `kohorte.py` es tut."""
+    alle: list[dict] = []
+    versatz = 0
+    for patienten in teile:
+        bau = baue_aus_parametern({"patienten": patienten}, index_versatz=versatz)
+        alle.extend(bau.ressourcen)
+        versatz += max(bau.plaetze_belegt, 1)
+    return assign_ids(alle).resources
+
+
+def _identifier(res: list[dict], typ: str) -> list[str]:
+    return [
+        e["value"]
+        for r in res
+        if r["resourceType"] == typ
+        for e in r.get("identifier", [])
+    ]
+
+
+def test_fallnummern_sind_ueber_teile_hinweg_eindeutig():
+    """Bei 200 Patienten und TEILGROESSE 8 war jede Fallnummer 25-fach
+    vergeben — und `integritaet.ok` stand auf `True`.
+
+    Die Fallnummer erfüllt seit ADR-009 den ISiK-Slice
+    `Encounter.identifier:Aufnahmenummer`. Eine Aufnahmenummer, die es
+    25-mal gibt, erfüllt ihn dem Buchstaben nach und dem Sinn nach nicht.
+    """
+    res = _baue_in_teilen([[_patient_mit_begegnungen(i)] * 1 for i in range(6)])
+    fall = _identifier(res, "Encounter")
+    assert len(fall) == 12, "sechs Patienten mit je zwei Begegnungen"
+    assert len(set(fall)) == len(fall), f"doppelte Fallnummern: {sorted(fall)}"
+
+
+def test_integritaet_meldet_doppelte_fachliche_identifier():
+    """Die Prüfung sah bisher nur `resourceType/id` an.
+
+    Deshalb ging die doppelte Fallnummer durch jede Prüfschicht bis ins
+    Bundle und in den Push: Die technischen Kennungen waren ja korrekt.
+    """
+    res = [
+        {"resourceType": "Encounter", "id": "enc-001",
+         "identifier": [{"system": "urn:beispiel:fall", "value": "FALL-0001"}]},
+        {"resourceType": "Encounter", "id": "enc-002",
+         "identifier": [{"system": "urn:beispiel:fall", "value": "FALL-0001"}]},
+    ]
+    bericht = check_resources(res)
+    assert bericht.duplicate_ids == [], "die technischen ids sind in Ordnung"
+    assert bericht.duplicate_identifiers == ["urn:beispiel:fall|FALL-0001"]
+    assert not bericht.ok, "eine doppelte Aufnahmenummer ist kein sauberer Satz"
+
+
+def test_identifier_ohne_system_oder_wert_behaupten_nichts():
+    """Ein unvollständiger Identifier ist keine Zusage, die sich verletzen
+    liesse — sonst meldete die Prüfung zwei leere Werte als Dublette."""
+    res = [
+        {"resourceType": "Encounter", "id": "enc-001", "identifier": [{"value": "X"}]},
+        {"resourceType": "Encounter", "id": "enc-002", "identifier": [{"value": "X"}]},
+        {"resourceType": "Encounter", "id": "enc-003",
+         "identifier": [{"system": "urn:beispiel:fall"}]},
+    ]
+    assert check_resources(res).duplicate_identifiers == []
+
+
+def test_uebersprungener_eintrag_verbraucht_seinen_kennungsplatz():
+    """Ein einziges `null` in der Modellantwort liess die Kennungen zweier
+    Teile überlappen.
+
+    Der Versatz wuchs um die Zahl der GEBAUTEN Patienten, `p_index` zählt
+    aber über `enumerate(patienten)`. Nachgestellt mit sechs Patienten und
+    Teilgrösse drei: sechs kaputte Verweise, ein doppelter Identifier, und
+    die gesamte Kohorte fiel wegen eines Ausreissers durch.
+    """
+    res = _baue_in_teilen([
+        [None, _patient_mit_begegnungen(1, 0), _patient_mit_begegnungen(2, 0)],
+        [_patient_mit_begegnungen(i, 0) for i in range(3, 6)],
+    ])
+    bericht = check_resources(res)
+    assert bericht.ok, (
+        f"doppelte ids: {bericht.duplicate_ids}, "
+        f"doppelte Identifier: {bericht.duplicate_identifiers}, "
+        f"kaputte Verweise: {bericht.broken_reference_count}"
+    )
+    syn = _identifier(res, "Patient")
+    assert len(syn) == 5, "fünf gebaute Patienten aus sechs Einträgen"
+    assert len(set(syn)) == 5, f"doppelte Patientennummern: {sorted(syn)}"

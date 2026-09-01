@@ -53,9 +53,15 @@ from .validation import Pruefergebnis, pruefe_alle
 #   Ausgabe je Patient          504 Token   (vorher rund 276 mit drei Typen)
 #   max_tokens im Gratistarif  4500         (8000/Minute minus Prompt,
 #                                            mit Spielraum gewählt)
-#   ergibt rechnerisch            9,5 Patienten
+#   ergibt rechnerisch            8,9 Patienten   (4500 / 504)
 #   gewählt mit Reserve           8         — Patienten mit mehreren
 #                                             Diagnosen kosten mehr
+#
+# Hier stand „9,5". Die Zahl stammte noch von `max_tokens = 4800` und ist
+# mit der Senkung auf 4500 nicht mitgewandert — eine Herleitung, die ihr
+# eigenes Ergebnis nicht mehr stützte. Sie ist folgenlos geblieben, weil
+# die gewählte 8 ohnehin darunter liegt, aber eine Herleitung, die man
+# nicht nachrechnen kann, ist keine.
 #
 # Der Wert stand vorher auf 15 und trug drei Ressourcentypen. Genau diese
 # Abhängigkeit hatte ADR-004 als offenen Punkt vermerkt: „Ob die Teilgröße
@@ -331,10 +337,24 @@ def _verarbeite_teil(
     teil.geliefert = sum(
         1 for r in bau.ressourcen if r.get("resourceType") == "Patient"
     )
-    # Der Versatz wächst um das, was tatsächlich kam — nicht um das, was
-    # angefragt war. Sonst entstünden Lücken in den vorläufigen Kennungen,
-    # was zwar nicht schadet, aber die Artefakte unnötig schwer lesbar macht.
-    return versatz + max(teil.geliefert, 1)
+    # Der Versatz wächst um die verbrauchten KENNUNGSPLÄTZE, nicht um die
+    # Zahl der gebauten Patienten und nicht um die angefragte Menge.
+    #
+    # Die drei Zahlen sind meist gleich und gingen genau dann auseinander,
+    # wenn ein Eintrag der Liste kein Objekt ist: `baue_aus_parametern`
+    # überspringt ihn, sein Platz ist über `enumerate` aber vergeben.
+    # Vorher wuchs der Versatz um `teil.geliefert` — ein einziges `null` in
+    # der Modellantwort genügte, damit der nächste Teil auf schon
+    # vergebenen `tmp-pat-*` begann. Nachgestellt mit 6 Patienten und
+    # `teilgroesse=3`: sechs kaputte Verweise, ein doppelter Identifier
+    # SYN-0003, `integritaet.ok = False` — die GESAMTE Kohorte fiel wegen
+    # eines Ausreissers durch, und die einzige Spur war eine Beanstandung,
+    # die im Bericht gar nicht auftauchte.
+    #
+    # Angefragt wäre die falsche Zahl in die andere Richtung: Liefert das
+    # Modell weniger als verlangt, entstünden Lücken in den Kennungen. Die
+    # schaden nicht, machen die Artefakte aber unnötig schwer lesbar.
+    return versatz + max(bau.plaetze_belegt, 1)
 
 
 def _schliesse_ab(ergebnis: Kohortenergebnis, gebaute: list[dict]) -> Kohortenergebnis:
@@ -373,23 +393,46 @@ def baue_aus_aufzeichnung(
 
 
 def _teile(anzahl: int, teilgroesse: int) -> list[int]:
-    """Zerlegt die Gesamtmenge in Teile.
+    """Zerlegt die Gesamtmenge in Teile — **keiner über `teilgroesse`**.
 
-    Ein winziger Rest wird dem vorletzten Teil zugeschlagen: Ein eigener
-    Aufruf für einen einzelnen Patienten kostet denselben Prompt-Overhead
-    wie ein voller Teil.
+    Zwei Ziele, die sich zu widersprechen scheinen:
+
+    1. Kein Teil darf grösser sein als `teilgroesse`. Der Wert ist aus dem
+       Token-Budget hergeleitet und nicht geraten; ihn zu überschreiten
+       heisst, dass die Antwort abgeschnitten zurückkommt.
+    2. Kein Teil sollte winzig sein. Ein eigener Aufruf für einen
+       einzelnen Patienten kostet denselben Prompt-Overhead wie ein
+       voller Teil.
+
+    Zuvor gewann Ziel 2, und Ziel 1 fiel dabei still unter den Tisch: Ein
+    Rest bis `teilgroesse // 3` wurde dem letzten Teil zugeschlagen, was
+    bei `teilgroesse=8` Teile von 9 und 10 ergab. `_teile(10, 8)` lieferte
+    `[10]`, also **einen** Aufruf über rund 5040 Ausgabe-Token gegen ein
+    `max_tokens` von 4500. Die Antwort kam abgeschnitten zurück, beide
+    Versuche scheiterten, und `synthfhir "…" -n 10` endete mit null
+    Patienten. Betroffen war jede Menge `n ≡ 1, 2 (mod 8)` über 8, also
+    rund ein Viertel aller Anfragen.
+
+    Beide Ziele sind zugleich zu haben, wenn man nicht auffüllt, sondern
+    **verteilt**: so viele Teile wie nötig, dann gleichmässig belegt.
+
+        _teile(10, 8)  -> [5, 5]        statt [10]
+        _teile(18, 8)  -> [6, 6, 6]     statt [8, 10]
+        _teile(25, 8)  -> [7, 6, 6, 6]  statt [8, 8, 9]
+
+    Bei glatt teilbaren Mengen ändert sich nichts — `_teile(40, 10)` bleibt
+    `[10, 10, 10, 10]`. Genau diese Mengen benutzten die Tests, weshalb
+    ihnen der Fehler entging.
     """
     teilgroesse = max(1, teilgroesse)
     if anzahl <= teilgroesse:
         return [anzahl]
-    teile = [teilgroesse] * (anzahl // teilgroesse)
-    rest = anzahl % teilgroesse
-    if rest:
-        if rest <= teilgroesse // 3:
-            teile[-1] += rest
-        else:
-            teile.append(rest)
-    return teile
+    # Aufrunden: so wenige Teile wie möglich, aber keines zu gross.
+    anzahl_teile = -(-anzahl // teilgroesse)
+    grund, rest = divmod(anzahl, anzahl_teile)
+    # Der Rest verteilt sich auf die vorderen Teile, einer je Teil. Damit
+    # unterscheiden sich zwei Teile um höchstens 1.
+    return [grund + 1] * rest + [grund] * (anzahl_teile - rest)
 
 
 def _hole_teil(

@@ -93,15 +93,45 @@ def keine_wartezeit(monkeypatch):
     [
         (1, 15, [1]),
         (15, 15, [15]),
-        (16, 15, [16]),          # winziger Rest wandert in den letzten Teil
+        (16, 15, [8, 8]),        # verteilt, statt den Rest aufzuschlagen
         (30, 15, [15, 15]),
-        (31, 15, [15, 16]),
-        (25, 15, [15, 10]),      # großer Rest bekommt einen eigenen Teil
+        (31, 15, [11, 10, 10]),
+        (25, 15, [13, 12]),
         (100, 20, [20, 20, 20, 20, 20]),
+        # Der Fall, der null Patienten lieferte: TEILGROESSE = 8, und der
+        # Rest 2 wurde dem einzigen Teil zugeschlagen — ein Aufruf über
+        # rund 5040 Token gegen ein max_tokens von 4500.
+        (10, 8, [5, 5]),
+        (18, 8, [6, 6, 6]),
+        (25, 8, [7, 6, 6, 6]),
     ],
 )
 def test_aufteilung(anzahl, groesse, erwartet):
     assert _teile(anzahl, groesse) == erwartet
+
+
+@pytest.mark.parametrize("groesse", [3, 8, 15, 20])
+def test_kein_teil_ist_groesser_als_die_teilgroesse(groesse):
+    """Die Eigenschaft, die vorher fehlte — und die einzige, die zählt.
+
+    `teilgroesse` ist aus dem Token-Budget hergeleitet, nicht geraten. Ein
+    Teil darüber heisst: Die Antwort kommt abgeschnitten zurück, beide
+    Versuche scheitern, und der Lauf liefert für diesen Teil nichts.
+
+    Geprüft wird über einen ganzen Bereich statt an Beispielen. Die alte
+    Regel schlug einen Rest bis `teilgroesse // 3` dem letzten Teil zu und
+    verletzte die Eigenschaft für jedes `n ≡ 1 … teilgroesse//3 (mod
+    teilgroesse)` — bei `teilgroesse=8` also für rund ein Viertel aller
+    Mengen. Die Beispiele der Tabelle daneben trafen davon keines: Sie
+    benutzten überwiegend glatt teilbare Mengen.
+    """
+    for anzahl in range(1, 200):
+        teile = _teile(anzahl, groesse)
+        assert max(teile) <= groesse, f"{anzahl} bei Teilgrösse {groesse}: {teile}"
+        assert sum(teile) == anzahl
+        # Und kein Teil, der den Prompt-Overhead nicht wert wäre: Zwei
+        # Teile desselben Laufs unterscheiden sich um höchstens einen.
+        assert max(teile) - min(teile) <= 1
 
 
 def test_aufteilung_verliert_niemanden():
