@@ -270,6 +270,32 @@ sonst gilt die Messung als ungültig. Das ist kein Beiwerk — der Versuch,
 stattdessen den Validator selbst auf einen Terminologieserver zu zeigen,
 ergab „0 ungeprüft" aus einer abgestürzten Validierung.
 
+### Gegen den offiziellen HL7-Validator
+
+```bash
+python tools/isik_referenzvalidator.py
+```
+
+Misst dieselbe Kohorte mit dem Validator, den HL7 selbst veröffentlicht,
+gegen einen Terminologieserver. Gemessen am 2026-09-01:
+
+    Typ             geprüft   Fehler  Warnungen
+    Patient               3        0          3
+    Encounter             4        0          8
+    Condition             4        0         12
+    SUMME                11        0         23
+
+    Keine ungeprüften Befunde: Die Terminologie hat entschieden.
+
+Damit sind die acht ungeprüften Befunde aus ADR-009 **aufgelöst**, nicht
+wegdefiniert — das Werkzeug sucht ausdrücklich nach den Meldungen, die
+„ungeprüft" bedeuten, und meldet sie mit Rückgabewert 1.
+
+Das Werkzeug braucht `werkzeuge/validator_cli.jar` (rund 191 MiB, von
+[HL7](https://github.com/hapifhir/org.hl7.fhir.core/releases)) und Java.
+Beides gehört nicht ins Repository; eingecheckt wird nur der Bericht
+unter `docs/belege/`.
+
 Näheres in [ADR-013](docs/adr-013-terminologienachweis.md).
 Solche Befunde als Fehler zu zählen machte das Ergebnis schlechter, als es
 ist; sie zu verschweigen besser. Beides wäre Schönfärberei mit Zahlen.

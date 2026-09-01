@@ -5,7 +5,8 @@
 | **Status** | Angenommen |
 | **Datum** | 2026-09-01 |
 | **Phase** | 3 (Vision) |
-| **Betrifft** | `terminologie.py` (neu), `profil_cli.py`, `NOTICE.md`, `LICENSE`, beide Compose-Dateien |
+| **Betrifft** | `terminologie.py` (neu), `tools/isik_referenzvalidator.py` (neu), `profil_cli.py`, `NOTICE.md`, `LICENSE`, beide Compose-Dateien |
+| **Ergänzt** | 2026-09-01: Der Referenzvalidator entscheidet die Bindung ebenfalls — Abschnitt 3c |
 | **Baut auf** | ADR-002, ADR-003, ADR-009 |
 
 ---
@@ -153,9 +154,11 @@ Terminologieserver (vorher 572).
 
 ### Was das heißt — und was nicht
 
-Die Profilmessung meldet **weiterhin 8 ungeprüfte Befunde**. Daran
-ändert dieses Modul nichts: Der HAPI-Validator kann sie nach wie vor
-nicht entscheiden.
+Die Profilmessung **gegen HAPI** meldet weiterhin 8 ungeprüfte Befunde.
+Daran ändert dieses Modul nichts: Dieser Validator kann sie nach wie vor
+nicht entscheiden. (Der Referenzvalidator kann es — siehe Abschnitt 3c.
+Dieser Abschnitt beschreibt den Stand *ohne* ihn, und die Aussage bleibt
+gültig für jeden, der nur den HAPI-Weg fährt.)
 
 Was sich ändert, ist die **Sachfrage dahinter**. Sie lautete: Sind die
 SNOMED-Codes dieses Projekts Mitglied des ValueSets, das ISiK für
@@ -167,7 +170,7 @@ Die belastbare Aussage lautet damit:
 
 > Gegen `de.gematik.isik-basismodul 4.0.3`, HAPI FHIR 8.10.0, Stand
 > 2026-09-01: **0 Fehler** über 11 profilierte Ressourcen; **8 Befunde
-> bleiben für den Validator ungeprüft**, weil ihm die SNOMED-Hierarchie
+> bleiben für diesen Validator ungeprüft**, weil ihm die SNOMED-Hierarchie
 > fehlt. Die Bindung, an der sie hängen, ist **getrennt entschieden**:
 > Alle 25 Diagnosecodes sind Mitglied von `DiagnosesSCT|4.0.3`.
 
@@ -206,12 +209,80 @@ wesentlichen Punkte:
 
 ---
 
+## 3c. Der Referenzvalidator — die Bindung ist auch dort entschieden
+
+Abschnitt 6 führte den offiziellen HL7-Validator als offenen Punkt. Er
+wurde geholt (`validator_cli.jar` 6.10.3, 191,5 MiB, SHA-256
+`b2cd1c76…691b`) und ausgeführt. Das Ergebnis geht über den Nachweis aus
+Abschnitt 3a hinaus: **Auch im Profilbericht bleibt jetzt nichts
+ungeprüft.**
+
+| Typ | geprüft | Fehler | Warnungen |
+|---|---|---|---|
+| Patient | 3 | **0** | 3 |
+| Encounter | 4 | **0** | 8 |
+| Condition | 4 | **0** | 12 |
+| **Summe** | **11** | **0** | **23** |
+
+Und ausdrücklich gesucht: **keine** Meldung der Form *„Unable to check
+whether the code is in the value set"* oder *„cannot apply filters"*. Die
+acht ungeprüften Befunde aus ADR-009 sind aufgelöst, nicht wegdefiniert.
+
+### Zwei Einstellungen entscheiden über das Ergebnis
+
+**`-sct intl`.** Ohne sie fragt der Validator die SNOMED-Fassung `null`
+an. Ein Server, der nur versionierte Editionen führt, antwortet „kenne
+ich nicht", und die Bindung bleibt offen. Gemessen war das der
+Unterschied zwischen *1 Fehler, 5 Warnungen* und *0 Fehlern, 3
+Warnungen* — bei identischer Eingabe.
+
+**Ein eigener `-txCache` je Server.** Der Validator legt seinen
+Terminologie-Zwischenspeicher sonst unter einem festen Pfad ab. Zwei
+Läufe gegen **verschiedene** Server lieferten nachgemessen byteweise
+dasselbe Ergebnis, einschließlich der Editionsnummern des jeweils
+anderen. Wer so vergleicht, vergleicht nichts — und merkt es nicht.
+
+### Die Gegenprobe des Messgeräts
+
+`tools/isik_referenzvalidator.py` sucht ausdrücklich nach den
+Meldungen, die „ungeprüft" bedeuten, und meldet sie als **ACHTUNG** mit
+Rückgabewert 1. Gegen tx.fhir.de ohne passende Edition ausgeführt:
+
+    SUMME  11 geprüft | 3 Fehler | 31 Warnungen
+    ACHTUNG — Befunde blieben ungeprüft:
+      Unable to check whether the code is in the value set 'DiagnosesSCT|4.0.3'
+
+Das Werkzeug ist damit in beide Richtungen geprüft: Es erkennt die
+gelöste Lage und die ungelöste.
+
+### Die verbleibenden 23 Warnungen, benannt
+
+| Anzahl | Warnung | Bewertung |
+|---|---|---|
+| 11 | `dom-6`: keine Narrative | Best-Practice-Empfehlung, war auch im HAPI-Bericht |
+| 4 | ICD-10-GM-CodeSystem unbekannt | Kein öffentlicher Terminologieserver führt es. Nicht behebbar |
+| 4 | `VN` nicht im ValueSet `identifier-type` | ISiK **verlangt** `VN` (ADR-009), der FHIR-Kern führt es in seiner *preferred*-Liste nicht. Ein Widerspruch zwischen zwei Vorgaben, kein Mangel |
+| 4 | keine Anzeigenamen für Sprache `de` | Folge einer bewussten Entscheidung: Der englische SNOMED-Text steht in `Coding.display`, der deutsche in `CodeableConcept.text`. SNOMED-Descriptions zu übersetzen wäre lizenzrechtlich eine andere Sache (`NOTICE.md`) |
+
+Keine davon ist ein Fehler, und keine ist ohne Preis behebbar.
+
+### Warum das trotzdem im Repository nicht laufen kann
+
+Der Validator ist 191 MiB groß, braucht zwei Minuten und einen fremden
+Terminologieserver ohne Betriebszusage. `werkzeuge/` und `messlauf/`
+sind deshalb von Git ausgeschlossen; eingecheckt wird allein der Bericht
+unter `docs/belege/isik-referenzvalidator.json`.
+
+---
+
 ## 4. Konsequenzen
 
 ### Positiv
 
 - Die Unsicherheit aus ADR-009 ist aufgelöst, mit einer Messung statt
-  einer Vermutung.
+  einer Vermutung — **zweifach**: einmal als eigene Mitgliedschaftsprobe
+  (Abschnitt 3a), einmal durch den Referenzvalidator selbst
+  (Abschnitt 3c). Die beiden Wege sind unabhängig voneinander.
 - Der Nachweis kann nicht stillschweigend versagen. Das ist wichtiger als
   das Ergebnis selbst — der gemessene NullPointer-Fall zeigt, wie leicht
   eine Terminologiemessung besser aussieht, als sie ist.
@@ -255,11 +326,6 @@ wesentlichen Punkte:
 
 ## 6. Offen
 
-- **Der offizielle HL7-Validator (`validator_cli.jar`).** Er lädt das
-  ISiK-Paket selbst und fragt einen Terminologieserver — sein Urteil wäre
-  das eines Referenzwerkzeugs statt einer Eigenmessung. Er kostet einen
-  Download von rund 191 MiB und ist deshalb dem Betreiber vorgelegt,
-  nicht einfach getan. Java 25 ist vorhanden.
 - **Ein planmäßiger Lauf** (nicht im Commit-Pfad), der die Messung
   regelmäßig wiederholt und meldet, wenn eine Edition die Antwort ändert.
 - **ICD-10-GM bleibt ungeprüft.** Der zentrale Terminologieserver von

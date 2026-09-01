@@ -39,3 +39,14 @@ spike/output/**
 # Module wären beim Commit stillschweigend liegen geblieben.
 /SynthFHIR/
 .claude/launch.json
+
+# Werkzeuge, die nicht ins Repository gehoeren.
+#
+# validator_cli.jar ist 191 MiB gross und wird von HL7 verteilt - es
+# gehoert geholt, nicht mitgeliefert. Die Messlaeufe darunter enthalten
+# Serverantworten mit SNOMED-Bezeichnungen; die duerfen nach dem
+# SNOMED-Affiliate-Lizenzvertrag nicht in ein oeffentliches Repository.
+# Eingecheckt wird nur der abgeleitete Bericht.
+/werkzeuge/
+/messlauf/
+/.txcache/

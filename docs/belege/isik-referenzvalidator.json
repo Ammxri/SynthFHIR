@@ -1,0 +1,45 @@
+{
+  "werkzeug": "org.hl7.fhir.core validator_cli",
+  "paket": "de.gematik.isik-basismodul#4.0.3",
+  "fhir_version": "4.0.1",
+  "terminologieserver": "https://tx.fhir.org/r4",
+  "snomed_edition": "intl",
+  "je_typ": {
+    "Condition": {
+      "geprueft": 4,
+      "profil": "https://gematik.de/fhir/isik/StructureDefinition/ISiKDiagnose",
+      "fehler": 0,
+      "warnungen": 12,
+      "fehlertexte": []
+    },
+    "Encounter": {
+      "geprueft": 4,
+      "profil": "https://gematik.de/fhir/isik/StructureDefinition/ISiKKontaktGesundheitseinrichtung",
+      "fehler": 0,
+      "warnungen": 8,
+      "fehlertexte": []
+    },
+    "Patient": {
+      "geprueft": 3,
+      "profil": "https://gematik.de/fhir/isik/StructureDefinition/ISiKPatient",
+      "fehler": 0,
+      "warnungen": 3,
+      "fehlertexte": []
+    }
+  },
+  "warnungen_gezaehlt": {
+    "Constraint failed: dom-6: 'A resource should have narrative for robust management' (defined in http://hl7.org/fhir/Struc": 11,
+    "A definition for CodeSystem 'http://fhir.de/CodeSystem/bfarm/icd-10-gm' version '2026' could not be found, so the code c": 4,
+    "Keiner der angegebenen Codes ist im Valueset 'IdentifierType' (http://hl7.org/fhir/ValueSet/identifier-type|4.0.1), und ": 4,
+    "There are no valid display names found for the code http://snomed.info/sct#44054006 for language(s) 'de'. The display is": 1,
+    "There are no valid display names found for the code http://snomed.info/sct#38341003 for language(s) 'de'. The display is": 1,
+    "There are no valid display names found for the code http://snomed.info/sct#84114007 for language(s) 'de'. The display is": 1,
+    "There are no valid display names found for the code http://snomed.info/sct#195967001 for language(s) 'de'. The display i": 1
+  },
+  "summe": {
+    "geprueft": 11,
+    "fehler": 0,
+    "warnungen": 23
+  },
+  "ungepruefte_meldungen": []
+}
