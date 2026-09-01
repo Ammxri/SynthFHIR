@@ -1,5 +1,5 @@
 {
-  "erzeugt": "2026-08-30T21:37:17Z",
+  "erzeugt": "2026-09-01T09:29:05Z",
   "server": "http://localhost:8090/fhir",
   "fhir_version": "4.0.1",
   "paket": "de.gematik.isik-basismodul",
@@ -10,26 +10,30 @@
     "geprueft": 11,
     "fehler": 0,
     "ungeprueft": 8,
-    "warnungen": 19
+    "warnungen": 15,
+    "informationen": 4
   },
   "je_typ": {
     "Patient": {
       "geprueft": 3,
       "fehler": 0,
       "ungeprueft": 0,
-      "warnungen": 3
+      "warnungen": 3,
+      "informationen": 0
     },
     "Encounter": {
       "geprueft": 4,
       "fehler": 0,
       "ungeprueft": 0,
-      "warnungen": 8
+      "warnungen": 8,
+      "informationen": 0
     },
     "Condition": {
       "geprueft": 4,
       "fehler": 0,
       "ungeprueft": 8,
-      "warnungen": 8
+      "warnungen": 4,
+      "informationen": 4
     }
   },
   "hinweise": [
@@ -43,6 +47,7 @@
       "fehler": 0,
       "ungeprueft": 0,
       "warnungen": 1,
+      "informationen": 0,
       "befunde": [
         {
           "schweregrad": "warning",
@@ -59,6 +64,7 @@
       "fehler": 0,
       "ungeprueft": 0,
       "warnungen": 2,
+      "informationen": 0,
       "befunde": [
         {
           "schweregrad": "warning",
@@ -80,7 +86,8 @@
       "profil": "https://gematik.de/fhir/isik/StructureDefinition/ISiKDiagnose",
       "fehler": 0,
       "ungeprueft": 2,
-      "warnungen": 2,
+      "warnungen": 1,
+      "informationen": 1,
       "befunde": [
         {
           "schweregrad": "information",
@@ -92,13 +99,13 @@
           "schweregrad": "error",
           "ort": "Condition.code.coding[0]",
           "ungeprueft": true,
-          "meldung": "Unable to expand ValueSet: cannot apply filters '[org.hl7.fhir.r5.model.ValueSet$ConceptSetFilterComponent@17e65773]' because CodeSystem 'http://snomed.info/sct' is ignored/not-present"
+          "meldung": "Unable to expand ValueSet: cannot apply filters '[org.hl7.fhir.r5.model.ValueSet$ConceptSetFilterComponent@1e15c50f]' because CodeSystem 'http://snomed.info/sct' is ignored/not-present"
         },
         {
           "schweregrad": "error",
           "ort": "Condition.code.coding[0]",
           "ungeprueft": true,
-          "meldung": "The Coding provided (http://snomed.info/sct#44054006) was not found in the value set 'DiagnosesSCT' (https://gematik.de/fhir/isik/ValueSet/DiagnosesSCT|4.0.3), and a code is required from this value set.  (error message = Failed to expand ValueSet 'https://gematik.de/fhir/isik/ValueSet/DiagnosesSCT' (in-memory). Could not validate code http://snomed.info/sct#44054006. Error was: HAPI-2646: Unable to expand ValueSet: cannot apply filters '[org.hl7.fhir.r5.model.ValueSet$ConceptSetFilterComponent@17e65773]' because CodeSystem 'http://snomed.info/sct' is ignored/not-present; Unable to expand ValueSet: cannot apply filters '[org.hl7.fhir.r5.model.ValueSet$ConceptSetFilterComponent@17e65773]' because CodeSystem 'http://snomed.info/sct' is ignored/not-present)"
+          "meldung": "The Coding provided (http://snomed.info/sct#44054006) was not found in the value set 'DiagnosesSCT' (https://gematik.de/fhir/isik/ValueSet/DiagnosesSCT|4.0.3), and a code is required from this value set.  (error message = Failed to expand ValueSet 'https://gematik.de/fhir/isik/ValueSet/DiagnosesSCT' (in-memory). Could not validate code http://snomed.info/sct#44054006. Error was: HAPI-2646: Unable to expand ValueSet: cannot apply filters '[org.hl7.fhir.r5.model.ValueSet$ConceptSetFilterComponent@1e15c50f]' because CodeSystem 'http://snomed.info/sct' is ignored/not-present; Unable to expand ValueSet: cannot apply filters '[org.hl7.fhir.r5.model.ValueSet$ConceptSetFilterComponent@1e15c50f]' because CodeSystem 'http://snomed.info/sct' is ignored/not-present)"
         },
         {
           "schweregrad": "warning",
@@ -115,6 +122,7 @@
       "fehler": 0,
       "ungeprueft": 0,
       "warnungen": 1,
+      "informationen": 0,
       "befunde": [
         {
           "schweregrad": "warning",
@@ -131,6 +139,7 @@
       "fehler": 0,
       "ungeprueft": 0,
       "warnungen": 2,
+      "informationen": 0,
       "befunde": [
         {
           "schweregrad": "warning",
@@ -153,6 +162,7 @@
       "fehler": 0,
       "ungeprueft": 0,
       "warnungen": 2,
+      "informationen": 0,
       "befunde": [
         {
           "schweregrad": "warning",
@@ -174,7 +184,8 @@
       "profil": "https://gematik.de/fhir/isik/StructureDefinition/ISiKDiagnose",
       "fehler": 0,
       "ungeprueft": 2,
-      "warnungen": 2,
+      "warnungen": 1,
+      "informationen": 1,
       "befunde": [
         {
           "schweregrad": "information",
@@ -186,13 +197,13 @@
           "schweregrad": "error",
           "ort": "Condition.code.coding[0]",
           "ungeprueft": true,
-          "meldung": "Unable to expand ValueSet: cannot apply filters '[org.hl7.fhir.r5.model.ValueSet$ConceptSetFilterComponent@58d084a0]' because CodeSystem 'http://snomed.info/sct' is ignored/not-present"
+          "meldung": "Unable to expand ValueSet: cannot apply filters '[org.hl7.fhir.r5.model.ValueSet$ConceptSetFilterComponent@ad17959]' because CodeSystem 'http://snomed.info/sct' is ignored/not-present"
         },
         {
           "schweregrad": "error",
           "ort": "Condition.code.coding[0]",
           "ungeprueft": true,
-          "meldung": "The Coding provided (http://snomed.info/sct#38341003) was not found in the value set 'DiagnosesSCT' (https://gematik.de/fhir/isik/ValueSet/DiagnosesSCT|4.0.3), and a code is required from this value set.  (error message = Failed to expand ValueSet 'https://gematik.de/fhir/isik/ValueSet/DiagnosesSCT' (in-memory). Could not validate code http://snomed.info/sct#38341003. Error was: HAPI-2646: Unable to expand ValueSet: cannot apply filters '[org.hl7.fhir.r5.model.ValueSet$ConceptSetFilterComponent@58d084a0]' because CodeSystem 'http://snomed.info/sct' is ignored/not-present; Unable to expand ValueSet: cannot apply filters '[org.hl7.fhir.r5.model.ValueSet$ConceptSetFilterComponent@58d084a0]' because CodeSystem 'http://snomed.info/sct' is ignored/not-present)"
+          "meldung": "The Coding provided (http://snomed.info/sct#38341003) was not found in the value set 'DiagnosesSCT' (https://gematik.de/fhir/isik/ValueSet/DiagnosesSCT|4.0.3), and a code is required from this value set.  (error message = Failed to expand ValueSet 'https://gematik.de/fhir/isik/ValueSet/DiagnosesSCT' (in-memory). Could not validate code http://snomed.info/sct#38341003. Error was: HAPI-2646: Unable to expand ValueSet: cannot apply filters '[org.hl7.fhir.r5.model.ValueSet$ConceptSetFilterComponent@ad17959]' because CodeSystem 'http://snomed.info/sct' is ignored/not-present; Unable to expand ValueSet: cannot apply filters '[org.hl7.fhir.r5.model.ValueSet$ConceptSetFilterComponent@ad17959]' because CodeSystem 'http://snomed.info/sct' is ignored/not-present)"
         },
         {
           "schweregrad": "warning",
@@ -208,7 +219,8 @@
       "profil": "https://gematik.de/fhir/isik/StructureDefinition/ISiKDiagnose",
       "fehler": 0,
       "ungeprueft": 2,
-      "warnungen": 2,
+      "warnungen": 1,
+      "informationen": 1,
       "befunde": [
         {
           "schweregrad": "information",
@@ -220,13 +232,13 @@
           "schweregrad": "error",
           "ort": "Condition.code.coding[0]",
           "ungeprueft": true,
-          "meldung": "Unable to expand ValueSet: cannot apply filters '[org.hl7.fhir.r5.model.ValueSet$ConceptSetFilterComponent@165e97e2]' because CodeSystem 'http://snomed.info/sct' is ignored/not-present"
+          "meldung": "Unable to expand ValueSet: cannot apply filters '[org.hl7.fhir.r5.model.ValueSet$ConceptSetFilterComponent@41ea668d]' because CodeSystem 'http://snomed.info/sct' is ignored/not-present"
         },
         {
           "schweregrad": "error",
           "ort": "Condition.code.coding[0]",
           "ungeprueft": true,
-          "meldung": "The Coding provided (http://snomed.info/sct#84114007) was not found in the value set 'DiagnosesSCT' (https://gematik.de/fhir/isik/ValueSet/DiagnosesSCT|4.0.3), and a code is required from this value set.  (error message = Failed to expand ValueSet 'https://gematik.de/fhir/isik/ValueSet/DiagnosesSCT' (in-memory). Could not validate code http://snomed.info/sct#84114007. Error was: HAPI-2646: Unable to expand ValueSet: cannot apply filters '[org.hl7.fhir.r5.model.ValueSet$ConceptSetFilterComponent@165e97e2]' because CodeSystem 'http://snomed.info/sct' is ignored/not-present; Unable to expand ValueSet: cannot apply filters '[org.hl7.fhir.r5.model.ValueSet$ConceptSetFilterComponent@165e97e2]' because CodeSystem 'http://snomed.info/sct' is ignored/not-present)"
+          "meldung": "The Coding provided (http://snomed.info/sct#84114007) was not found in the value set 'DiagnosesSCT' (https://gematik.de/fhir/isik/ValueSet/DiagnosesSCT|4.0.3), and a code is required from this value set.  (error message = Failed to expand ValueSet 'https://gematik.de/fhir/isik/ValueSet/DiagnosesSCT' (in-memory). Could not validate code http://snomed.info/sct#84114007. Error was: HAPI-2646: Unable to expand ValueSet: cannot apply filters '[org.hl7.fhir.r5.model.ValueSet$ConceptSetFilterComponent@41ea668d]' because CodeSystem 'http://snomed.info/sct' is ignored/not-present; Unable to expand ValueSet: cannot apply filters '[org.hl7.fhir.r5.model.ValueSet$ConceptSetFilterComponent@41ea668d]' because CodeSystem 'http://snomed.info/sct' is ignored/not-present)"
         },
         {
           "schweregrad": "warning",
@@ -243,6 +255,7 @@
       "fehler": 0,
       "ungeprueft": 0,
       "warnungen": 1,
+      "informationen": 0,
       "befunde": [
         {
           "schweregrad": "warning",
@@ -259,6 +272,7 @@
       "fehler": 0,
       "ungeprueft": 0,
       "warnungen": 2,
+      "informationen": 0,
       "befunde": [
         {
           "schweregrad": "warning",
@@ -280,7 +294,8 @@
       "profil": "https://gematik.de/fhir/isik/StructureDefinition/ISiKDiagnose",
       "fehler": 0,
       "ungeprueft": 2,
-      "warnungen": 2,
+      "warnungen": 1,
+      "informationen": 1,
       "befunde": [
         {
           "schweregrad": "information",
@@ -292,13 +307,13 @@
           "schweregrad": "error",
           "ort": "Condition.code.coding[0]",
           "ungeprueft": true,
-          "meldung": "Unable to expand ValueSet: cannot apply filters '[org.hl7.fhir.r5.model.ValueSet$ConceptSetFilterComponent@126179ba]' because CodeSystem 'http://snomed.info/sct' is ignored/not-present"
+          "meldung": "Unable to expand ValueSet: cannot apply filters '[org.hl7.fhir.r5.model.ValueSet$ConceptSetFilterComponent@727a81d9]' because CodeSystem 'http://snomed.info/sct' is ignored/not-present"
         },
         {
           "schweregrad": "error",
           "ort": "Condition.code.coding[0]",
           "ungeprueft": true,
-          "meldung": "The Coding provided (http://snomed.info/sct#195967001) was not found in the value set 'DiagnosesSCT' (https://gematik.de/fhir/isik/ValueSet/DiagnosesSCT|4.0.3), and a code is required from this value set.  (error message = Failed to expand ValueSet 'https://gematik.de/fhir/isik/ValueSet/DiagnosesSCT' (in-memory). Could not validate code http://snomed.info/sct#195967001. Error was: HAPI-2646: Unable to expand ValueSet: cannot apply filters '[org.hl7.fhir.r5.model.ValueSet$ConceptSetFilterComponent@126179ba]' because CodeSystem 'http://snomed.info/sct' is ignored/not-present; Unable to expand ValueSet: cannot apply filters '[org.hl7.fhir.r5.model.ValueSet$ConceptSetFilterComponent@126179ba]' because CodeSystem 'http://snomed.info/sct' is ignored/not-present)"
+          "meldung": "The Coding provided (http://snomed.info/sct#195967001) was not found in the value set 'DiagnosesSCT' (https://gematik.de/fhir/isik/ValueSet/DiagnosesSCT|4.0.3), and a code is required from this value set.  (error message = Failed to expand ValueSet 'https://gematik.de/fhir/isik/ValueSet/DiagnosesSCT' (in-memory). Could not validate code http://snomed.info/sct#195967001. Error was: HAPI-2646: Unable to expand ValueSet: cannot apply filters '[org.hl7.fhir.r5.model.ValueSet$ConceptSetFilterComponent@727a81d9]' because CodeSystem 'http://snomed.info/sct' is ignored/not-present; Unable to expand ValueSet: cannot apply filters '[org.hl7.fhir.r5.model.ValueSet$ConceptSetFilterComponent@727a81d9]' because CodeSystem 'http://snomed.info/sct' is ignored/not-present)"
         },
         {
           "schweregrad": "warning",

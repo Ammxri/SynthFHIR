@@ -203,6 +203,24 @@ Warteschlange zu hängen), 64 KB Körpergröße, `MAX_PATIENTEN`, 2000 Zeichen
 Beschreibung, und für den API-Pfad kürzere Zeitgrenzen als in der
 Oberfläche: Dort wartet ein Mensch, der zusieht.
 
+> **Nachtrag vom 2026-09-01.** Dieser Absatz las sich allgemeiner, als er
+> war. Der Nachsatz hebt genau **eine** Grenze als API-spezifisch hervor —
+> die Zeitgrenzen — und liess die vier davorstehenden als allgemein
+> erscheinen. Im Code standen sie sämtlich in `web/api.py`. Die
+> Weboberfläche hatte keine davon: keine Längengrenze für die
+> Beschreibung, keine Körpergrenze, keinen Gleichzeitigkeitsdeckel.
+>
+> Damit kam ausgerechnet der Aufrufer ungebremst durch, für den dieser
+> Abschnitt den Deckel begründet: derselbe Mensch mit demselben gültigen
+> eigenen Schlüssel, nur über `/erzeugen` statt über `/api/v1/erzeugen`.
+>
+> Seit dem 2026-09-01 gelten Längengrenze, Körpergrenze und Deckel für
+> beide Pfade. Die Körpergrenze der Oberfläche liegt höher (8 MB), weil
+> `/export` rechtmässig ein ganzes Bundle trägt, und sie sitzt in einer
+> Middleware statt in der Route: FastAPI liest den Körper vollständig ein,
+> **bevor** es die Abhängigkeiten einer Route auflöst — eine Prüfung in
+> der Route käme zu spät, um das Buffern zu verhindern.
+
 Ausdrücklich **keine** Anfragen-je-Minute-Bremse. Die Auflage ist als hart
 formuliert, und diese Abweichung stünde nicht dem Entwickler zu.
 
@@ -290,7 +308,11 @@ zweiten Gegenversuch gar nicht mehr durch und ist ersetzt.
 - **Die Gesamtbremse sperrt im Zweifel alle anonymen Besucher.** Siehe
   oben; es ist die gewollte Reihenfolge der Zusagen.
 - **Ein API-Lauf kann die Weboberfläche verlangsamen.** Vier gleichzeitige
-  Läufe belegen vier der 40 Threadplätze.
+  Läufe belegen vier der 40 Threadplätze. *(Nachtrag 2026-09-01: Die
+  Gegenrichtung fehlte hier — und sie war die schlimmere. Läufe der
+  Oberfläche mit eigenem Schlüssel waren ungedeckelt und konnten dem
+  API-Pfad sämtliche Plätze nehmen. Seit dem 2026-09-01 teilen sich beide
+  Pfade denselben Deckel.)*
 - **Die Weboberfläche zeigt weiterhin `str(exc)`** bei
   Konfigurationsfehlern. Anbieter-URL und Modellname stehen ohnehin im
   Klartext in `render.yaml` eines öffentlichen Repositories — der

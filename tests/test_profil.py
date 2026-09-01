@@ -162,6 +162,46 @@ def test_kein_befund_faellt_aus_allen_spalten():
     assert gezaehlt == len(e.befunde) == 7
 
 
+def test_summe_und_je_typ_fuehren_dieselben_spalten():
+    """Eine Spalte, die nur an einer Stelle auftaucht, fällt beim Lesen des
+    Berichts stillschweigend unter den Tisch.
+
+    Genau so fehlte `informationen` zuerst in der Summe, während `je_typ`
+    sie schon führte — der Bericht hätte 15 Warnungen ausgewiesen und die
+    4 Hinweise nur in der Aufschlüsselung gehabt.
+    """
+    from synthfhir.profil import Profilbericht
+
+    b = Profilbericht(
+        erzeugt="2026-01-01T00:00:00Z",
+        server="x",
+        fhir_version="4.0.1",
+        paket="p",
+        paketversion="1",
+        terminologieserver="keiner",
+        ergebnisse=[
+            Profilergebnis("Patient", "pat-001", "x", bewerte([
+                issue("error", "Falsch"),
+                issue("warning", "Unüblich"),
+                issue("information", "Hinweis"),
+                issue("error", "Unable to expand ValueSet 'X'"),
+            ])),
+            Profilergebnis("Condition", "cond-001", "y", bewerte([
+                issue("warning", "Unüblich"),
+            ])),
+        ],
+    )
+    d = b.to_dict()
+    spalten = set(d["summe"]) - {"geprueft"}
+    for typ, z in d["je_typ"].items():
+        fehlend = spalten - set(z)
+        assert not fehlend, f"{typ} führt {fehlend} nicht"
+    for spalte in spalten:
+        assert d["summe"][spalte] == sum(z[spalte] for z in d["je_typ"].values()), (
+            f"Summe und Aufschlüsselung sind sich über '{spalte}' nicht einig"
+        )
+
+
 def test_konform_heisst_kein_fehler_nicht_nachgewiesen():
     """`konform` sagt: kein Fehler. Es sagt NICHT: nachgewiesen konform —
     solange etwas ungeprüft ist, ist das Urteil unvollständig."""

@@ -6,17 +6,24 @@ und schreibt das Ergebnis so auf, dass man es wiederholen und vergleichen
 kann.
 
 ===========================================================================
-WARUM DREI SPALTEN UND NICHT ZWEI
+WARUM VIER SPALTEN UND NICHT ZWEI
 ===========================================================================
 
 Die naheliegende Auswertung wäre „Fehler" gegen „keine Fehler". Sie wäre
 hier irreführend.
 
-Der Validator kann drei Dinge sagen, nicht zwei:
+Der Validator kann vier Dinge sagen, nicht zwei:
 
   **Fehler**      Das ist falsch.
   **Ungeprüft**   Das kann ich nicht entscheiden.
   **Warnung**     Das ist erlaubt, aber unüblich.
+  **Hinweis**     Das ist erlaubt und erwähnenswert.
+
+Die letzte Spalte gab es zuerst nicht, und ihr Fehlen war kein
+Schönheitsfehler: „Warnungen" war als „alles, was nicht Fehler und nicht
+ungeprüft ist" definiert und trug damit auch `information`. Im
+veröffentlichten Beleg waren 4 der 19 ausgewiesenen Warnungen solche
+Hinweise — und die 19 stand so in ADR-009 und in der Sondierung.
 
 Die mittlere Antwort ist bei diesem Projekt keine Randerscheinung, sondern
 der Regelfall. Das ISiK-Profil bindet `Condition.code` an ein
@@ -271,6 +278,7 @@ class Profilbericht:
                 "fehler": self.summe("fehler"),
                 "ungeprueft": self.summe("ungeprueft"),
                 "warnungen": self.summe("warnungen"),
+                "informationen": self.summe("informationen"),
             },
             "je_typ": self.je_typ,
             "hinweise": self.hinweise,
@@ -325,7 +333,7 @@ def _ort(issue: dict) -> str:
 
 
 def bewerte(issues: list[dict]) -> list[Befund]:
-    """Ordnet die Befunde des Validators den drei Spalten zu."""
+    """Ordnet die Befunde des Validators den vier Spalten zu."""
     offen = _valuesets_ohne_aufloesung(issues)
     befunde = []
     for i in issues:
