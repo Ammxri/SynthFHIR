@@ -2,7 +2,7 @@
 
 | | |
 |---|---|
-| **Status** | Angenommen; umzusetzen **nach** dem Festnageln des HAPI-Images |
+| **Status** | Angenommen und umgesetzt (2026-09-01) |
 | **Datum** | 2026-09-01 |
 | **Phase** | 3 (Vision) |
 | **Betrifft** | `.github/workflows/ci.yml`, `tests/conftest.py`, `docker-compose.yml`, `docs/belege/docker-compose.isik.yml` |
@@ -104,17 +104,25 @@ ISiK-Slices nicht.
 **Service-Container in GitHub Actions starten parallel.** Ein zweiter HAPI
 verdoppelt die Wartezeit nicht; er kostet die Differenz.
 
-Gemessen am 2026-09-01, lokal:
+Gemessen am 2026-09-01, lokal, beide auf `v8.10.0-3`:
 
 | | bereit nach |
 |---|---|
 | `hapiproject/hapi` ohne Pakete | **53,18 s** |
-| derselbe mit den beiden ISiK-Paketen | nicht gemessen — langsamer |
+| derselbe mit den beiden ISiK-Paketen | **56,01 s** |
 
-Die zweite Zahl fehlt, und das ist eine echte Lücke dieses ADR: Der
+**Der Aufschlag beträgt 2,8 Sekunden.** Das ist deutlich weniger, als die
+Formulierung „lädt zwei Pakete" vermuten lässt, und es entscheidet die
+Frage: Der zweite Container kostet in der CI praktisch nichts, weil er
+parallel startet und das Laden im Anlauf des Servers untergeht. Die
+Wartezeit bleibt die des langsameren von beiden.
+
+Die Zahl stand in der ersten Fassung dieses ADR als offene Lücke — der
 Messcontainer war zum Zeitpunkt der Niederschrift nicht mehr vorhanden. Sie
-ist mit einem Lauf zu haben und sollte vor der Umsetzung erhoben werden.
-Die Pakete sind laut Sondierung zusammen rund 300 KB.
+ist vor der Umsetzung nachgeholt worden, und sie hat die Entscheidung
+bestätigt statt sie umzustossen. Wäre sie in der Grössenordnung von
+Minuten ausgefallen, wäre der nächtliche Lauf aus Abschnitt 5 die bessere
+Antwort gewesen.
 
 ### Die Vorbedingung: erst festnageln
 
@@ -162,8 +170,18 @@ Kandidat, und beide Compose-Dateien sollten dieselbe Version tragen.
   an dem jemand die Version hochsetzt — und dort gehört er hin.
 - **Die Grenze zwischen „gesichert" und „versprochen" muss erklärt
   bleiben.** Ein grünes Gate liest sich leicht als Konformitätsnachweis.
-  Deshalb steht der Satz, was der Schalter nicht verspricht, in diesem ADR
-  und in der Fixture — nicht nur hier.
+  Deshalb steht der Satz, was der Schalter nicht verspricht, in diesem ADR,
+  in der Fixture und im Kopf des Workflows — an allen drei Stellen, an
+  denen jemand darauf stösst.
+- **Die CI hängt jetzt an einem fremden Paketregister.** Beim Messen im
+  Protokoll gesehen: Der Server lädt die Pakete beim Start von
+  `packages2.fhir.org`. Ist das Register nicht erreichbar, fährt der
+  Profilserver ohne Profile hoch — und seit dem 2026-09-01 bricht die
+  Messung dann ab, statt eine Zahl zu liefern (`_PROFIL_UNBEKANNT` in
+  `profil.py`). Das ist die richtige Richtung für einen Fehler, macht die
+  CI aber von einem Dienst abhängig, über den das Projekt keine Kontrolle
+  hat. Ein vorgehaltener Paketspiegel wäre die Antwort, falls das je
+  stört; heute wäre er Aufwand ohne belegten Anlass.
 
 ---
 
@@ -191,8 +209,6 @@ gezeigt, wie beweglich es ist.
 
 ## 6. Offen
 
-- **Die Startzeit des ISiK-Containers** ist nicht gemessen. Vor der
-  Umsetzung zu erheben; sie entscheidet, ob der Aufschlag vertretbar ist.
 - **Das Gate der Phase 3 bleibt offen.** Nachfrage ist weiterhin nicht
   gemessen, und dieses ADR misst sie nicht.
 - **Die ISiK-Stufe ist weiterhin nicht entschieden.** Gemessen wird gegen

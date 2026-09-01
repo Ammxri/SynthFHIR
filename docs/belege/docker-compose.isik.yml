@@ -8,7 +8,7 @@
 #   docker compose -f docker-compose.isik.yml up -d
 services:
   hapi-isik:
-    image: hapiproject/hapi:latest
+    image: hapiproject/hapi:v8.10.0-3
     container_name: synthfhir-hapi-isik
     ports:
       - "8090:8080"

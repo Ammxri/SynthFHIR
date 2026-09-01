@@ -73,16 +73,22 @@ def profilserver() -> str:
     über das noch gar nicht entschieden ist. `SYNTHFHIR_REQUIRE_PROFIL=1`
     kehrt das für einen gezielten Lauf um.
 
-    **Diese Begründung deckt zwei verschiedene Dinge zu**, und ADR-012
+    **Diese Begründung deckte zwei verschiedene Dinge zu**, und ADR-012
     trennt sie: Unentschieden ist, ob SynthFHIR ISiK-Konformität *bewirbt*.
     Entschieden ist dagegen ADR-009 — die fünf Felder und die strukturelle
-    Zusage sind gebaut und ausgeliefert, und nichts in der CI schützt sie.
-    Solange dieser Übersprung gilt, läuft dort **weder die Messung noch
+    Zusage sind gebaut und ausgeliefert, und nichts in der CI schützte sie.
+    Solange der Übersprung auch dort galt, lief **weder die Messung noch
     ihre Negativkontrolle**.
 
-    ADR-012 entscheidet, den Schalter zu setzen — nach dem Festnageln des
-    HAPI-Images, weil die Einstufung am Wortlaut der Validatormeldungen
-    hängt. Bis dahin bleibt es beim Übersprung.
+    Seit dem 2026-09-01 setzt der Workflow deshalb
+    `SYNTHFHIR_REQUIRE_PROFIL=1` und startet den Profilserver als zweiten
+    Dienst. Der Übersprung bleibt die Vorgabe für den Arbeitsplatz: Wer
+    lokal ohne Container prüft, soll nicht gegen eine fehlende Umgebung
+    laufen. In der CI ist er abgeschaltet.
+
+    Was das Gate sichert, ist die Zusage aus ADR-009. Was es **nicht**
+    verspricht, ist ISiK-Konformität — das bleibt eine offene Produktfrage,
+    und ein grünes Gate ist keine Antwort darauf.
     """
     validator = HapiValidator(PROFIL_BASIS_URL)
     if validator.bereit(wartezeit_s=10.0) is None:
