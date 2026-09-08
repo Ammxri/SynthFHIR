@@ -510,7 +510,10 @@ def test_der_bericht_nennt_alle_geladenen_module(profilserver):
 
     d = pruefe_gegen_profile(baue(), profilserver).to_dict()
     assert d["module"] == MODULE
-    assert len(d["module"]) >= 3
+    # Seit ADR-020 genau EIN Paket (Stufe 5, de.gematik.isik); vorher drei
+    # eigenständige Stufe-4-Module. Der Bericht muss es benennen.
+    assert len(d["module"]) == 1
+    assert "de.gematik.isik" in d["module"]
 
 
 def test_jedes_profil_der_zuordnung_wird_auch_benutzt():
