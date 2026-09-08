@@ -61,8 +61,13 @@ jobs:
           # jetzt validiert werden.
           hapi.fhir.implementationguides.isik.name: de.gematik.isik
           hapi.fhir.implementationguides.isik.version: 5.1.3
+          # 1.5.4, weil de.gematik.isik 5.1.3 GENAU DIESE Fassung als
+          # Abhängigkeit deklariert. HAPI zieht die Abhängigkeiten des
+          # Pakets selbst — mit einer abweichenden Pinnung (früher 1.5.3)
+          # lägen zwei Fassungen von de.basisprofil.r4 unter denselben
+          # kanonischen URLs, und die Profilauflösung bricht.
           hapi.fhir.implementationguides.basisprofil.name: de.basisprofil.r4
-          hapi.fhir.implementationguides.basisprofil.version: 1.5.3
+          hapi.fhir.implementationguides.basisprofil.version: 1.5.4
 
     env:
       # Ohne diese Variable würden die HAPI-Tests übersprungen statt zu
