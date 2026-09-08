@@ -190,14 +190,12 @@ Der volle Beleg steht in `docs/belege/isik-referenzvalidator.json`.
   entkoppelt, bleibt eine Frage der Katalogqualität.
 - **Stufe 6.** `de.gematik.isik#6.0.0` existiert bereits. Der Sprung ist
   zu prüfen, wenn 6 die aktive Stufe wird — dann derselbe Weg wie hier.
-- **Der Diagnose-Terminologienachweis pinnt noch Stufe 4.**
-  `terminologie.py` holt die `DiagnosesSCT`-Definition SHA-gepinnt aus dem
-  Quelltag `v.4.0.3` des Basismoduls (ADR-013). Das ist unabhängig von der
-  Profilmessung — es prüft die Diagnose-SNOMED-Bindung, nicht das Labor —
-  und der SHA-Pin ist Absicht (Reproduzierbarkeit). Ein Bump auf den
-  Stufe-5-Tag braucht einen neuen SHA und eine Neumessung der 25
-  Diagnosecodes; ein eigener, messbarer Schritt, hier bewusst nicht
-  mitgezogen.
+- ~~**Der Diagnose-Terminologienachweis pinnt noch Stufe 4.**~~
+  **Erledigt 2026-09-08:** `terminologie.py` zieht die `DiagnosesSCT`-Quelle
+  jetzt auf den Tag `v.5.1.3`, mit neuem SHA-Pin. Die Definition war
+  byteweise gleich (dieselben drei `is-a`-Wurzeln), die Mitgliedschaft der
+  25 Codes gegen tx.fhir.de und tx.fhir.org neu gemessen: 25 von 25
+  (ADR-013, Nachtrag).
 - **Der HAPI-Beleg** (`docs/belege/isik-profilbericht.json`, vom
   `synthfhir-profil`-Werkzeug) ist noch vom Stand ADR-009; er braucht zum
   Erneuern den Docker-Profilserver. Der maßgebliche Beleg

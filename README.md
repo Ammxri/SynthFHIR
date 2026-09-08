@@ -343,8 +343,11 @@ synthfhir-profil --terminologie
 Fragt einen öffentlichen Terminologieserver, ob jeder Diagnosecode des
 Katalogs Mitglied des ValueSets ist, das ISiK für `Condition.code`
 verlangt — genau die Frage, die dem Validator ohne SNOMED-Hierarchie
-offenbleibt. Gemessen am 2026-09-01: **25 von 25**, auf tx.fhir.de und
-tx.fhir.org.
+offenbleibt. Gemessen am 2026-09-08 gegen `DiagnosesSCT|5.1.3` (Stufe 5,
+ADR-020): **25 von 25**, auf tx.fhir.de (deutsche SNOMED-Edition) und
+tx.fhir.org (internationale). Die ValueSet-Definition ist beim Umstieg von
+Stufe 4 unverändert geblieben — dieselben drei `is-a`-Wurzeln —, die
+Mitgliedschaft daher gleich; neu gemessen wurde sie trotzdem.
 
 Der Nachweis führt zwei **Gegenproben** mit: einen Code, den es gibt, der
 aber kein Befund ist, und einen erfundenen. Beide müssen verneint werden,

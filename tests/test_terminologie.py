@@ -59,7 +59,7 @@ def echtes_valueset(monkeypatch):
     vs = {
         "resourceType": "ValueSet", "status": "active",
         "url": "https://gematik.de/fhir/isik/ValueSet/DiagnosesSCT",
-        "version": "4.0.3",
+        "version": "5.1.3",
         "compose": {"include": [
             {"system": "http://snomed.info/sct",
              "filter": [{"property": "concept", "op": "is-a", "value": v}]}
@@ -159,7 +159,7 @@ def test_die_pruefsumme_gehoert_in_den_bericht():
     """Ohne sie liesse sich nicht unterscheiden, ob gegen die Definition
     der gematik gemessen wurde oder gegen eine selbstgeschriebene."""
     n = Terminologienachweis(
-        server="x", valueset="y", valueset_version="4.0.3",
+        server="x", valueset="y", valueset_version="5.1.3",
         valueset_sha256=DIAGNOSES_SCT_SHA256,
     )
     assert n.to_dict()["valueset_sha256"] == DIAGNOSES_SCT_SHA256

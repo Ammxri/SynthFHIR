@@ -9,6 +9,19 @@
 | **Ergänzt** | 2026-09-01: Der Referenzvalidator entscheidet die Bindung ebenfalls — Abschnitt 3c |
 | **Baut auf** | ADR-002, ADR-003, ADR-009 |
 
+> **Nachtrag 2026-09-08 (Stufe 5, ADR-020):** Die gemessene ValueSet-Fassung
+> ist mit dem Umstieg auf ISiK Stufe 5 von `4.0.3` auf `5.1.3` gezogen —
+> Quelle weiterhin `gematik/spec-ISiK-Basismodul` (DiagnosesSCT trägt die
+> kanonische URL des Basismoduls), nur der Tag wechselte auf `v.5.1.3`.
+> **Die Definition ist byteweise gleich geblieben** außer den
+> Metadatenfeldern `version` (4.0.3→5.1.3) und `date` (2025-02-19→
+> 2026-07-17): dieselben drei `is-a`-Wurzeln (404684003, 272379006,
+> 243796009), unveränderte Bytelänge (1046). Die Mitgliedschaft der 25 Codes ändert
+> sich dadurch nicht — neu gemessen am 2026-09-08 gegen tx.fhir.de und
+> tx.fhir.org: **25 von 25**, beide Gegenproben verneint. Der Pin
+> (`DIAGNOSES_SCT_SHA256`) wurde entsprechend nachgesetzt. Genau der
+> „zwei-Zeilen"-Weg, den dieses ADR für einen Fassungswechsel vorsah.
+
 ---
 
 ## 1. Kontext

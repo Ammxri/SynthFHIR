@@ -104,19 +104,28 @@ from .domain.codes import KATALOGE, SNOMED_SYSTEM
 # --- Die gemessene ValueSet-Fassung ----------------------------------------
 #
 # Die Version ist an das Paket gebunden, das `docs/belege/docker-compose.isik.yml`
-# lädt (de.gematik.isik-basismodul 4.0.3). Wer das Paket hochzieht, muss
-# auch hier hochziehen — sonst misst der Nachweis eine andere Fassung als
-# der Validator.
+# lädt (seit ADR-020 de.gematik.isik 5.1.3, Stufe 5). Wer das Paket
+# hochzieht, muss auch hier hochziehen — sonst misst der Nachweis eine
+# andere Fassung als der Validator.
+#
+# Die Quelle bleibt das Basismodul-Repo: DiagnosesSCT trägt weiterhin die
+# kanonische URL des Basismoduls (gematik.de/fhir/isik/…), und Stufe 5
+# vereinheitlicht nur die PAKETE, nicht die Quellrepositories. Gemessen
+# (2026-09-08): Die compose-Definition ist byteweise gleich geblieben —
+# dieselben drei is-a-Wurzeln (Clinical finding, Event, Situation) —, nur
+# die Metadatenfelder `version` (4.0.3→5.1.3) und `date` wechselten (beide
+# gleicher Bytelänge, Datei bleibt 1046 Bytes). Die Mitgliedschaft der 25
+# Codes ändert sich dadurch nicht; neu gemessen wurde sie trotzdem.
 DIAGNOSES_SCT = "https://gematik.de/fhir/isik/ValueSet/DiagnosesSCT"
-ISIK_VERSION = "4.0.3"
+ISIK_VERSION = "5.1.3"
 DIAGNOSES_SCT_QUELLE = (
     "https://raw.githubusercontent.com/gematik/spec-ISiK-Basismodul/"
-    "v.4.0.3/Resources/fsh-generated/resources/ValueSet-DiagnosesSCT.json"
+    "v.5.1.3/Resources/fsh-generated/resources/ValueSet-DiagnosesSCT.json"
 )
-# Nachgemessen am 2026-09-01. Ändert sich die Datei, bricht die Messung ab,
+# Nachgemessen am 2026-09-08. Ändert sich die Datei, bricht die Messung ab,
 # statt still gegen etwas anderes zu messen.
 DIAGNOSES_SCT_SHA256 = (
-    "fee9b527c982a2eec48f64e724200667a4a8722486419e36dddbe3394c92b63b"
+    "403183020745dfc1c3d645496151e2b8c78e6503f1c335bb2a3e5799b49f3849"
 )
 
 # --- Die Server ------------------------------------------------------------
