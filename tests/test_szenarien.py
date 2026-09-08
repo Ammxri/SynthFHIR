@@ -384,3 +384,39 @@ def test_ein_szenario_fuehrt_den_notfall_vor():
     assert e["class"]["code"] == "IMP", "der Notfall steht nicht in class"
     k = e["hospitalization"]["admitSource"]["coding"][0]
     assert k["system"] == AUFNAHMEANLASS_SYSTEM and k["code"] == "N"
+
+
+def test_die_bibliothek_zeigt_jedes_vitalparameterprofil():
+    """Seit ADR-019 gibt es sieben Vitalparameter-Profile. Ein Szenario
+    (intensivkontakt) fuehrt sie an einem Patienten vor — die Bibliothek
+    soll jedes davon mindestens einmal zeigen, damit kein profilierter
+    Vitalparameter unsichtbar bleibt."""
+    from synthfhir.profil import VITALPROFILE, profil_fuer
+
+    gezeigt = set()
+    for s in alle():
+        for r in baue(s).ressourcen:
+            p = profil_fuer(r)
+            if p and "Vital" not in p:  # nur die Vitalparameter-Profile
+                pass
+            if p and r["resourceType"] == "Observation":
+                gezeigt.add(p)
+    erwartet = set(VITALPROFILE.values())
+    fehlend = erwartet - gezeigt
+    assert not fehlend, f"kein Szenario zeigt: {[p.split('/')[-1] for p in fehlend]}"
+
+
+def test_ein_szenario_fuehrt_alle_vitalparameter_zusammen_vor():
+    """Der intensivkontakt zeigt den vollstaendigen Monitoring-Satz an
+    EINEM Patienten — der Fall, fuer den es das Szenario gibt."""
+    from synthfhir.profil import profil_fuer
+
+    e = baue(hole("intensivkontakt"))
+    profile = {profil_fuer(r).split("/")[-1] for r in e.ressourcen
+               if r["resourceType"] == "Observation" and profil_fuer(r)}
+    assert profile == {
+        "ISiKBlutdruckSystemischArteriell", "ISiKHerzfrequenz",
+        "ISiKAtemfrequenz", "ISiKKoerpertemperatur",
+        "ISiKSauerstoffsaettigungArteriell",
+        "ISiKKoerpergewicht", "ISiKKoerpergroesse",
+    }

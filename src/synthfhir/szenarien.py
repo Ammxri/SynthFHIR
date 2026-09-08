@@ -243,6 +243,44 @@ _EINGEBAUT: list[Szenario] = [
         ]},
     ),
     Szenario(
+        name="intensivkontakt",
+        titel="Intensivkontakt",
+        beschreibung=(
+            "Ein Patient nach Myokardinfarkt, stationär überwacht, mit dem "
+            "vollständigen Satz Vitalparameter und leitliniengerechter "
+            "Medikation."
+        ),
+        zeigt=(
+            "Jedes Vitalparameter-Profil des Katalogs an einem Patienten — "
+            "Herzfrequenz, Blutdruck-Panel, Atemfrequenz, Temperatur, "
+            "Sauerstoffsättigung, Gewicht und Größe (ADR-019)."
+        ),
+        parameter={"patienten": [
+            _p("Gerhard", "Vollmer", "male", "1954-10-17",
+               begegnungen=[{"art": "IMP", "datum": "2024-03-06"}],
+               diagnosen=[{"code": "22298006", "beginn": "2024-03-06"},
+                          {"code": "84114007", "beginn": "2024-03-06"}],
+               # Der vollständige Monitoring-Satz: jedes der sieben
+               # Vitalparameter-Profile. Das Blutdruckpaar wird zu EINER
+               # Panel-Observation (85354-9), die übrigen zu je einer
+               # eigenen. Gewicht und Größe gehören dazu, weil ein
+               # Intensivpatient sie für die Dosierung dokumentiert hat.
+               messwerte=[
+                   {"code": "8867-4", "wert": 88, "datum": "2024-03-06"},
+                   {"code": "8480-6", "wert": 128, "datum": "2024-03-06"},
+                   {"code": "8462-4", "wert": 78, "datum": "2024-03-06"},
+                   {"code": "9279-1", "wert": 19, "datum": "2024-03-06"},
+                   {"code": "8310-5", "wert": 37.2, "datum": "2024-03-06"},
+                   {"code": "2708-6", "wert": 95, "datum": "2024-03-06"},
+                   {"code": "29463-7", "wert": 82, "datum": "2024-03-06"},
+                   {"code": "8302-2", "wert": 178, "datum": "2024-03-06"},
+               ],
+               medikamente=[{"code": "B01AC06", "beginn": "2024-03-06"},
+                            {"code": "C07AB07", "beginn": "2024-03-06"},
+                            {"code": "C09AA05", "beginn": "2024-03-06"}]),
+        ]},
+    ),
+    Szenario(
         name="mehrere-kontakte",
         titel="Mehrere Kontakte",
         beschreibung=(

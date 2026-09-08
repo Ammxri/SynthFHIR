@@ -695,10 +695,11 @@ def test_die_bibliothek_steht_auf_der_startseite(klient):
     """Sie ist der einzige Weg, der auch bei leerem Kontingent etwas
     zeigt — also gehoert sie auf die erste Ansicht, nicht hinter einen
     Klick."""
+    from synthfhir.szenarien import alle
+
     text = klient.get("/").text
-    for name in ("diabetes-ambulanz", "blutdruck-kontrolle",
-                 "labor-grundprofil", "mehrere-kontakte", "ohne-kontakt"):
-        assert f"/szenario/{name}" in text
+    for s in alle():
+        assert f"/szenario/{s.name}" in text
 
 
 def test_szenario_liefert_eine_vollstaendige_kohorte(klient):
@@ -728,9 +729,10 @@ def test_szenario_laeuft_ohne_jeden_modellaufruf(klient, monkeypatch):
     # verbieten muss, ist ein anderer. Beide Wege sind gesperrt, also kann
     # der Szenariopfad auf keinem davon einen Client bauen.
     monkeypatch.setattr(app_modul, "client_mit_fremdschluessel", verboten)
-    for name in ("diabetes-ambulanz", "blutdruck-kontrolle",
-                 "labor-grundprofil", "mehrere-kontakte", "ohne-kontakt"):
-        assert klient.get(f"/szenario/{name}").status_code == 200
+    from synthfhir.szenarien import alle
+
+    for s in alle():
+        assert klient.get(f"/szenario/{s.name}").status_code == 200
 
 
 def test_szenario_verbraucht_keinen_platz_der_bremse(klient):

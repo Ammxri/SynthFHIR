@@ -485,11 +485,14 @@ def test_kein_szenarioweg_ruehrt_das_modell_an(monkeypatch, tmp_path, capsys):
     monkeypatch.setattr("synthfhir.llm.client_mit_fremdschluessel", verboten)
     monkeypatch.delenv("SYNTHFHIR_LLM_API_KEY", raising=False)
 
+    from synthfhir.szenarien import alle
+
     assert cli.main(["--szenarien"]) == 0
-    for name in ("diabetes-ambulanz", "blutdruck-kontrolle",
-                 "labor-grundprofil", "mehrere-kontakte", "ohne-kontakt"):
-        assert cli.main(["--szenario", name, "-o",
-                         str(tmp_path / f"{name}.json"), "--still"]) == 0
+    # Ueber ALLE Szenarien, nicht eine feste Liste: Ein neues Szenario
+    # (etwa intensivkontakt, ADR-019) soll automatisch mitgeprueft werden.
+    for s in alle():
+        assert cli.main(["--szenario", s.name, "-o",
+                         str(tmp_path / f"{s.name}.json"), "--still"]) == 0
 
 
 def test_szenarien_listet_ohne_modell(capsys):
