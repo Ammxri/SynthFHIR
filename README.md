@@ -357,12 +357,14 @@ gegen einen Terminologieserver. Gemessen am 2026-09-01:
     ISiKAtemfrequenz                              1        0       2
     ISiKBlutdruckSystemischArteriell              1        0       2
     ISiKDiagnose                                  4        0      12
+    ISiKKoerpergewicht                            1        0       2
+    ISiKKoerpergroesse                            1        0       2
     ISiKKoerpertemperatur                         1        0       2
     ISiKKontaktGesundheitseinrichtung             4        0       8
     ISiKMedikationsInformation                    2        0       2
     ISiKPatient                                   3        0       3
     ISiKSauerstoffsaettigungArteriell             1        0       2
-    SUMME                                        17        0      33
+    SUMME                                        19        0      37
 
     Keine ungeprüften Befunde: Die Terminologie hat entschieden.
 

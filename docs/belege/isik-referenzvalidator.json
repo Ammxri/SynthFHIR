@@ -30,6 +30,20 @@
       "warnungen": 12,
       "fehlertexte": []
     },
+    "ISiKKoerpergewicht": {
+      "geprueft": 1,
+      "profil": "https://gematik.de/fhir/isik/StructureDefinition/ISiKKoerpergewicht",
+      "fehler": 0,
+      "warnungen": 2,
+      "fehlertexte": []
+    },
+    "ISiKKoerpergroesse": {
+      "geprueft": 1,
+      "profil": "https://gematik.de/fhir/isik/StructureDefinition/ISiKKoerpergroesse",
+      "fehler": 0,
+      "warnungen": 2,
+      "fehlertexte": []
+    },
     "ISiKKoerpertemperatur": {
       "geprueft": 1,
       "profil": "https://gematik.de/fhir/isik/StructureDefinition/ISiKKoerpertemperatur",
@@ -67,8 +81,8 @@
     }
   },
   "warnungen_gezaehlt": {
-    "Constraint failed: dom-6: 'A resource should have narrative for robust management' (defined in http://hl7.org/fhir/Struc": 17,
-    "Alle Observations sollten einen Performer haben": 4,
+    "Constraint failed: dom-6: 'A resource should have narrative for robust management' (defined in http://hl7.org/fhir/Struc": 19,
+    "Alle Observations sollten einen Performer haben": 6,
     "A definition for CodeSystem 'http://fhir.de/CodeSystem/bfarm/icd-10-gm' version '2026' could not be found, so the code c": 4,
     "Keiner der angegebenen Codes ist im Valueset 'IdentifierType' (http://hl7.org/fhir/ValueSet/identifier-type|4.0.1), und ": 4,
     "There are no valid display names found for the code http://snomed.info/sct#44054006 for language(s) 'de'. The display is": 1,
@@ -77,9 +91,9 @@
     "There are no valid display names found for the code http://snomed.info/sct#195967001 for language(s) 'de'. The display i": 1
   },
   "summe": {
-    "geprueft": 17,
+    "geprueft": 19,
     "fehler": 0,
-    "warnungen": 33
+    "warnungen": 37
   },
   "ungepruefte_meldungen": []
 }

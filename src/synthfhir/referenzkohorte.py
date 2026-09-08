@@ -61,7 +61,16 @@ PARAMETER: dict = {
             "geburtsdatum": "1955-03-17",
             "begegnungen": [{"art": "AMB", "datum": "2024-06-01"}],
             "diagnosen": [{"code": "44054006", "beginn": "2015-01-01"}],
-            "messwerte": [{"code": "4548-4", "wert": 7.4, "datum": "2024-06-01"}],
+            # Körpergewicht und -größe an der Diabetes-Ambulanz plausibel
+            # (BMI-Verlauf). Sie stehen hier, weil ihre Profile
+            # (ISiKKoerpergewicht, ISiKKoerpergroesse) seit ADR-014 im
+            # Katalog sind, aber bis ADR-019 nie in der Referenzkohorte —
+            # also nie im eingecheckten Validator-Beleg gemessen wurden.
+            "messwerte": [
+                {"code": "4548-4", "wert": 7.4, "datum": "2024-06-01"},
+                {"code": "29463-7", "wert": 71, "datum": "2024-06-01"},
+                {"code": "8302-2", "wert": 164, "datum": "2024-06-01"},
+            ],
             "medikamente": [{"code": "A10BA02", "beginn": "2015-02-01"}],
         },
         {

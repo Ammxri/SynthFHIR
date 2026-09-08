@@ -90,11 +90,20 @@ Maßstab wie ADR-013/018) gegen tx.fhir.org, SNOMED international:
     ISiKAtemfrequenz                    1 geprüft   0 Fehler   2 Warnungen
     ISiKKoerpertemperatur               1 geprüft   0 Fehler   2 Warnungen
     ISiKSauerstoffsaettigungArteriell   1 geprüft   0 Fehler   2 Warnungen
-    SUMME (ganze Kohorte)              17 geprüft   0 Fehler  33 Warnungen
+    SUMME (ganze Kohorte)              19 geprüft   0 Fehler  37 Warnungen
 
     Keine ungeprüften Befunde: Die Terminologie hat entschieden.
 
-Beleg: `docs/belege/isik-referenzvalidator.json` (17 statt zuvor 14).
+Beleg: `docs/belege/isik-referenzvalidator.json` (19 statt zuvor 14).
+
+**Nachtrag:** Der erste Stand nach ADR-019 waren 17 Ressourcen. Das
+Intensivkontakt-Szenario (ADR-016) förderte danach zutage, dass
+`ISiKKoerpergewicht` und `ISiKKoerpergroesse` seit ADR-014 im
+`VITALPROFILE` standen, aber **nie in der Referenzkohorte** und damit nie
+im Beleg gemessen waren — derselbe blinde Fleck wie bei `EMER` (ADR-018).
+Beide stehen jetzt an der Diabetes-Ambulanz-Patientin der Kohorte, je
+0 Fehler. Erst damit sind **alle sieben** Vitalparameter-Profile
+dauerhaft gemessen.
 
 **Keine neue Warnungsart.** Die 33 Warnungen sind dieselben wie in
 ADR-013/014: dom-6 (fehlendes Narrative, je Ressource eine), fehlender

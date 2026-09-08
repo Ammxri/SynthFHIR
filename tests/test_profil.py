@@ -307,10 +307,12 @@ def test_bericht_nennt_paket_und_terminologiestand(profilserver):
 def test_bericht_zaehlt_drei_spalten_getrennt(profilserver):
     b = pruefe_gegen_profile(baue(), profilserver)
     s = b.to_dict()["summe"]
-    # 17 seit ADR-019: 11 aus Phase 3, +3 durch ADR-014 (Blutdruckpanel und
+    # 19 seit ADR-019: 11 aus Phase 3, +3 durch ADR-014 (Blutdruckpanel und
     # zwei MedicationStatements), +3 durch die neuen Vitalparameter
-    # (Atemfrequenz, Körpertemperatur, Sauerstoffsättigung).
-    assert s["geprueft"] == 17
+    # (Atemfrequenz, Körpertemperatur, Sauerstoffsättigung) und +2, weil
+    # Körpergewicht und -größe jetzt in der Referenzkohorte stehen — ihre
+    # Profile waren seit ADR-014 im Katalog, aber nie gemessen.
+    assert s["geprueft"] == 19
     assert s["ungeprueft"] > 0, "die SNOMED-Bindung ist ohne Terminologie offen"
 
 
