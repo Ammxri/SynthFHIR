@@ -9,6 +9,13 @@
   "terminologieserver": "https://tx.fhir.org/r4",
   "snomed_edition": "intl",
   "je_typ": {
+    "ISiKAtemfrequenz": {
+      "geprueft": 1,
+      "profil": "https://gematik.de/fhir/isik/StructureDefinition/ISiKAtemfrequenz",
+      "fehler": 0,
+      "warnungen": 2,
+      "fehlertexte": []
+    },
     "ISiKBlutdruckSystemischArteriell": {
       "geprueft": 1,
       "profil": "https://gematik.de/fhir/isik/StructureDefinition/ISiKBlutdruckSystemischArteriell",
@@ -21,6 +28,13 @@
       "profil": "https://gematik.de/fhir/isik/StructureDefinition/ISiKDiagnose",
       "fehler": 0,
       "warnungen": 12,
+      "fehlertexte": []
+    },
+    "ISiKKoerpertemperatur": {
+      "geprueft": 1,
+      "profil": "https://gematik.de/fhir/isik/StructureDefinition/ISiKKoerpertemperatur",
+      "fehler": 0,
+      "warnungen": 2,
       "fehlertexte": []
     },
     "ISiKKontaktGesundheitseinrichtung": {
@@ -43,22 +57,29 @@
       "fehler": 0,
       "warnungen": 3,
       "fehlertexte": []
+    },
+    "ISiKSauerstoffsaettigungArteriell": {
+      "geprueft": 1,
+      "profil": "https://gematik.de/fhir/isik/StructureDefinition/ISiKSauerstoffsaettigungArteriell",
+      "fehler": 0,
+      "warnungen": 2,
+      "fehlertexte": []
     }
   },
   "warnungen_gezaehlt": {
-    "Constraint failed: dom-6: 'A resource should have narrative for robust management' (defined in http://hl7.org/fhir/Struc": 14,
+    "Constraint failed: dom-6: 'A resource should have narrative for robust management' (defined in http://hl7.org/fhir/Struc": 17,
+    "Alle Observations sollten einen Performer haben": 4,
     "A definition for CodeSystem 'http://fhir.de/CodeSystem/bfarm/icd-10-gm' version '2026' could not be found, so the code c": 4,
     "Keiner der angegebenen Codes ist im Valueset 'IdentifierType' (http://hl7.org/fhir/ValueSet/identifier-type|4.0.1), und ": 4,
-    "Alle Observations sollten einen Performer haben": 1,
     "There are no valid display names found for the code http://snomed.info/sct#44054006 for language(s) 'de'. The display is": 1,
     "There are no valid display names found for the code http://snomed.info/sct#38341003 for language(s) 'de'. The display is": 1,
     "There are no valid display names found for the code http://snomed.info/sct#84114007 for language(s) 'de'. The display is": 1,
     "There are no valid display names found for the code http://snomed.info/sct#195967001 for language(s) 'de'. The display i": 1
   },
   "summe": {
-    "geprueft": 14,
+    "geprueft": 17,
     "fehler": 0,
-    "warnungen": 27
+    "warnungen": 33
   },
   "ungepruefte_meldungen": []
 }

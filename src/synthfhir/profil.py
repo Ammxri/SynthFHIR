@@ -103,6 +103,12 @@ VITALPROFILE = {
     "8867-4": _SD + "ISiKHerzfrequenz",
     "29463-7": _SD + "ISiKKoerpergewicht",
     "8302-2": _SD + "ISiKKoerpergroesse",
+    # ADR-019: die drei klassischen fehlenden Vitalparameter. Der LOINC
+    # steht im primären `loinc`-Slice des jeweiligen fhir.de-Basisprofils,
+    # das ISiK verfeinert.
+    "9279-1": _SD + "ISiKAtemfrequenz",
+    "8310-5": _SD + "ISiKKoerpertemperatur",
+    "2708-6": _SD + "ISiKSauerstoffsaettigungArteriell",
 }
 
 LOINC = "http://loinc.org"

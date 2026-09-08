@@ -232,7 +232,7 @@ def test_die_deutschen_loinc_bezeichnungen_stimmen(terminologieserver):
     Ein abgeschriebener Text veraltet still: LOINC gibt neue Fassungen
     heraus, und ein Profil, das den Anzeigenamen prueft, meldet das dann
     als Fehler — an einer Stelle, an der niemand eine Katalogpflege
-    vermutet. Dieser Test haelt die 25 Werte gegen den Server.
+    vermutet. Dieser Test haelt alle Werte gegen den Server.
 
     **Gefragt wird tx.fhir.org, nicht der Vorgabeserver.** Von dort
     stammen die Werte, und die beiden Server unterscheiden sich: Fuer

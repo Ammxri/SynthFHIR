@@ -80,6 +80,14 @@ PARAMETER: dict = {
             "messwerte": [
                 {"code": "8480-6", "wert": 148, "datum": "2024-08-03"},
                 {"code": "8462-4", "wert": 92, "datum": "2024-08-03"},
+                # Die drei Vitalparameter aus ADR-019, an einem stationären
+                # Patienten plausibel — und damit in der Messung, nicht nur
+                # im Katalog. Ohne sie hier bliebe ihre Profilkonformität
+                # ungeprüft (derselbe blinde Fleck, an dem EMER unbemerkt
+                # blieb, ADR-018).
+                {"code": "9279-1", "wert": 18, "datum": "2024-08-03"},
+                {"code": "8310-5", "wert": 38.4, "datum": "2024-08-03"},
+                {"code": "2708-6", "wert": 96, "datum": "2024-08-03"},
             ],
             "medikamente": [{"code": "C09AA05", "beginn": "2010-06-01"}],
         },

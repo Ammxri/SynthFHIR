@@ -354,12 +354,15 @@ Misst dieselbe Kohorte mit dem Validator, den HL7 selbst veröffentlicht,
 gegen einen Terminologieserver. Gemessen am 2026-09-01:
 
     Profil                                  geprüft   Fehler   Warn.
+    ISiKAtemfrequenz                              1        0       2
     ISiKBlutdruckSystemischArteriell              1        0       2
     ISiKDiagnose                                  4        0      12
+    ISiKKoerpertemperatur                         1        0       2
     ISiKKontaktGesundheitseinrichtung             4        0       8
     ISiKMedikationsInformation                    2        0       2
     ISiKPatient                                   3        0       3
-    SUMME                                        14        0      27
+    ISiKSauerstoffsaettigungArteriell             1        0       2
+    SUMME                                        17        0      33
 
     Keine ungeprüften Befunde: Die Terminologie hat entschieden.
 
@@ -524,6 +527,7 @@ in dieser Reihenfolge:
 | [ADR-016](docs/adr-016-szenario-bibliothek.md) | Die Szenario-Bibliothek — Vorlagen statt Modellaufrufe |
 | [ADR-017](docs/adr-017-profilmessung-in-der-ci.md) | Die Profilmessung als Auflage der CI — und was sie nicht verspricht |
 | [ADR-018](docs/adr-018-notfall-als-aufnahmeanlass.md) | Der Notfall steht nicht in `Encounter.class` |
+| [ADR-019](docs/adr-019-weitere-vitalparameter.md) | Drei weitere Vitalparameter — Atemfrequenz, Temperatur, Sauerstoffsättigung |
 | [Konzepte](docs/konzepte.md) | Die FHIR-Grundlagen dahinter, ausführlich erklärt |
 
 ### Die tragenden Entscheidungen in drei Sätzen

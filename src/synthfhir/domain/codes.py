@@ -279,6 +279,15 @@ OBSERVATION_CODES: dict[str, ObservationCode] = {
         ObservationCode("8462-4", "Diastolic blood pressure", "Blutdruck diastolisch", "mmHg", "mm[Hg]", 50.0, 110.0, vital_sign=True, display_loinc_de="Diastolischer Blutdruck"),
         ObservationCode("29463-7", "Body weight", "Körpergewicht", "kg", "kg", 40.0, 140.0, vital_sign=True, display_loinc_de="Körpergewicht"),
         ObservationCode("8302-2", "Body height", "Körpergröße", "cm", "cm", 145.0, 200.0, vital_sign=True, display_loinc_de="Körpergröße"),
+        # LOINC-Codes, UCUM-Einheiten und `display_loinc_de` am 2026-09-01
+        # aus der Primärquelle geholt: der PRIMÄRE `loinc`-Slice der
+        # fhir.de-Vitalparameter-Profile (de.basisprofil.r4 1.5.3, nicht der
+        # optionale `loinc-zusatzcode`), die amtliche deutsche Bezeichnung
+        # von tx.fhir.org (LOINC 2.82). ISiK profiliert jeden einzeln
+        # (ADR-019); die Zuordnung steht in `profil.py`.
+        ObservationCode("9279-1", "Respiratory rate", "Atemfrequenz", "/min", "/min", 10.0, 24.0, vital_sign=True, display_loinc_de="Atemfrequenz"),
+        ObservationCode("8310-5", "Body temperature", "Körpertemperatur", "°C", "Cel", 35.5, 40.5, vital_sign=True, display_loinc_de="Körpertemperatur"),
+        ObservationCode("2708-6", "Oxygen saturation in Arterial blood", "Sauerstoffsättigung", "%", "%", 88.0, 100.0, vital_sign=True, display_loinc_de="Sauerstoffsättigung in arteriellem Blut"),
     ]
 }
 

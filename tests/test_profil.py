@@ -307,9 +307,10 @@ def test_bericht_nennt_paket_und_terminologiestand(profilserver):
 def test_bericht_zaehlt_drei_spalten_getrennt(profilserver):
     b = pruefe_gegen_profile(baue(), profilserver)
     s = b.to_dict()["summe"]
-    # 14 statt 11 seit ADR-014: Das Blutdruckpanel und die beiden
-    # MedicationStatements sind jetzt profiliert.
-    assert s["geprueft"] == 14
+    # 17 seit ADR-019: 11 aus Phase 3, +3 durch ADR-014 (Blutdruckpanel und
+    # zwei MedicationStatements), +3 durch die neuen Vitalparameter
+    # (Atemfrequenz, Körpertemperatur, Sauerstoffsättigung).
+    assert s["geprueft"] == 17
     assert s["ungeprueft"] > 0, "die SNOMED-Bindung ist ohne Terminologie offen"
 
 
@@ -700,3 +701,44 @@ def test_kein_szenario_liefert_einen_profilfehler(profilserver):
         fehler = [(s.name, e.ressourcentyp, f.meldung)
                   for e in b.ergebnisse for f in e.fehler]
         assert fehler == [], fehler
+
+
+# --- Die neuen Vitalparameter (ADR-019) ------------------------------------
+
+
+def _vitalparameter(code, wert):
+    """Eine einzelne Vitalparameter-Observation, gebaut über den echten
+    Weg — `pruefe_gegen_profile` ordnet ihr über den LOINC-Code
+    automatisch ihr ISiK-Profil zu."""
+    from synthfhir.generation import Ergebnis, baue_und_pruefe
+
+    e = baue_und_pruefe({"patienten": [{
+        "vorname": "A", "nachname": "B", "geschlecht": "male",
+        "geburtsdatum": "1980-01-01",
+        "begegnungen": [{"art": "IMP", "datum": "2024-01-01"}],
+        "diagnosen": [{"code": "44054006", "beginn": "2020-01-01"}],
+        "messwerte": [{"code": code, "wert": wert, "datum": "2024-01-01"}]}]},
+        Ergebnis(beschreibung="x"))
+    return [r for r in e.ressourcen if r["resourceType"] == "Observation"]
+
+
+@pytest.mark.parametrize("code,wert,profil", [
+    ("9279-1", 18, "ISiKAtemfrequenz"),
+    ("8310-5", 38.4, "ISiKKoerpertemperatur"),
+    ("2708-6", 96, "ISiKSauerstoffsaettigungArteriell"),
+])
+def test_die_neuen_vitalparameter_genuegen_isik(code, wert, profil, profilserver):
+    """Jeder neue Vitalparameter einzeln gegen sein Profil, nicht nur als
+    Teil der Kohorte — ein Fehler soll den Vitalparameter benennen, nicht
+    im Aggregat untergehen.
+
+    LOINC, UCUM-Einheit und `display_loinc_de` stammen aus der
+    Primärquelle (fhir.de-Profil bzw. tx.fhir.org); dieser Test ist die
+    maschinelle Gegenprobe gegen den Profilserver."""
+    obs = _vitalparameter(code, wert)
+    assert obs, "keine Observation gebaut"
+    assert profil_fuer(obs[0]) == VITALPROFILE[code]
+    assert VITALPROFILE[code].endswith(profil)
+    b = pruefe_gegen_profile(obs, profilserver)
+    fehler = [f.meldung for e in b.ergebnisse for f in e.fehler]
+    assert fehler == [], fehler
