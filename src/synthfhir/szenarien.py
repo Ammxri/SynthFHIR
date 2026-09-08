@@ -152,10 +152,11 @@ def _p(vorname, nachname, geschlecht, geburtsdatum, **rest) -> dict:
 # ===========================================================================
 #
 # Ausgewählt nach dem, was ein Tester wirklich braucht — nicht nach dem,
-# was sich gut liest. Zwei der fünf zeigen ausdrücklich **unbequeme**
+# was sich gut liest. Zwei der sieben zeigen ausdrücklich **unbequeme**
 # Fälle: eine Kohorte ohne Begegnung und eine mit mehreren Kontakten je
 # Patient. Glatte Kohorten findet man überall; an den schiefen scheitern
-# Importwerkzeuge.
+# Importwerkzeuge. Das siebte (ADR-022) ist der einzige pädiatrische Fall
+# und der einzige Träger des Kopfumfangs.
 
 _EINGEBAUT: list[Szenario] = [
     Szenario(
@@ -327,6 +328,27 @@ _EINGEBAUT: list[Szenario] = [
             _p("Elfriede", "Hartmann", "female", "1936-05-07",
                diagnosen=[{"code": "13644009", "beginn": "2001-10-22"}],
                medikamente=[{"code": "C10AA01", "beginn": "2001-11-01"}]),
+        ]},
+    ),
+    Szenario(
+        name="vorsorge-saeugling",
+        titel="Vorsorge Säugling",
+        beschreibung=(
+            "Ein Säugling bei zwei Früherkennungsuntersuchungen (U4 und U5) "
+            "mit fortlaufend gemessenem Kopfumfang."
+        ),
+        zeigt=(
+            "Der einzige pädiatrische Fall und das Profil ISiKKopfumfang, "
+            "das die übrigen Szenarien nicht erreichen (ADR-022) — der "
+            "Kopfumfang über zwei Termine, wie die U-Untersuchungen ihn "
+            "verfolgen."
+        ),
+        parameter={"patienten": [
+            _p("Jonas", "Fischer", "male", "2024-01-10",
+               begegnungen=[{"art": "AMB", "datum": "2024-04-15"},
+                            {"art": "AMB", "datum": "2024-07-08"}],
+               messwerte=[{"code": "9843-4", "wert": 41, "datum": "2024-04-15"},
+                          {"code": "9843-4", "wert": 44, "datum": "2024-07-08"}]),
         ]},
     ),
 ]

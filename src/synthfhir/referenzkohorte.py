@@ -5,8 +5,8 @@ taugt nur zum Vergleich, wenn sich zwischen zwei Läufen ausschließlich das
 ändert, was man messen will. Eine vom Modell erzeugte Kohorte ändert sich
 bei jedem Lauf und macht jeden Vergleich wertlos.
 
-Der Zuschnitt ist nicht beliebig. Vier Patienten; der dritte ist der
-wichtigste, der vierte kam mit ADR-020 dazu:
+Der Zuschnitt ist nicht beliebig. Fünf Patienten; der dritte ist der
+wichtigste, der vierte kam mit ADR-020, der fünfte mit ADR-022 dazu:
 
   1. **Vollständig** — Begegnung, Diagnose, Messwert, Medikation. Der
      Normalfall.
@@ -16,6 +16,9 @@ wichtigste, der vierte kam mit ADR-020 dazu:
   4. **Breiter Laborsatz** — seit ADR-020 tragen Laborwerte das
      allgemeine ISiKLaboruntersuchung; dieser Patient misst es an mehr als
      zwei Einzelwerten und deckt beide Fälle ab (mit und ohne SNOMED).
+  5. **Säugling** — der einzige pädiatrische Fall und der einzige Träger
+     des Kopfumfangs (ADR-022), damit ISiKKopfumfang nicht im Katalog
+     steht, ohne je gemessen zu werden.
 
 Der dritte Fall ist der, den die erste Sondierung übersehen hat. ISiK
 verlangt über `isik-con1`, dass eine kodierte Diagnose auf den Kontakt
@@ -52,7 +55,7 @@ from .domain import assign_ids, baue_aus_parametern
 # Produkts, nicht ein Sonderweg für die Messung.
 PARAMETER: dict = {
     "verstanden": {
-        "anzahl_patienten": 4,
+        "anzahl_patienten": 5,
         "kernkriterien": ["Referenzkohorte", "fest verdrahtet"],
         "nicht_abbildbar": [],
     },
@@ -135,6 +138,22 @@ PARAMETER: dict = {
                 {"code": "2951-2", "wert": 141, "datum": "2024-09-10"},  # Natrium
                 {"code": "2823-3", "wert": 4.8, "datum": "2024-09-10"},  # Kalium
                 {"code": "2345-7", "wert": 112, "datum": "2024-09-10"},  # Glukose
+            ],
+        },
+        {
+            # Ein Säugling bei der U-Untersuchung — der einzige pädiatrische
+            # Fall und der einzige Träger des Kopfumfangs (ADR-022). Ohne
+            # ihn stünde ISiKKopfumfang im Katalog, aber nie im
+            # eingecheckten Beleg — derselbe blinde Fleck, an dem EMER
+            # unbemerkt blieb (ADR-018) und den ADR-019 für Gewicht und
+            # Größe schloss. 43 cm sind für ein halbes Jahr normal.
+            "vorname": "Mia",
+            "nachname": "Sommer",
+            "geschlecht": "female",
+            "geburtsdatum": "2024-03-01",
+            "begegnungen": [{"art": "AMB", "datum": "2024-09-01"}],
+            "messwerte": [
+                {"code": "9843-4", "wert": 43, "datum": "2024-09-01"},
             ],
         },
     ],

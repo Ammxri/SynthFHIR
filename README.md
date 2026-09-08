@@ -551,6 +551,7 @@ in dieser Reihenfolge:
 | [ADR-019](docs/adr-019-weitere-vitalparameter.md) | Drei weitere Vitalparameter — Atemfrequenz, Temperatur, Sauerstoffsättigung |
 | [ADR-020](docs/adr-020-isik-stufe-5-und-labor.md) | ISiK Stufe 5 — ein Paket, und Labor wird konform |
 | [ADR-021](docs/adr-021-snomed-laborcodes-und-gfr.md) | Die 14 offenen SNOMED-Laborcodes gewählt, und die GFR modernisiert |
+| [ADR-022](docs/adr-022-kopfumfang-und-paediatrie.md) | Kopfumfang als Vitalparameter, und der erste pädiatrische Fall |
 | [Konzepte](docs/konzepte.md) | Die FHIR-Grundlagen dahinter, ausführlich erklärt |
 
 ### Die tragenden Entscheidungen in drei Sätzen

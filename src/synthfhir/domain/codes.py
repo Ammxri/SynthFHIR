@@ -288,6 +288,11 @@ OBSERVATION_CODES: dict[str, ObservationCode] = {
         ObservationCode("9279-1", "Respiratory rate", "Atemfrequenz", "/min", "/min", 10.0, 24.0, vital_sign=True, display_loinc_de="Atemfrequenz"),
         ObservationCode("8310-5", "Body temperature", "Körpertemperatur", "°C", "Cel", 35.5, 40.5, vital_sign=True, display_loinc_de="Körpertemperatur"),
         ObservationCode("2708-6", "Oxygen saturation in Arterial blood", "Sauerstoffsättigung", "%", "%", 88.0, 100.0, vital_sign=True, display_loinc_de="Sauerstoffsättigung in arteriellem Blut"),
+        # Kopfumfang (ADR-022). LOINC 9843-4 ist im fhir.de-Basisprofil
+        # `observation-de-vitalsign-kopfumfang` fest (min=1); der SNOMED-
+        # Slice ist optional, deshalb wie die übrigen Vitalparameter nur
+        # LOINC. Bereich 30–60 cm deckt Neugeborene bis Erwachsene ab.
+        ObservationCode("9843-4", "Head Occipital-frontal circumference", "Kopfumfang", "cm", "cm", 30.0, 60.0, vital_sign=True, display_loinc_de="Kopfumfang okzipital-frontal"),
     ]
 }
 

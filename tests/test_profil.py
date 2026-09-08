@@ -314,12 +314,11 @@ def test_bericht_nennt_paket_und_terminologiestand(profilserver):
 def test_bericht_zaehlt_drei_spalten_getrennt(profilserver):
     b = pruefe_gegen_profile(baue(), profilserver)
     s = b.to_dict()["summe"]
-    # 29 seit ADR-020: die 19 aus ADR-019, plus die sieben Laborwerte der
-    # Kohorte (HbA1c, Hämoglobin und der breite Satz des vierten Patienten:
-    # Kreatinin, CRP, Natrium, Kalium, Glukose), die jetzt das allgemeine
-    # ISiKLaboruntersuchung tragen statt unprofiliert zu bleiben, plus die
-    # drei Ressourcen dieses vierten Patienten (Patient, Kontakt, Diagnose).
-    assert s["geprueft"] == 29
+    # 32 seit ADR-022: die 29 aus ADR-020 plus die drei Ressourcen des
+    # fünften Patienten (Säugling: Patient, Kontakt, Kopfumfang). Die 29
+    # waren die 19 aus ADR-019 plus die sieben profilierten Laborwerte der
+    # Kohorte plus die drei Ressourcen des Laborpatienten (ADR-020).
+    assert s["geprueft"] == 32
     assert s["ungeprueft"] > 0, "die SNOMED-Bindung ist ohne Terminologie offen"
 
 

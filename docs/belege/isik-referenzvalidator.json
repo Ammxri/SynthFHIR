@@ -50,10 +50,17 @@
       "fehlertexte": []
     },
     "ISiKKontaktGesundheitseinrichtung": {
-      "geprueft": 5,
+      "geprueft": 6,
       "profil": "https://gematik.de/fhir/isik/StructureDefinition/ISiKKontaktGesundheitseinrichtung",
       "fehler": 0,
-      "warnungen": 10,
+      "warnungen": 12,
+      "fehlertexte": []
+    },
+    "ISiKKopfumfang": {
+      "geprueft": 1,
+      "profil": "https://gematik.de/fhir/isik/StructureDefinition/ISiKKopfumfang",
+      "fehler": 0,
+      "warnungen": 2,
       "fehlertexte": []
     },
     "ISiKLaboruntersuchung": {
@@ -71,10 +78,10 @@
       "fehlertexte": []
     },
     "ISiKPatient": {
-      "geprueft": 4,
+      "geprueft": 5,
       "profil": "https://gematik.de/fhir/isik/StructureDefinition/ISiKPatient",
       "fehler": 0,
-      "warnungen": 4,
+      "warnungen": 5,
       "fehlertexte": []
     },
     "ISiKSauerstoffsaettigungArteriell": {
@@ -86,9 +93,9 @@
     }
   },
   "warnungen_gezaehlt": {
-    "Constraint failed: dom-6: 'A resource should have narrative for robust management' (defined in http://hl7.org/fhir/Struc": 29,
-    "Alle Observations sollten einen Performer haben": 13,
-    "Keiner der angegebenen Codes ist im Valueset 'IdentifierType' (http://hl7.org/fhir/ValueSet/identifier-type|4.0.1), und ": 5,
+    "Constraint failed: dom-6: 'A resource should have narrative for robust management' (defined in http://hl7.org/fhir/Struc": 32,
+    "Alle Observations sollten einen Performer haben": 14,
+    "Keiner der angegebenen Codes ist im Valueset 'IdentifierType' (http://hl7.org/fhir/ValueSet/identifier-type|4.0.1), und ": 6,
     "A definition for CodeSystem 'http://fhir.de/CodeSystem/bfarm/icd-10-gm' version '2026' could not be found, so the code c": 4,
     "There are no valid display names found for the code http://snomed.info/sct#44054006 for language(s) 'de'. The display is": 1,
     "There are no valid display names found for the code http://snomed.info/sct#38341003 for language(s) 'de'. The display is": 1,
@@ -100,9 +107,9 @@
     "Cannot validate display 'Creatinine measurement, serum' for http://snomed.info/sct#70901006 in language de: No displays ": 1
   },
   "summe": {
-    "geprueft": 29,
+    "geprueft": 32,
     "fehler": 0,
-    "warnungen": 59
+    "warnungen": 64
   },
   "ungepruefte_meldungen": []
 }

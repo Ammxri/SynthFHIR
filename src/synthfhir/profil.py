@@ -110,6 +110,9 @@ VITALPROFILE = {
     "9279-1": _SD + "ISiKAtemfrequenz",
     "8310-5": _SD + "ISiKKoerpertemperatur",
     "2708-6": _SD + "ISiKSauerstoffsaettigungArteriell",
+    # Kopfumfang (ADR-022), pädiatrisch. Wie die übrigen Vitalparameter je
+    # LOINC einzeln profiliert.
+    "9843-4": _SD + "ISiKKopfumfang",
 }
 
 LOINC = "http://loinc.org"
