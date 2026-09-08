@@ -8,6 +8,15 @@
 | **Betrifft** | `domain/codes.py`, `domain/templates.py`, `profil.py`, `tools/isik_referenzvalidator.py`, Compose |
 | **Baut auf** | ADR-001, ADR-003, ADR-007, ADR-009, ADR-013 |
 
+> **Nachtrag 2026-09-08:** Die hier gewählten **drei eigenständigen
+> Stufe-4-Module** (Basismodul, Vitalparameter, Medikation) sind seit
+> [ADR-020](adr-020-isik-stufe-5-und-labor.md) durch das **eine**
+> vereinheitlichte Stufe-5-Paket `de.gematik.isik#5.1.3` ersetzt (das auch
+> Labor trägt). Die inhaltlichen Erkenntnisse unten — Profilierung je
+> Ressource, Blutdruck als Panel, drei Anzeigefelder, MedicationStatement
+> war schon konform — gelten unverändert; nur die Paketaufteilung ist
+> überholt.
+
 ---
 
 ## 1. Kontext

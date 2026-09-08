@@ -1,9 +1,7 @@
 {
   "werkzeug": "org.hl7.fhir.core validator_cli",
   "pakete": [
-    "de.gematik.isik-basismodul#4.0.3",
-    "de.gematik.isik-vitalparameter#4.0.2",
-    "de.gematik.isik-medikation#4.0.3"
+    "de.gematik.isik#5.1.3"
   ],
   "fhir_version": "4.0.1",
   "terminologieserver": "https://tx.fhir.org/r4",
@@ -24,10 +22,10 @@
       "fehlertexte": []
     },
     "ISiKDiagnose": {
-      "geprueft": 4,
+      "geprueft": 5,
       "profil": "https://gematik.de/fhir/isik/StructureDefinition/ISiKDiagnose",
       "fehler": 0,
-      "warnungen": 12,
+      "warnungen": 15,
       "fehlertexte": []
     },
     "ISiKKoerpergewicht": {
@@ -52,10 +50,17 @@
       "fehlertexte": []
     },
     "ISiKKontaktGesundheitseinrichtung": {
-      "geprueft": 4,
+      "geprueft": 5,
       "profil": "https://gematik.de/fhir/isik/StructureDefinition/ISiKKontaktGesundheitseinrichtung",
       "fehler": 0,
-      "warnungen": 8,
+      "warnungen": 10,
+      "fehlertexte": []
+    },
+    "ISiKLaboruntersuchung": {
+      "geprueft": 7,
+      "profil": "https://gematik.de/fhir/isik/StructureDefinition/ISiKLaboruntersuchung",
+      "fehler": 0,
+      "warnungen": 16,
       "fehlertexte": []
     },
     "ISiKMedikationsInformation": {
@@ -66,10 +71,10 @@
       "fehlertexte": []
     },
     "ISiKPatient": {
-      "geprueft": 3,
+      "geprueft": 4,
       "profil": "https://gematik.de/fhir/isik/StructureDefinition/ISiKPatient",
       "fehler": 0,
-      "warnungen": 3,
+      "warnungen": 4,
       "fehlertexte": []
     },
     "ISiKSauerstoffsaettigungArteriell": {
@@ -81,19 +86,23 @@
     }
   },
   "warnungen_gezaehlt": {
-    "Constraint failed: dom-6: 'A resource should have narrative for robust management' (defined in http://hl7.org/fhir/Struc": 19,
-    "Alle Observations sollten einen Performer haben": 6,
+    "Constraint failed: dom-6: 'A resource should have narrative for robust management' (defined in http://hl7.org/fhir/Struc": 29,
+    "Alle Observations sollten einen Performer haben": 13,
+    "Keiner der angegebenen Codes ist im Valueset 'IdentifierType' (http://hl7.org/fhir/ValueSet/identifier-type|4.0.1), und ": 5,
     "A definition for CodeSystem 'http://fhir.de/CodeSystem/bfarm/icd-10-gm' version '2026' could not be found, so the code c": 4,
-    "Keiner der angegebenen Codes ist im Valueset 'IdentifierType' (http://hl7.org/fhir/ValueSet/identifier-type|4.0.1), und ": 4,
     "There are no valid display names found for the code http://snomed.info/sct#44054006 for language(s) 'de'. The display is": 1,
     "There are no valid display names found for the code http://snomed.info/sct#38341003 for language(s) 'de'. The display is": 1,
     "There are no valid display names found for the code http://snomed.info/sct#84114007 for language(s) 'de'. The display is": 1,
-    "There are no valid display names found for the code http://snomed.info/sct#195967001 for language(s) 'de'. The display i": 1
+    "There are no valid display names found for the code http://snomed.info/sct#195967001 for language(s) 'de'. The display i": 1,
+    "A definition for the code system 'http://fhir.de/CodeSystem/bfarm/icd-10-gm|2026' could not be found, so this coding was": 1,
+    "There are no valid display names found for the code http://snomed.info/sct#709044004 for language(s) 'de'. The display i": 1,
+    "Cannot validate display 'Hemoglobin measurement' for http://snomed.info/sct#416125006 in language de: No displays are kn": 1,
+    "Cannot validate display 'Creatinine measurement, serum' for http://snomed.info/sct#70901006 in language de: No displays ": 1
   },
   "summe": {
-    "geprueft": 19,
+    "geprueft": 29,
     "fehler": 0,
-    "warnungen": 37
+    "warnungen": 59
   },
   "ungepruefte_meldungen": []
 }

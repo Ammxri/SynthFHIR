@@ -5,14 +5,17 @@ taugt nur zum Vergleich, wenn sich zwischen zwei Läufen ausschließlich das
 ändert, was man messen will. Eine vom Modell erzeugte Kohorte ändert sich
 bei jedem Lauf und macht jeden Vergleich wertlos.
 
-Der Zuschnitt ist nicht beliebig. Drei Patienten, und der dritte ist der
-wichtigste:
+Der Zuschnitt ist nicht beliebig. Vier Patienten; der dritte ist der
+wichtigste, der vierte kam mit ADR-020 dazu:
 
   1. **Vollständig** — Begegnung, Diagnose, Messwert, Medikation. Der
      Normalfall.
   2. **Mehrfach** — zwei Begegnungen, zwei Diagnosen. Deckt die
      Kennungsvergabe über mehrere Ressourcen desselben Typs ab.
   3. **Ohne Begegnung in den Parametern** — und genau deshalb dabei.
+  4. **Breiter Laborsatz** — seit ADR-020 tragen Laborwerte das
+     allgemeine ISiKLaboruntersuchung; dieser Patient misst es an mehr als
+     zwei Einzelwerten und deckt beide Fälle ab (mit und ohne SNOMED).
 
 Der dritte Fall ist der, den die erste Sondierung übersehen hat. ISiK
 verlangt über `isik-con1`, dass eine kodierte Diagnose auf den Kontakt
@@ -49,7 +52,7 @@ from .domain import assign_ids, baue_aus_parametern
 # Produkts, nicht ein Sonderweg für die Messung.
 PARAMETER: dict = {
     "verstanden": {
-        "anzahl_patienten": 3,
+        "anzahl_patienten": 4,
         "kernkriterien": ["Referenzkohorte", "fest verdrahtet"],
         "nicht_abbildbar": [],
     },
@@ -112,6 +115,27 @@ PARAMETER: dict = {
             "geburtsdatum": "1979-07-22",
             "diagnosen": [{"code": "195967001", "beginn": "2005-09-15"}],
             "messwerte": [{"code": "718-7", "wert": 13.2, "datum": "2024-04-11"}],
+        },
+        {
+            # Ein breiter Laborsatz, damit das seit ADR-020 profilierte
+            # ISiKLaboruntersuchung im Beleg nicht an zwei Einzelwerten
+            # hängt. Bewusst gemischt: Kreatinin und CRP tragen die
+            # SNOMED-Doppelkodierung (ADR-015), Natrium/Kalium/Glukose
+            # nicht — beide Fälle erfüllen das allgemeine Laborprofil, und
+            # der Beleg zeigt das.
+            "vorname": "Ludwig",
+            "nachname": "Achterberg",
+            "geschlecht": "male",
+            "geburtsdatum": "1961-12-03",
+            "begegnungen": [{"art": "IMP", "datum": "2024-09-10"}],
+            "diagnosen": [{"code": "709044004", "beginn": "2018-03-01"}],
+            "messwerte": [
+                {"code": "2160-0", "wert": 1.6, "datum": "2024-09-10"},  # Kreatinin (SNOMED)
+                {"code": "1988-5", "wert": 42.0, "datum": "2024-09-10"},  # CRP (SNOMED)
+                {"code": "2951-2", "wert": 141, "datum": "2024-09-10"},  # Natrium
+                {"code": "2823-3", "wert": 4.8, "datum": "2024-09-10"},  # Kalium
+                {"code": "2345-7", "wert": 112, "datum": "2024-09-10"},  # Glukose
+            ],
         },
     ],
 }

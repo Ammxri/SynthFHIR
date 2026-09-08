@@ -2,11 +2,19 @@
 
 | | |
 |---|---|
-| **Status** | Angenommen |
+| **Status** | Angenommen — Kernentscheidung („keine Konformität zu ISiK Labor") **abgelöst von [ADR-020](adr-020-isik-stufe-5-und-labor.md)** |
 | **Datum** | 2026-09-01 |
 | **Phase** | 3 (Vision) |
 | **Betrifft** | `domain/codes.py`, `domain/templates.py`, `tools/erzeuge_snomed_labor_pruefliste.py` (neu) |
 | **Baut auf** | ADR-003, ADR-009, ADR-013, ADR-014 |
+
+> **Nachtrag 2026-09-08:** Der hier beschriebene Defekt des Release
+> Candidate `4.0.0-rc` ist in **ISiK Stufe 5** (`de.gematik.isik#5.1.3`)
+> behoben. Die Laborwerte sind seit ADR-020 gegen das allgemeine
+> `ISiKLaboruntersuchung` profiliert und konform. Was unten zur
+> SNOMED-Doppelkodierung, zur Prüfliste und zur GFR steht, gilt weiter;
+> die Aussage „Konformität ist für niemanden erreichbar" gilt **nicht**
+> mehr. Details in ADR-020.
 
 ---
 

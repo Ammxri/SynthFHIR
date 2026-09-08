@@ -63,12 +63,16 @@ from datetime import datetime, timezone
 
 import requests
 
-# ISiK-Basismodul der gematik. Die Stufe ist Teil des Berichts, nicht eine
-# Nebensache: Die kanonischen Profil-URLs unterscheiden sich zwischen den
-# Stufen (Stufe 3 trägt `/isik/v3/Basismodul/`, Stufe 4 nur `/isik/`), und
-# tragend ist derzeit Stufe 3.
-PAKET = "de.gematik.isik-basismodul"
-PAKETVERSION = "4.0.3"
+# Das vereinheitlichte ISiK-Paket der gematik (Stufe 5). Die Stufe ist Teil
+# des Berichts, nicht eine Nebensache. Seit ADR-020 trägt EIN Paket alle
+# Profile — Basismodul, Vitalparameter, Medikation UND Labor. Die drei
+# eigenständigen Stufe-4-Pakete sind damit abgelöst: Stufe 4 und Stufe 5
+# teilen zwar die kanonischen Profil-URLs, aber in verschiedenen Versionen
+# (4.0.3 gegen 5.1.3), und beide zugleich zu laden gäbe einen
+# Versionskonflikt. Der Umstieg ist deshalb ganz oder gar nicht — gemessen
+# 0 Fehler über die ganze Kohorte (ADR-020).
+PAKET = "de.gematik.isik"
+PAKETVERSION = "5.1.3"
 
 _SD = "https://gematik.de/fhir/isik/StructureDefinition/"
 
@@ -84,20 +88,17 @@ PROFILE = {
     "MedicationStatement": _SD + "ISiKMedikationsInformation",
 }
 
-# Die weiteren Module. Sie werden vom Messserver zusätzlich geladen.
+# Die zu ladenden Pakete. Seit ADR-020 ist es genau eines: das
+# vereinheitlichte `de.gematik.isik`, das alle Profile trägt. Vorher waren
+# es drei eigenständige Stufe-4-Pakete (Basismodul, Vitalparameter,
+# Medikation); Labor gab es dort nur als unerfüllbaren Release Candidate.
 MODULE = {
-    "de.gematik.isik-basismodul": "4.0.3",
-    "de.gematik.isik-vitalparameter": "4.0.2",
-    "de.gematik.isik-medikation": "4.0.3",
+    "de.gematik.isik": "5.1.3",
 }
 
-# Observation ist der Sonderfall: Das Vitalparameter-Modul profiliert nicht
-# „Observation", sondern **je Vitalparameter einzeln**. Welches Profil gilt,
-# entscheidet also der LOINC-Code der einzelnen Ressource — nicht ihr Typ.
-#
-# Für die 20 Laborwerte des Katalogs gibt es hier nichts: Zuständig wäre
-# das Modul ISiK Labor, und das ist nicht Teil dieses Auftrags. Sie bleiben
-# unprofiliert, und der Bericht sagt das je Ressource.
+# Observation ist der Sonderfall: ISiK profiliert nicht „Observation",
+# sondern **je Vitalparameter einzeln**. Welches Profil gilt, entscheidet
+# der LOINC-Code der einzelnen Ressource — nicht ihr Typ.
 VITALPROFILE = {
     "85354-9": _SD + "ISiKBlutdruckSystemischArteriell",
     "8867-4": _SD + "ISiKHerzfrequenz",
@@ -113,26 +114,41 @@ VITALPROFILE = {
 
 LOINC = "http://loinc.org"
 
+# Das allgemeine Laborprofil. Seit ADR-020 tragen alle Laborwerte es —
+# BEWUSST das allgemeine ISiKLaboruntersuchung und nicht die spezifischen
+# (ISiKLaboruntersuchungHb, -CRP …): Das allgemeine verlangt nur eine
+# LOINC-Kodierung, keinen SNOMED-Code, und ist damit für alle 20 Laborwerte
+# erfüllbar — gemessen 0 Fehler, mit und ohne SNOMED. Die spezifischen
+# Profile binden LOINC (und teils SNOMED) per patternCoding enger; unser
+# GFR-Code 33914-3 (MDRD) läge z. B. außerhalb ihres CKD-EPI-ValueSets
+# (ADR-015). Eine feinere Zuordnung wäre ein eigener, gemessener Schritt.
+LABOR_PROFIL = _SD + "ISiKLaboruntersuchung"
+
 
 def profil_fuer(ressource: dict) -> str | None:
     """Das Profil dieser einen Ressource, oder `None`.
 
-    Je **Ressource**, nicht je Typ. Bis ADR-014 genügte eine Zuordnung
-    nach Ressourcentyp; das Vitalparameter-Modul kennt aber für jeden
-    Vitalparameter ein eigenes Profil, und für Laborwerte gar keines.
-    Derselbe Typ trägt damit beides.
+    Je **Ressource**, nicht je Typ. ISiK kennt für jeden Vitalparameter
+    ein eigenes Profil, für Laborwerte das allgemeine ISiKLaboruntersuchung
+    — derselbe Typ (Observation) trägt damit verschiedene Profile,
+    entschieden am LOINC-Code.
     """
     typ = ressource.get("resourceType")
     if typ in PROFILE:
         return PROFILE[typ]
     if typ != "Observation":
         return None
+    hat_loinc = False
     for coding in (ressource.get("code") or {}).get("coding", []):
         if coding.get("system") == LOINC:
+            hat_loinc = True
             treffer = VITALPROFILE.get(coding.get("code"))
             if treffer:
                 return treffer
-    return None
+    # Ein Observation mit LOINC, der kein Vitalparameter ist, ist ein
+    # Laborwert → das allgemeine Laborprofil. Ohne LOINC (kommt im Katalog
+    # nicht vor) bleibt es unprofiliert, statt eine Zuordnung zu raten.
+    return LABOR_PROFIL if hat_loinc else None
 
 TIMEOUT_S = 180.0
 
@@ -452,9 +468,14 @@ def pruefe_gegen_profile(
     )
 
     # Je RESSOURCE gezählt, nicht je Typ: Ein Observation-Satz kann zur
-    # Hälfte profiliert sein (Vitalparameter) und zur Hälfte nicht
-    # (Laborwerte). Die alte Meldung „für Observation gibt es kein Profil"
-    # wäre jetzt schlicht falsch.
+    # Hälfte das eine (Vitalparameter) und zur Hälfte das andere Profil
+    # (Laborwerte) tragen. Die alte Meldung „für Observation gibt es kein
+    # Profil" wäre jetzt schlicht falsch.
+    #
+    # Seit ADR-020 trägt jede Observation mit LOINC ein Profil: einen
+    # Vitalparameter oder das allgemeine ISiKLaboruntersuchung. Ohne Profil
+    # bleibt nur, was gar keinen LOINC hat oder ein Typ ist, den das
+    # geladene Paket nicht profiliert — nicht mehr „ISiK Labor fehlt".
     unprofiliert: dict[str, int] = {}
     for r in ressourcen:
         if profil_fuer(r) is None:
@@ -462,9 +483,9 @@ def pruefe_gegen_profile(
             unprofiliert[typ] = unprofiliert.get(typ, 0) + 1
     for typ, anzahl in sorted(unprofiliert.items()):
         bericht.hinweise.append(
-            f"{anzahl} {typ}-Ressource(n) ohne Profil in den geladenen "
-            "Modulen. Für Laborwerte wäre das Modul ISiK Labor zuständig; "
-            "es ist nicht geladen."
+            f"{anzahl} {typ}-Ressource(n) ohne Profil im geladenen Paket "
+            f"{PAKET}#{PAKETVERSION}. Eine Observation braucht dafür einen "
+            "LOINC-Code; für andere Typen führt das Paket kein Profil."
         )
 
     for r in ressourcen:

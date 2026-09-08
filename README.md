@@ -316,9 +316,17 @@ Patient                       3        0          0          3         0
 SUMME                        14        0         13         19        14
 ```
 
+> **Dieser HAPI-Snapshot ist vom Stand ADR-009** (drei Patienten, Labor
+> noch unprofiliert). Er wird von Hand über den obigen Befehl erneuert und
+> braucht dafür den Docker-Profilserver; der aktuelle, maßgebliche
+> Messstand steht im Abschnitt **„Gegen den offiziellen HL7-Validator"**
+> unten (Stufe 5, 29 geprüft inkl. Labor, 0 Fehler). Die CI sichert den
+> heutigen Stand nicht über diese Datei, sondern über die Profiltests
+> selbst (ADR-017).
+
 Bei der ersten Messung waren es **25 Fehler**; [ADR-009](docs/adr-009-isik-konformitaet.md)
 hat sie geschlossen. **„0 Fehler" heißt aber nicht „ISiK-konform"** — die
-dreizehn ungeprüften Befunde bleiben, solange kein Terminologieserver die
+ungeprüften Befunde bleiben, solange kein Terminologieserver die
 Bindungen entscheiden kann. Genau das leisten die beiden nächsten
 Abschnitte.
 
@@ -351,36 +359,40 @@ python tools/isik_referenzvalidator.py
 ```
 
 Misst dieselbe Kohorte mit dem Validator, den HL7 selbst veröffentlicht,
-gegen einen Terminologieserver. Gemessen am 2026-09-01:
+gegen einen Terminologieserver. Gemessen am 2026-09-08:
 
     Profil                                  geprüft   Fehler   Warn.
     ISiKAtemfrequenz                              1        0       2
     ISiKBlutdruckSystemischArteriell              1        0       2
-    ISiKDiagnose                                  4        0      12
+    ISiKDiagnose                                  5        0      15
     ISiKKoerpergewicht                            1        0       2
     ISiKKoerpergroesse                            1        0       2
     ISiKKoerpertemperatur                         1        0       2
-    ISiKKontaktGesundheitseinrichtung             4        0       8
+    ISiKKontaktGesundheitseinrichtung             5        0      10
+    ISiKLaboruntersuchung                         7        0      16
     ISiKMedikationsInformation                    2        0       2
-    ISiKPatient                                   3        0       3
+    ISiKPatient                                   4        0       4
     ISiKSauerstoffsaettigungArteriell             1        0       2
-    SUMME                                        19        0      37
+    SUMME                                        29        0      59
 
     Keine ungeprüften Befunde: Die Terminologie hat entschieden.
 
-Gemessen wird gegen drei Module: Basismodul, Vitalparameter und
-Medikation ([ADR-014](docs/adr-014-isik-module.md)). Die 20 Laborwerte
-des Katalogs bleiben unprofiliert, und der Bericht sagt das in jeder
-Ausgabe.
+Gemessen wird gegen **ein** Paket: das vereinheitlichte
+`de.gematik.isik#5.1.3` der **Stufe 5**, das Basismodul, Vitalparameter,
+Medikation und Labor zusammen trägt
+([ADR-020](docs/adr-020-isik-stufe-5-und-labor.md), löst ADR-014 ab).
+**Jede Katalog-Observation ist profiliert** — die Vitalparameter je
+einzeln, die Laborwerte gegen das allgemeine `ISiKLaboruntersuchung`.
 
-Zuständig wäre **ISiK Labor** — das existiert aber nur als Release
-Candidate, und das veröffentlichte Paket verlangt für
-`Observation.category` ein CodeSystem, das den geforderten Code gar nicht
-enthält. Konformität ist damit derzeit für niemanden erreichbar. Sechs
-Laborwerte tragen trotzdem schon die SNOMED-Kodierung, die die
-Spezifikation nennt; die übrigen 14 stehen als
-[Prüfliste](docs/snomed-labor-pruefliste.md). Näheres in
-[ADR-015](docs/adr-015-isik-labor.md).
+Das war nicht immer so: Bis Stufe 5 existierte **ISiK Labor** nur als
+Release Candidate, dessen veröffentlichtes Paket für
+`Observation.category` ein CodeSystem verlangte, das den geforderten Code
+gar nicht enthielt — Konformität war für niemanden erreichbar
+([ADR-015](docs/adr-015-isik-labor.md)). Stufe 5 hat diesen Defekt
+behoben. Das allgemeine Laborprofil erzwingt keine SNOMED-Kodierung, so
+dass **alle 20 Laborwerte** erfüllbar sind; sechs tragen trotzdem schon
+die SNOMED-Kodierung der Spezifikation, die übrigen 14 stehen als
+[Prüfliste](docs/snomed-labor-pruefliste.md).
 
 Damit sind die acht ungeprüften Befunde aus ADR-009 **aufgelöst**, nicht
 wegdefiniert — das Werkzeug sucht ausdrücklich nach den Meldungen, die
@@ -525,11 +537,12 @@ in dieser Reihenfolge:
 | [ADR-012](docs/adr-012-mengengrenze-und-wiedergabe.md) | Eine Mengengrenze gegen Verstärkung — und die Wiedergabe über das Netz |
 | [ADR-013](docs/adr-013-terminologienachweis.md) | Die SNOMED-Bindung entscheiden — und beweisen, dass entschieden wurde |
 | [ADR-014](docs/adr-014-isik-module.md) | Die ISiK-Module für Observation und MedicationStatement |
-| [ADR-015](docs/adr-015-isik-labor.md) | ISiK Labor — was geht, und warum Konformität nicht geht |
+| [ADR-015](docs/adr-015-isik-labor.md) | ISiK Labor — was geht, und warum Konformität (damals) nicht ging → abgelöst von ADR-020 |
 | [ADR-016](docs/adr-016-szenario-bibliothek.md) | Die Szenario-Bibliothek — Vorlagen statt Modellaufrufe |
 | [ADR-017](docs/adr-017-profilmessung-in-der-ci.md) | Die Profilmessung als Auflage der CI — und was sie nicht verspricht |
 | [ADR-018](docs/adr-018-notfall-als-aufnahmeanlass.md) | Der Notfall steht nicht in `Encounter.class` |
 | [ADR-019](docs/adr-019-weitere-vitalparameter.md) | Drei weitere Vitalparameter — Atemfrequenz, Temperatur, Sauerstoffsättigung |
+| [ADR-020](docs/adr-020-isik-stufe-5-und-labor.md) | ISiK Stufe 5 — ein Paket, und Labor wird konform |
 | [Konzepte](docs/konzepte.md) | Die FHIR-Grundlagen dahinter, ausführlich erklärt |
 
 ### Die tragenden Entscheidungen in drei Sätzen

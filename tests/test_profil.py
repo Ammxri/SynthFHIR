@@ -264,24 +264,31 @@ def test_referenzkohorte_traegt_deutsche_sonderzeichen():
 # --- Der Bericht -----------------------------------------------------------
 
 
-def test_unprofilierte_ressourcen_werden_ausgewiesen_nicht_verschwiegen(profilserver):
-    """Seit ADR-014 ist das je RESSOURCE zu zählen, nicht je Typ.
+def test_jede_observation_traegt_das_richtige_profil(profilserver):
+    """Die Zuordnung ist je RESSOURCE, nicht je Typ: Ein Observation kann
+    ein Vitalparameter-Profil tragen oder das Laborprofil, entschieden am
+    LOINC-Code.
 
-    Ein Observation-Satz kann zur Hälfte profiliert sein (Vitalparameter)
-    und zur Hälfte nicht (Laborwerte). Die alte Meldung „für Observation
-    gibt es kein Profil" wäre schlicht falsch geworden — und hätte den
-    Bericht vollständiger aussehen lassen, als er ist.
+    Bis ADR-020 hatten Laborwerte gar kein Profil — sie standen als
+    „unprofiliert" im Bericht, weil ISiK Labor nur als unerfüllbarer
+    Release Candidate existierte. Seit dem Umstieg auf das vereinheitlichte
+    Paket (Stufe 5) trägt jeder Laborwert das allgemeine
+    ISiKLaboruntersuchung. In der Referenzkohorte ist damit **jede**
+    Ressource profiliert.
     """
     res = baue()
     b = pruefe_gegen_profile(res, profilserver)
-    assert any("ohne Profil" in h for h in b.hinweise)
 
     erwartet = sum(1 for r in res if profil_fuer(r) is not None)
     assert len(b.ergebnisse) == erwartet
-    # Und die Gegenprobe: Es gibt tatsächlich beide Sorten Observation.
+    # Beide Sorten Observation kommen vor und tragen VERSCHIEDENE Profile.
     obs = [r for r in res if r["resourceType"] == "Observation"]
-    assert any(profil_fuer(r) for r in obs), "kein profilierter Vitalparameter"
-    assert any(profil_fuer(r) is None for r in obs), "kein unprofilierter Laborwert"
+    vital = {profil_fuer(r) for r in obs if "Laboruntersuchung" not in (profil_fuer(r) or "")}
+    labor = {profil_fuer(r) for r in obs if "Laboruntersuchung" in (profil_fuer(r) or "")}
+    assert vital, "kein Vitalparameter-Profil"
+    assert labor, "kein Laborprofil"
+    # Nichts bleibt unprofiliert — das war vor ADR-020 anders.
+    assert all(profil_fuer(r) is not None for r in res)
 
 
 def test_das_blutdruckpanel_bekommt_sein_vitalparameterprofil(profilserver):
@@ -297,7 +304,7 @@ def test_bericht_nennt_paket_und_terminologiestand(profilserver):
     """Ohne diese Angaben ist eine Messung nicht wiederholbar."""
     b = pruefe_gegen_profile(baue(), profilserver)
     d = b.to_dict()
-    assert d["paket"] == "de.gematik.isik-basismodul"
+    assert d["paket"] == "de.gematik.isik"
     assert d["paketversion"]
     assert d["terminologieserver"] == "keiner"
     assert d["fhir_version"] == "4.0.1"
@@ -307,12 +314,12 @@ def test_bericht_nennt_paket_und_terminologiestand(profilserver):
 def test_bericht_zaehlt_drei_spalten_getrennt(profilserver):
     b = pruefe_gegen_profile(baue(), profilserver)
     s = b.to_dict()["summe"]
-    # 19 seit ADR-019: 11 aus Phase 3, +3 durch ADR-014 (Blutdruckpanel und
-    # zwei MedicationStatements), +3 durch die neuen Vitalparameter
-    # (Atemfrequenz, Körpertemperatur, Sauerstoffsättigung) und +2, weil
-    # Körpergewicht und -größe jetzt in der Referenzkohorte stehen — ihre
-    # Profile waren seit ADR-014 im Katalog, aber nie gemessen.
-    assert s["geprueft"] == 19
+    # 29 seit ADR-020: die 19 aus ADR-019, plus die sieben Laborwerte der
+    # Kohorte (HbA1c, Hämoglobin und der breite Satz des vierten Patienten:
+    # Kreatinin, CRP, Natrium, Kalium, Glukose), die jetzt das allgemeine
+    # ISiKLaboruntersuchung tragen statt unprofiliert zu bleiben, plus die
+    # drei Ressourcen dieses vierten Patienten (Patient, Kontakt, Diagnose).
+    assert s["geprueft"] == 29
     assert s["ungeprueft"] > 0, "die SNOMED-Bindung ist ohne Terminologie offen"
 
 
@@ -467,8 +474,8 @@ def test_unbekanntes_profil_ist_keine_messung(monkeypatch):
     ein Fehler je Ressource. Der Bericht hätte das als schlechte Daten
     ausgewiesen, obwohl gar nichts gegen ISiK geprüft wurde.
 
-    Damit hängt die Zusage „gemessen gegen `de.gematik.isik-basismodul
-    4.0.3`" nicht mehr allein an zwei Konstanten im Quelltext.
+    Damit hängt die Zusage „gemessen gegen `de.gematik.isik 5.1.3`" nicht
+    mehr allein an zwei Konstanten im Quelltext.
     """
     import synthfhir.profil as profil_modul
     from synthfhir.profil import ProfilFehler
@@ -491,12 +498,12 @@ def test_unbekanntes_profil_ist_keine_messung(monkeypatch):
     with pytest.raises(ProfilFehler, match="kennt das Profil"):
         pruefe_gegen_profile(baue(), "http://beispiel.invalid/fhir")
 def test_der_bericht_nennt_alle_geladenen_module(profilserver):
-    """Seit ADR-014 tragen drei Module Profile bei.
+    """Seit ADR-020 trägt EIN vereinheitlichtes Paket alle Profile.
 
     Der Kopf „gemessen gegen das Basismodul" waere eine unzutreffende
     Angabe ueber den eigenen Messaufbau — und genau die Sorte Angabe, die
     einen Bericht wertlos macht. Der Test zaehlt gegen MODULE, nicht gegen
-    eine Liste hier, damit ein viertes Modul nicht stillschweigend
+    eine Liste hier, damit eine geaenderte Paketwahl nicht stillschweigend
     danebensteht.
     """
     from synthfhir.profil import MODULE

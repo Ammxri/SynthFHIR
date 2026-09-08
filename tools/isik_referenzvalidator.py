@@ -57,8 +57,9 @@ WURZEL = Path(__file__).resolve().parent.parent
 VALIDATOR = WURZEL / "werkzeuge" / "validator_cli.jar"
 ARBEIT = WURZEL / "messlauf"
 FHIR_VERSION = "4.0.1"
-# Alle Module, die Profile beisteuern. Seit ADR-014 sind es drei: Das
-# Basismodul kennt Observation und MedicationStatement nicht.
+# Alle Module, die Profile beisteuern. Seit ADR-020 ist es eines: Das
+# vereinheitlichte Stufe-5-Paket de.gematik.isik trägt Basismodul,
+# Vitalparameter, Medikation und Labor zusammen.
 ISIK_PAKETE = [f"{name}#{fassung}" for name, fassung in MODULE.items()]
 TX = "https://tx.fhir.org/r4"
 
