@@ -393,9 +393,13 @@ Release Candidate, dessen veröffentlichtes Paket für
 gar nicht enthielt — Konformität war für niemanden erreichbar
 ([ADR-015](docs/adr-015-isik-labor.md)). Stufe 5 hat diesen Defekt
 behoben. Das allgemeine Laborprofil erzwingt keine SNOMED-Kodierung, so
-dass **alle 20 Laborwerte** erfüllbar sind; sechs tragen trotzdem schon
-die SNOMED-Kodierung der Spezifikation, die übrigen 14 stehen als
-[Prüfliste](docs/snomed-labor-pruefliste.md).
+dass **alle 20 Laborwerte** erfüllbar sind; sie tragen die
+Doppelkodierung LOINC + SNOMED trotzdem — sechs aus der Spezifikation, die
+übrigen 14 seit [ADR-021](docs/adr-021-snomed-laborcodes-und-gfr.md) am
+Terminologieserver belegt und freigegeben
+([Prüfliste](docs/snomed-labor-pruefliste.md)). Die geschätzte GFR steht
+seither auf der CKD-EPI-2021-Formel (LOINC `98979-8`) statt auf der
+überholten MDRD.
 
 Damit sind die acht ungeprüften Befunde aus ADR-009 **aufgelöst**, nicht
 wegdefiniert — das Werkzeug sucht ausdrücklich nach den Meldungen, die
@@ -546,6 +550,7 @@ in dieser Reihenfolge:
 | [ADR-018](docs/adr-018-notfall-als-aufnahmeanlass.md) | Der Notfall steht nicht in `Encounter.class` |
 | [ADR-019](docs/adr-019-weitere-vitalparameter.md) | Drei weitere Vitalparameter — Atemfrequenz, Temperatur, Sauerstoffsättigung |
 | [ADR-020](docs/adr-020-isik-stufe-5-und-labor.md) | ISiK Stufe 5 — ein Paket, und Labor wird konform |
+| [ADR-021](docs/adr-021-snomed-laborcodes-und-gfr.md) | Die 14 offenen SNOMED-Laborcodes gewählt, und die GFR modernisiert |
 | [Konzepte](docs/konzepte.md) | Die FHIR-Grundlagen dahinter, ausführlich erklärt |
 
 ### Die tragenden Entscheidungen in drei Sätzen

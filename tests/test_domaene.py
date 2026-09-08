@@ -769,15 +769,17 @@ def test_laborwerte_mit_snomed_code_tragen_zwei_kodierungen():
 def test_ohne_snomed_code_bleibt_es_bei_einer_kodierung():
     """Ein erfundener Code waere schlimmer als ein fehlender.
 
-    14 der 20 Laborwerte haben noch keinen; die Wahl ist eine klinische
-    und gehoert geprueft (docs/snomed-labor-pruefliste.md).
+    Seit ADR-021 fuehren alle 20 Laborwerte eine SNOMED-Kodierung. Die
+    Zusage, KEINE zu erfinden, wo der Katalog keine fuehrt, bleibt aber
+    gueltig und wird hier an einem Code ohne SNOMED gemessen: ein
+    Vitalparameter (Herzfrequenz) traegt bewusst nur LOINC.
     """
     from synthfhir.domain.codes import OBSERVATION_CODES
 
-    spec = OBSERVATION_CODES["4548-4"]          # HbA1c
+    spec = OBSERVATION_CODES["8867-4"]          # Herzfrequenz (Vitalparameter)
     assert not spec.snomed, "sonst prueft dieser Test nichts"
     bau = baue_aus_parametern(
-        {"patienten": [_patient(messwerte=[{"code": "4548-4", "wert": 7.2}])]}, {}
+        {"patienten": [_patient(messwerte=[{"code": "8867-4", "wert": 72}])]}, {}
     )
     obs = next(r for r in bau.ressourcen if r["resourceType"] == "Observation")
     assert len(obs["code"]["coding"]) == 1

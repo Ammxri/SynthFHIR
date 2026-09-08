@@ -361,12 +361,13 @@ def baue_observation(
             # `display_de` bleibt daneben unsere Kurzform für Menschen und
             # steht in `text`. Beides zu vermischen wäre falsch: „HbA1c"
             # ist keine LOINC-Bezeichnung.
-            # Doppelkodierung, wo die Spezifikation den zweiten Code
-            # selbst nennt: ISiK Labor verlangt neben LOINC eine
-            # SNOMED-Kodierung. Wo der Katalog keine führt, bleibt es bei
-            # einer — ein erfundener Code wäre schlimmer als ein
-            # fehlender, und das Profil ist ohnehin ein Entwurf
-            # (ADR-015).
+            # Doppelkodierung LOINC + SNOMED: ISiK Labor nennt neben LOINC
+            # eine SNOMED-Kodierung. Seit ADR-021 führen sie alle 20
+            # Laborwerte — sechs aus der Spezifikation (ADR-015), 14 am
+            # Terminologieserver belegt und freigegeben. Führt der Katalog
+            # dennoch einmal keine (ein neuer Code, oder ein Vitalparameter),
+            # bleibt es bei EINER Kodierung: ein erfundener Code wäre
+            # schlimmer als ein fehlender.
             "coding": [
                 {
                     "system": LOINC_SYSTEM,

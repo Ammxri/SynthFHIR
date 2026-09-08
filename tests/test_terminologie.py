@@ -236,10 +236,10 @@ def test_die_deutschen_loinc_bezeichnungen_stimmen(terminologieserver):
 
     **Gefragt wird tx.fhir.org, nicht der Vorgabeserver.** Von dort
     stammen die Werte, und die beiden Server unterscheiden sich: Fuer
-    33914-3 (geschaetzte GFR) fuehrt tx.fhir.de gemessen keine deutsche
-    Bezeichnung und faellt auf den englischen Text zurueck. Gegen den
-    Vorgabeserver zu pruefen hiesse also, eine Luecke jenes Servers als
-    Katalogfehler zu melden.
+    einzelne Codes fuehrt tx.fhir.de gemessen keine deutsche Bezeichnung
+    und faellt auf den englischen Text zurueck. Gegen den Vorgabeserver zu
+    pruefen hiesse also, eine Luecke jenes Servers als Katalogfehler zu
+    melden.
 
     Uebersprungen ohne SYNTHFHIR_REQUIRE_TERMINOLOGIE=1, wie jede Messung
     gegen einen fremden Dienst.

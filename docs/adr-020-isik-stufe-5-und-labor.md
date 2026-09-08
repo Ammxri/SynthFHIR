@@ -184,10 +184,12 @@ Der volle Beleg steht in `docs/belege/isik-referenzvalidator.json`.
 
 ## 6. Offen
 
-- **Die 14 SNOMED-Codes** aus `docs/snomed-labor-pruefliste.md` — jetzt
-  ohne Konformitätsdruck, weiterhin eine klinische Entscheidung.
-- **Der GFR-Code.** `33914-3` (MDRD) gegen CKD-EPI — von der Konformität
-  entkoppelt, bleibt eine Frage der Katalogqualität.
+- ~~**Die 14 SNOMED-Codes** aus `docs/snomed-labor-pruefliste.md`.~~
+  **Erledigt ([ADR-021](adr-021-snomed-laborcodes-und-gfr.md)):** je Wert
+  am Terminologieserver belegt und freigegeben; alle 20 Laborwerte tragen
+  jetzt die Doppelkodierung.
+- ~~**Der GFR-Code.** `33914-3` (MDRD) gegen CKD-EPI.~~ **Erledigt
+  (ADR-021):** getauscht auf `98979-8` (CKD-EPI 2021, kreatininbasiert).
 - **Stufe 6 — geprüft am 2026-09-08, NICHT gesprungen.** Im Paketregister
   trägt zwar `de.gematik.isik#6.0.0` den `latest`-Tag, aber „latest" ist
   nicht „maßgeblich" (ADR-005). Belegt: Die gematik führt Stufe 6 in der

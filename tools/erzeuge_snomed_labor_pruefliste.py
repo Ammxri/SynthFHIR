@@ -3,14 +3,18 @@
     python tools/erzeuge_snomed_labor_pruefliste.py
 
 ISiK Labor verlangt neben der LOINC-Kodierung eine zweite in SNOMED. Für
-sechs Messwerte nennt die Spezifikation den Code selbst; sie stehen im
-Katalog. Für die übrigen wäre er eine **eigene klinische Wahl**.
+sechs Messwerte nennt die Spezifikation den Code selbst; die übrigen 14
+waren eine **eigene klinische Wahl** und sind seit ADR-021 getroffen — je
+Wert am Terminologieserver belegt (existiert, aktiv, Messverfahren) und
+vom Menschen freigegeben. Dieses Werkzeug trennt im Bericht beide Gruppen
+und findet weiterhin Kandidaten für jeden künftig hinzukommenden Wert, der
+noch keinen SNOMED-Code führt.
 
 Der Katalog ist in diesem Projekt sicherheitskritisch: Die
 Laufzeitprüfung sieht Codes nicht, und ein falscher Code erzeugt
-unbemerkt inhaltlich falsche Testdaten. Deshalb wird hier nichts
-eingetragen, sondern eine Liste erzeugt, die ein Mensch durchgeht —
-genau wie bei den ICD-Schlüsseln (`docs/icd-pruefliste.md`).
+unbemerkt inhaltlich falsche Testdaten. Deshalb wird ein Code nie
+maschinell eingetragen, sondern eine Liste erzeugt, die ein Mensch
+durchgeht — genau wie bei den ICD-Schlüsseln (`docs/icd-pruefliste.md`).
 
 **Was die Maschine beiträgt und was nicht.** Die Kandidaten kommen aus
 SNOMED selbst: eine Expansion über `is-a 122869004` (Measurement
@@ -83,11 +87,20 @@ def kandidaten(begriff: str, anzahl: int = 5) -> list[tuple[str, str]]:
             for c in d.get("expansion", {}).get("contains", [])]
 
 
+# Die sechs Codes, die die Spezifikation selbst als `patternCoding` nennt,
+# mit dem Suffix ihres spezifischen Profils. Alles Übrige ist gewählt.
+SPEZIFIKATION = {"718-7": "Hb", "777-3": "Thrombozyten", "2160-0": "Serumkreatinin",
+                 "98979-8": "GFR", "1988-5": "CRP", "3016-3": "TSH"}
+
+
 def main() -> int:
     o = KATALOGE["observations"]
     labor = [e for e in o.values() if not e.vital_sign]
-    fertig = [e for e in labor if e.snomed]
-    offen = [e for e in labor if not e.snomed]
+    aus_spec = sorted((e for e in labor if e.snomed and e.code in SPEZIFIKATION),
+                      key=lambda x: x.code)
+    gewaehlt = sorted((e for e in labor if e.snomed and e.code not in SPEZIFIKATION),
+                      key=lambda x: x.code)
+    offen = sorted((e for e in labor if not e.snomed), key=lambda x: x.code)
 
     zeilen = [
         "# Prüfliste: SNOMED-Codes für Laborwerte",
@@ -100,12 +113,13 @@ def main() -> int:
         "ValueSet gebunden: Jeder gültige SNOMED-Code erfüllt die Struktur.",
         "Die klinische Richtigkeit prüft also niemand ausser einem Menschen.",
         "",
-        f"Von {len(labor)} Laborwerten sind **{len(fertig)}** versorgt und",
-        f"**{len(offen)}** offen.",
+        f"Von {len(labor)} Laborwerten sind **{len(aus_spec)}** aus der",
+        f"Spezifikation übernommen, **{len(gewaehlt)}** gewählt und belegt",
+        f"(ADR-021) und **{len(offen)}** offen.",
         "",
         "---",
         "",
-        "## Versorgt: aus der Spezifikation selbst",
+        "## Aus der Spezifikation selbst",
         "",
         "Diese Codes stehen als `patternCoding` in den Profilen von",
         "ISiK Labor. Sie sind nicht gewählt, sondern übernommen.",
@@ -113,13 +127,48 @@ def main() -> int:
         "| LOINC | Messwert | SNOMED | Bezeichnung | Profil |",
         "|---|---|---|---|---|",
     ]
-    profil = {"718-7": "Hb", "777-3": "Thrombozyten", "2160-0": "Serumkreatinin",
-              "33914-3": "GFR", "1988-5": "CRP", "3016-3": "TSH"}
-    for e in sorted(fertig, key=lambda x: x.code):
+    for e in aus_spec:
         zeilen.append(
             f"| `{e.code}` | {e.display_de} | `{e.snomed}` | {e.snomed_display} "
-            f"| ISiKLaboruntersuchung{profil.get(e.code, '?')} |"
+            f"| ISiKLaboruntersuchung{SPEZIFIKATION.get(e.code, '?')} |"
         )
+
+    zeilen += [
+        "",
+        "---",
+        "",
+        "## Gewählt und am Terminologieserver belegt (ADR-021)",
+        "",
+        "Für diese 14 nennt die Spezifikation keinen Code. Je Wert wurde ein",
+        "SNOMED-Messverfahren gewählt, das den Analyten im vom LOINC genannten",
+        "Material trifft, am Terminologieserver bestätigt (existiert, aktiv,",
+        "`is-a 122869004`) und vom Menschen freigegeben. Sie tragen das",
+        "allgemeine Profil ISiKLaboruntersuchung.",
+        "",
+        "| LOINC | Messwert | SNOMED | Bezeichnung |",
+        "|---|---|---|---|",
+    ]
+    for e in gewaehlt:
+        zeilen.append(
+            f"| `{e.code}` | {e.display_de} | `{e.snomed}` | {e.snomed_display} |"
+        )
+
+    if not offen:
+        zeilen += [
+            "",
+            "---",
+            "",
+            "## Offen",
+            "",
+            "Keine — alle Laborwerte des Katalogs führen einen SNOMED-Code.",
+            "Kommt ein neuer Wert ohne Code hinzu, listet dieses Werkzeug",
+            "wieder Kandidaten für ihn.",
+            "",
+        ]
+        ziel = Path(__file__).resolve().parent.parent / "docs" / "snomed-labor-pruefliste.md"
+        ziel.write_text("\n".join(zeilen) + "\n", encoding="utf-8")
+        print(f"\nGeschrieben: {ziel}")
+        return 0
 
     zeilen += [
         "",
@@ -140,7 +189,7 @@ def main() -> int:
         "`ObservationCode` in `src/synthfhir/domain/codes.py`.",
         "",
     ]
-    for e in sorted(offen, key=lambda x: x.code):
+    for e in offen:
         begriff = BEGRIFFE.get(e.code)
         zeilen.append(f"### `{e.code}` — {e.display_de}")
         zeilen.append("")

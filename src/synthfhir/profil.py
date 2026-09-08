@@ -118,10 +118,11 @@ LOINC = "http://loinc.org"
 # BEWUSST das allgemeine ISiKLaboruntersuchung und nicht die spezifischen
 # (ISiKLaboruntersuchungHb, -CRP …): Das allgemeine verlangt nur eine
 # LOINC-Kodierung, keinen SNOMED-Code, und ist damit für alle 20 Laborwerte
-# erfüllbar — gemessen 0 Fehler, mit und ohne SNOMED. Die spezifischen
-# Profile binden LOINC (und teils SNOMED) per patternCoding enger; unser
-# GFR-Code 33914-3 (MDRD) läge z. B. außerhalb ihres CKD-EPI-ValueSets
-# (ADR-015). Eine feinere Zuordnung wäre ein eigener, gemessener Schritt.
+# erfüllbar — gemessen 0 Fehler. Die spezifischen Profile binden LOINC (und
+# teils SNOMED) per patternCoding enger und je Analyt an ein eigenes
+# ValueSet; eine feinere Zuordnung wäre ein eigener, gemessener Schritt.
+# (Die Werte tragen ihre SNOMED-Kodierung seit ADR-021 ohnehin, und die GFR
+# steht seither auf CKD-EPI 2021 — beides unabhängig von dieser Profilwahl.)
 LABOR_PROFIL = _SD + "ISiKLaboruntersuchung"
 
 
