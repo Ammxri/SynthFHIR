@@ -188,8 +188,18 @@ Der volle Beleg steht in `docs/belege/isik-referenzvalidator.json`.
   ohne Konformitätsdruck, weiterhin eine klinische Entscheidung.
 - **Der GFR-Code.** `33914-3` (MDRD) gegen CKD-EPI — von der Konformität
   entkoppelt, bleibt eine Frage der Katalogqualität.
-- **Stufe 6.** `de.gematik.isik#6.0.0` existiert bereits. Der Sprung ist
-  zu prüfen, wenn 6 die aktive Stufe wird — dann derselbe Weg wie hier.
+- **Stufe 6 — geprüft am 2026-09-08, NICHT gesprungen.** Im Paketregister
+  trägt zwar `de.gematik.isik#6.0.0` den `latest`-Tag, aber „latest" ist
+  nicht „maßgeblich" (ADR-005). Belegt: Die gematik führt Stufe 6 in der
+  Roadmap Q1 2026 in der **Konzeptionsphase**; der Implementierungsleitfaden
+  erscheint als `6.0.0-rc`; im Mai 2026 lief ein **Kommentierungsverfahren**.
+  Verbindlich ist laut fachportal.gematik.de aktuell **Stufe 3**, **Stufe 5**
+  ist seit 01.07.2025 veröffentlicht und ihre Verbindlichkeit „in
+  Herstellung", **Stufe 4** ist abgekündigt. SynthFHIR misst gegen die
+  neueste **freigegebene** Stufe — das ist 5, nicht der Entwurf 6. Der
+  Sprung wird erneut geprüft, wenn Stufe 6 freigegeben ist (kein `-rc`,
+  keine Konzeptionsphase) — dann derselbe Weg wie hier. Genau die Haltung
+  aus ADR-005 und ADR-015: nie den unveröffentlichten Stand zitieren.
 - ~~**Der Diagnose-Terminologienachweis pinnt noch Stufe 4.**~~
   **Erledigt 2026-09-08:** `terminologie.py` zieht die `DiagnosesSCT`-Quelle
   jetzt auf den Tag `v.5.1.3`, mit neuem SHA-Pin. Die Definition war
