@@ -421,4 +421,5 @@ def test_ein_szenario_fuehrt_alle_vitalparameter_zusammen_vor():
         "ISiKSauerstoffsaettigungArteriell",
         "ISiKKoerpergewicht", "ISiKKoerpergroesse",
         "ISiKGCS",  # der Glasgow Coma Score gehört seit ADR-023 dazu
+        "ISiKEKG",  # das EKG seit ADR-024
     }

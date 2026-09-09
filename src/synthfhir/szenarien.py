@@ -255,9 +255,9 @@ _EINGEBAUT: list[Szenario] = [
         zeigt=(
             "Die sieben erwachsenen Vitalparameter-Profile an einem "
             "Patienten — Herzfrequenz, Blutdruck-Panel, Atemfrequenz, "
-            "Temperatur, Sauerstoffsättigung, Gewicht und Größe (ADR-019) — "
-            "und der Glasgow Coma Score als Score-Panel mit drei kodierten "
-            "Komponenten (ADR-023)."
+            "Temperatur, Sauerstoffsättigung, Gewicht und Größe (ADR-019) —, "
+            "der Glasgow Coma Score als Score-Panel (ADR-023) und ein EKG "
+            "als Kurve (SampledData, ADR-024)."
         ),
         parameter={"patienten": [
             _p("Gerhard", "Vollmer", "male", "1954-10-17",
@@ -265,11 +265,12 @@ _EINGEBAUT: list[Szenario] = [
                diagnosen=[{"code": "22298006", "beginn": "2024-03-06"},
                           {"code": "84114007", "beginn": "2024-03-06"}],
                # Der vollständige Monitoring-Satz: die sieben
-               # Vitalparameter-Profile plus der Glasgow Coma Score. Das
-               # Blutdruckpaar wird zu EINER Panel-Observation (85354-9), der
-               # GCS zu einem Score-Panel mit drei Komponenten (ADR-023), die
-               # übrigen zu je einer eigenen. Gewicht und Größe gehören dazu,
-               # weil ein Intensivpatient sie für die Dosierung dokumentiert.
+               # Vitalparameter-Profile, der Glasgow Coma Score und ein EKG.
+               # Das Blutdruckpaar wird zu EINER Panel-Observation (85354-9),
+               # der GCS zu einem Score-Panel mit drei Komponenten (ADR-023),
+               # das EKG zu einer Kurve als SampledData (ADR-024), die übrigen
+               # zu je einer eigenen. Gewicht und Größe gehören dazu, weil ein
+               # Intensivpatient sie für die Dosierung dokumentiert.
                messwerte=[
                    {"code": "8867-4", "wert": 88, "datum": "2024-03-06"},
                    {"code": "8480-6", "wert": 128, "datum": "2024-03-06"},
@@ -280,6 +281,7 @@ _EINGEBAUT: list[Szenario] = [
                    {"code": "29463-7", "wert": 82, "datum": "2024-03-06"},
                    {"code": "8302-2", "wert": 178, "datum": "2024-03-06"},
                    {"code": "9269-2", "wert": 14, "datum": "2024-03-06"},
+                   {"code": "11524-6", "datum": "2024-03-06"},
                ],
                medikamente=[{"code": "B01AC06", "beginn": "2024-03-06"},
                             {"code": "C07AB07", "beginn": "2024-03-06"},

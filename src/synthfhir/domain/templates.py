@@ -50,6 +50,12 @@ from .codes import (
     BLUTDRUCK_PANEL_TEXT,
     BLUTDRUCK_SYSTOLISCH,
     CONDITION_CODES,
+    EKG_ABLEITUNGEN,
+    EKG_CODE,
+    EKG_CODE_DISPLAY,
+    EKG_KURVE,
+    EKG_ORIGIN,
+    EKG_PERIOD,
     ENCOUNTER_CLASSES,
     ENCOUNTER_STATUS,
     GCS_DEKOMPOSITION,
@@ -591,6 +597,61 @@ def baue_gcs(
     }
 
 
+def baue_ekg(
+    params: dict, patient_index: int, index: int,
+    beanstandungen: list[Beanstandung], teil: int = 0
+) -> dict:
+    """EKG als Observation mit **Kurven-Komponenten** (`SampledData`).
+
+    Das ISiK-Profil `ISiKEKG` (über das fhir.de-EKG-Profil) verlangt
+    Kategorie `procedure`, den Code `11524-6` und mindestens eine
+    Ableitungs-Komponente, deren Wert eine Kurve ist — kein `valueQuantity`,
+    sondern `SampledData`. Gebaut werden die drei Extremitätenableitungen
+    (I, II, III) mit einer festen synthetischen Kurve. Der `wert` des
+    Messwerts wird nicht gebraucht — ein EKG ist keine Zahl.
+
+    Der Ableitungscode trägt KEIN `display`: er ist `required` an
+    `EkgAbleitungenVS` gebunden, und ein englischer Anzeigename ohne
+    deutsche Entsprechung würde als Fehler gemeldet (wie bei den
+    GCS-Antwortcodes). Der lesbare Text steht in `code.text`.
+    """
+    datum = _datum(params.get("datum"), "2024-01-01", beanstandungen, "datum")
+
+    def ableitung(code: str, text: str) -> dict:
+        return {
+            "code": {
+                "coding": [{"system": SNOMED_SYSTEM, "code": code}],
+                "text": text,
+            },
+            "valueSampledData": {
+                "origin": {"value": EKG_ORIGIN},
+                "period": EKG_PERIOD,
+                "dimensions": 1,
+                "data": EKG_KURVE,
+            },
+        }
+
+    return {
+        "resourceType": "Observation",
+        "id": f"tmp-obs-{teil}-{index}",
+        "status": "final",
+        "category": [
+            {"coding": [
+                {"system": OBSERVATION_CATEGORY_SYSTEM, "code": "procedure", "display": "Procedure"}
+            ]}
+        ],
+        "code": {
+            "coding": [
+                {"system": LOINC_SYSTEM, "code": EKG_CODE, "display": EKG_CODE_DISPLAY}
+            ],
+            "text": "EKG",
+        },
+        "subject": {"reference": f"Patient/tmp-pat-{patient_index}"},
+        "effectiveDateTime": datum,
+        "component": [ableitung(code, text) for code, text in EKG_ABLEITUNGEN],
+    }
+
+
 def _medikamentencode(
     wert: object, index: int, beanstandungen: list[Beanstandung]
 ) -> MedicationCode:
@@ -1039,9 +1100,13 @@ def baue_aus_parametern(
             e = eintrag if isinstance(eintrag, dict) else {}
             # Score- und Kurven-Observations haben ein eigenes Datenmodell
             # und einen eigenen Bauweg — ein GCS ist kein valueQuantity,
-            # sondern ein Panel mit drei kodierten Komponenten (ADR-023).
-            if str(e.get("code", "")).strip() == GCS_TOTAL:
+            # sondern ein Panel mit drei kodierten Komponenten (ADR-023), ein
+            # EKG eine Kurve als SampledData (ADR-024).
+            code = str(e.get("code", "")).strip()
+            if code == GCS_TOTAL:
                 obs = baue_gcs(e, p_index, obs_index, b, index_versatz)
+            elif code == EKG_CODE:
+                obs = baue_ekg(e, p_index, obs_index, b, index_versatz)
             else:
                 obs = baue_observation(e, p_index, obs_index, b, index_versatz)
             if erste_begegnung:

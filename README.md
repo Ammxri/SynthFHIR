@@ -553,7 +553,7 @@ in dieser Reihenfolge:
 | [ADR-021](docs/adr-021-snomed-laborcodes-und-gfr.md) | Die 14 offenen SNOMED-Laborcodes gewählt, und die GFR modernisiert |
 | [ADR-022](docs/adr-022-kopfumfang-und-paediatrie.md) | Kopfumfang als Vitalparameter, und der erste pädiatrische Fall |
 | [ADR-023](docs/adr-023-glasgow-coma-score.md) | Der Glasgow Coma Score — ein Score-Panel mit kodierten Komponenten |
-| [ADR-023](docs/adr-023-glasgow-coma-score.md) | Der Glasgow Coma Score — ein Score-Panel mit kodierten Komponenten |
+| [ADR-024](docs/adr-024-ekg-sampleddata.md) | Das EKG — Kurven als SampledData |
 | [Konzepte](docs/konzepte.md) | Die FHIR-Grundlagen dahinter, ausführlich erklärt |
 
 ### Die tragenden Entscheidungen in drei Sätzen

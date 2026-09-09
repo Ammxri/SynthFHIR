@@ -314,11 +314,10 @@ def test_bericht_nennt_paket_und_terminologiestand(profilserver):
 def test_bericht_zaehlt_drei_spalten_getrennt(profilserver):
     b = pruefe_gegen_profile(baue(), profilserver)
     s = b.to_dict()["summe"]
-    # 33 seit ADR-023: die 32 aus ADR-022 plus der Glasgow Coma Score bei
-    # Hans-Jürgen (ISiKGCS). 32 waren die 29 aus ADR-020 plus die drei
-    # Ressourcen des Säuglings (ADR-022); 29 die 19 aus ADR-019 plus sieben
-    # profilierte Laborwerte plus drei Ressourcen des Laborpatienten.
-    assert s["geprueft"] == 33
+    # 34 seit ADR-024: die 33 aus ADR-023 plus das EKG bei Hans-Jürgen
+    # (ISiKEKG). 33 waren die 32 aus ADR-022 plus der GCS (ADR-023); 32 die
+    # 29 aus ADR-020 plus die drei Ressourcen des Säuglings (ADR-022).
+    assert s["geprueft"] == 34
     assert s["ungeprueft"] > 0, "die SNOMED-Bindung ist ohne Terminologie offen"
 
 
@@ -522,11 +521,13 @@ def test_jedes_profil_der_zuordnung_wird_auch_benutzt():
     Rot, sobald ein Profil eingetragen wird, fuer das der Katalog keinen
     Code fuehrt.
     """
-    from synthfhir.domain.codes import BLUTDRUCK_PANEL, GCS_TOTAL, OBSERVATION_CODES
+    from synthfhir.domain.codes import (
+        BLUTDRUCK_PANEL, EKG_CODE, GCS_TOTAL, OBSERVATION_CODES,
+    )
 
-    # Panels und Scores stehen nicht in OBSERVATION_CODES, sondern als eigene
-    # Konstanten mit eigenem Bauweg (Blutdruck, GCS).
-    bekannt = set(OBSERVATION_CODES) | {BLUTDRUCK_PANEL, GCS_TOTAL}
+    # Panels, Scores und Kurven stehen nicht in OBSERVATION_CODES, sondern als
+    # eigene Konstanten mit eigenem Bauweg (Blutdruck, GCS, EKG).
+    bekannt = set(OBSERVATION_CODES) | {BLUTDRUCK_PANEL, GCS_TOTAL, EKG_CODE}
     unbenutzbar = [c for c in VITALPROFILE if c not in bekannt]
     assert not unbenutzbar, f"Profil ohne passenden Katalogcode: {unbenutzbar}"
 

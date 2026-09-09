@@ -226,13 +226,42 @@ GCS_DEKOMPOSITION: dict[int, tuple[int, int, int]] = {
     7: (1, 4, 2), 6: (1, 4, 1), 5: (1, 3, 1), 4: (1, 2, 1), 3: (1, 1, 1),
 }
 
+# --- EKG (ADR-024) ---------------------------------------------------------
+#
+# Die zweite Sonderform: kein Messwert, sondern eine Kurve. `ISiKEKG` (über
+# das fhir.de-EKG-Profil) verlangt Kategorie `procedure`, den Code `11524-6`
+# und mindestens eine Ableitungs-Komponente, deren Wert **`SampledData`** ist
+# (die Ableitung als Kurve: origin/period/dimensions/data). Die
+# Ableitungscodes stammen aus dem `required` gebundenen ValueSet
+# `EkgAbleitungenVS` (SNOMED); genommen sind die drei Extremitätenableitungen
+# wie im Beispiel der Spezifikation.
+EKG_CODE = "11524-6"
+EKG_CODE_DISPLAY = "EKG-Bericht"
+# (SNOMED-Ableitungscode, lesbarer Text). KEIN `display` auf dem Code: der
+# Ableitungscode ist `required` gebunden, und ein englischer Anzeigename
+# ohne deutsche Entsprechung würde als Fehler gemeldet — dieselbe Falle wie
+# bei den GCS-Antwortcodes.
+EKG_ABLEITUNGEN = [
+    ("272729005", "Ableitung I"),
+    ("272730000", "Ableitung II"),
+    ("272731001", "Ableitung III"),
+]
+# Eine feste, deterministische synthetische Kurve (Rohwerte um die Nulllinie
+# 2048, ein grob EKG-artiger Schlag). Keine echte Ableitung — Testdaten —,
+# aber strukturell ein gültiges SampledData. Fest verdrahtet, damit die
+# Ausgabe wiedergabestabil ist.
+EKG_KURVE = ("2048 2050 2055 2050 2048 2040 2200 2600 1800 2048 2060 2090 "
+             "2110 2090 2060 2048 2048 2048 2048 2048")
+EKG_ORIGIN = 2048
+EKG_PERIOD = 10
+
 # Observation-Codes mit EIGENEM Bauweg (Score-/Kurven-Panels), die als
 # Messwert-Eingabe gültig sind, aber nicht in OBSERVATION_CODES stehen, weil
 # sie keine einfachen valueQuantity-Messwerte sind. Wer Messwert-Codes gegen
 # OBSERVATION_CODES prüft, muss sie mitzählen — sonst gälte ein GCS als
 # „erfundener" Code. Der Blutdruck-Panelcode (85354-9) gehört NICHT hierher:
 # er ist reine Ausgabe, Eingabe sind die beiden Teilwerte.
-SONDER_OBSERVATION_CODES = frozenset({GCS_TOTAL})
+SONDER_OBSERVATION_CODES = frozenset({GCS_TOTAL, EKG_CODE})
 
 
 @dataclass(frozen=True)

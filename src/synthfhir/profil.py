@@ -114,10 +114,12 @@ VITALPROFILE = {
     # LOINC einzeln profiliert.
     "9843-4": _SD + "ISiKKopfumfang",
     # Kein Vitalparameter im engen Sinn, aber dieselbe Zuordnung je LOINC:
-    # der Glasgow Coma Score (Kategorie survey) trägt sein eigenes Profil
-    # (ADR-023). Diese Tabelle ist die LOINC→ISiK-Observation-Zuordnung;
+    # der Glasgow Coma Score (Kategorie survey, ADR-023) und das EKG
+    # (Kategorie procedure, Kurven als SampledData, ADR-024) tragen ihr
+    # eigenes Profil. Diese Tabelle ist die LOINC→ISiK-Observation-Zuordnung;
     # der Name ist historisch bei den Vitalparametern geblieben.
     "9269-2": _SD + "ISiKGCS",
+    "11524-6": _SD + "ISiKEKG",
 }
 
 LOINC = "http://loinc.org"

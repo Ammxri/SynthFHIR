@@ -109,6 +109,11 @@ PARAMETER: dict = {
                 # Beleg, damit das Profil gemessen wird, nicht nur
                 # katalogisiert.
                 {"code": "9269-2", "wert": 15, "datum": "2024-02-14"},
+                # EKG (ADR-024) — Kurven als SampledData, die dritte
+                # Observation-Sonderform neben Blutdruckpanel und GCS. Bei
+                # einem Herzinsuffizienz-Patienten plausibel; trägt ISiKEKG
+                # in den Beleg.
+                {"code": "11524-6", "datum": "2024-02-14"},
             ],
             "medikamente": [{"code": "C09AA05", "beginn": "2010-06-01"}],
         },
