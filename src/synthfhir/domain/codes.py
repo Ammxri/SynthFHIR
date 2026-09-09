@@ -169,6 +169,71 @@ BLUTDRUCK_PANEL = "85354-9"
 BLUTDRUCK_PANEL_DE = "Blutdruck (Liste) optional mit allen Unterbegriffen"
 BLUTDRUCK_PANEL_TEXT = "Blutdruck"
 
+# --- Glasgow Coma Score (ADR-023) ------------------------------------------
+#
+# Kein einfacher Messwert, sondern ein Score-Panel: ein Gesamtwert plus drei
+# KODIERTE Komponenten (Augen, Motorik, Verbal), jede aus einer
+# LOINC-Antwortliste. Das ISiK-Profil `ISiKGCS` verfeinert das
+# fhir.de-Score-Profil. Die Antwortcodes und ihre Punktwerte stammen aus den
+# fhir.de-ValueSets `glasgow-coma-score-{eye,motor,verbal}` (de.basisprofil.r4
+# 1.5.4) — nicht gewählt, sondern die vollständigen, gebundenen Listen.
+GCS_TOTAL = "9269-2"
+GCS_TOTAL_DISPLAY = "Glasgow coma score total"
+GCS_TOTAL_SNOMED = "248241002"
+GCS_TOTAL_SNOMED_DISPLAY = "Glasgow coma score (observable entity)"
+
+# Je Komponente: die LOINC-Frage und je Punktwert (1..n) die LOINC-Antwort.
+GCS_KOMPONENTEN: dict[str, dict] = {
+    "augen": {
+        "code": "9267-6", "display": "Glasgow coma score eye opening",
+        "antworten": {
+            1: ("LA6553-7", "No eye opening"),
+            2: ("LA6554-5", "Eye opening to pain"),
+            3: ("LA6555-2", "Eye opening to verbal command"),
+            4: ("LA6556-0", "Eye opening spontaneously"),
+        },
+    },
+    "motorik": {
+        "code": "9268-4", "display": "Glasgow coma score motor",
+        "antworten": {
+            1: ("LA6562-8", "No motor response"),
+            2: ("LA6563-6", "Extension to pain"),
+            3: ("LA6564-4", "Flexion to pain"),
+            4: ("LA6565-1", "Withdrawal from pain"),
+            5: ("LA6566-9", "Localizing pain"),
+            6: ("LA6567-7", "Obeys commands"),
+        },
+    },
+    "verbal": {
+        "code": "9270-0", "display": "Glasgow coma score verbal",
+        "antworten": {
+            1: ("LA6557-8", "No verbal response (>2 yrs); no vocal response (<=2 yrs)"),
+            2: ("LA6558-6", "Incomprehensible sounds"),
+            3: ("LA6559-4", "Inappropriate words"),
+            4: ("LA6560-2", "Confused"),
+            5: ("LA6561-0", "Oriented"),
+        },
+    },
+}
+
+# Ein Gesamtwert lässt sich verschieden aufteilen; für Testdaten genügt EINE
+# klinisch plausible Zerlegung je Summe (Augen, Motorik, Verbal). Die
+# übliche Verschlechterungsreihenfolge: erst verbal, dann Augen, zuletzt
+# motorisch. Jede Zeile summiert sich zur Schlüsselzahl.
+GCS_DEKOMPOSITION: dict[int, tuple[int, int, int]] = {
+    15: (4, 6, 5), 14: (4, 6, 4), 13: (4, 6, 3), 12: (4, 5, 3),
+    11: (4, 5, 2), 10: (3, 5, 2), 9: (2, 5, 2), 8: (2, 4, 2),
+    7: (1, 4, 2), 6: (1, 4, 1), 5: (1, 3, 1), 4: (1, 2, 1), 3: (1, 1, 1),
+}
+
+# Observation-Codes mit EIGENEM Bauweg (Score-/Kurven-Panels), die als
+# Messwert-Eingabe gültig sind, aber nicht in OBSERVATION_CODES stehen, weil
+# sie keine einfachen valueQuantity-Messwerte sind. Wer Messwert-Codes gegen
+# OBSERVATION_CODES prüft, muss sie mitzählen — sonst gälte ein GCS als
+# „erfundener" Code. Der Blutdruck-Panelcode (85354-9) gehört NICHT hierher:
+# er ist reine Ausgabe, Eingabe sind die beiden Teilwerte.
+SONDER_OBSERVATION_CODES = frozenset({GCS_TOTAL})
+
 
 @dataclass(frozen=True)
 class ObservationCode:

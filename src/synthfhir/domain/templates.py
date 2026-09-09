@@ -52,6 +52,10 @@ from .codes import (
     CONDITION_CODES,
     ENCOUNTER_CLASSES,
     ENCOUNTER_STATUS,
+    GCS_DEKOMPOSITION,
+    GCS_KOMPONENTEN,
+    GCS_TOTAL,
+    GCS_TOTAL_DISPLAY,
     ICD10GM_SYSTEM,
     ICD10GM_VERSION,
     KONTAKTEBENE_CODE,
@@ -510,6 +514,83 @@ def baue_blutdruck(
     }
 
 
+def baue_gcs(
+    params: dict, patient_index: int, index: int,
+    beanstandungen: list[Beanstandung], teil: int = 0
+) -> dict:
+    """Glasgow Coma Score als **eine** Observation: Gesamtwert plus drei
+    KODIERTE Komponenten (Augen, Motorik, Verbal).
+
+    Das ISiK-Profil `ISiKGCS` (über das fhir.de-Score-Profil) verlangt die
+    drei Komponenten mit Antwortcodes aus gebundenen LOINC-Listen — ein
+    einfacher `valueQuantity` genügt nicht. Der Gesamtwert wird kanonisch
+    zerlegt (`GCS_DEKOMPOSITION`); ein Wert außerhalb 3..15 wird gekappt und
+    beanstandet, statt eine ungültige Zerlegung zu erzwingen. Der
+    Gesamtcode trägt nur LOINC — der SNOMED-Slice ist optional (`min=0`),
+    wie im Minimalbeispiel der Spezifikation.
+    """
+    roh = params.get("wert")
+    try:
+        total = int(round(float(roh)))
+    except (TypeError, ValueError):
+        beanstandungen.append(
+            Beanstandung("gcs_ungueltig", f"GCS-Wert {roh!r} ist keine Zahl; 15 angenommen")
+        )
+        total = 15
+    if not 3 <= total <= 15:
+        beanstandungen.append(
+            Beanstandung("gcs_bereich", f"GCS {total} liegt außerhalb 3..15; gekappt")
+        )
+        total = max(3, min(15, total))
+    augen, motorik, verbal = GCS_DEKOMPOSITION[total]
+    datum = _datum(params.get("datum"), "2024-01-01", beanstandungen, "datum")
+
+    def komponente(teilname: str, stufe: int) -> dict:
+        k = GCS_KOMPONENTEN[teilname]
+        code, disp = k["antworten"][stufe]
+        # KEIN `display` auf dem Antwortcode: Die LOINC-LA-Codes haben keine
+        # deutsche Bezeichnung, und das Profil bindet den Wert `required` —
+        # ein englischer Anzeigename wird dann als Fehler gemeldet (gemessen).
+        # Der lesbare Text steht stattdessen in `text`, der nicht gegen die
+        # Terminologie geprüft wird.
+        return {
+            "code": {"coding": [
+                {"system": LOINC_SYSTEM, "code": k["code"], "display": k["display"]}
+            ]},
+            "valueCodeableConcept": {
+                "coding": [{"system": LOINC_SYSTEM, "code": code}],
+                "text": disp,
+            },
+        }
+
+    return {
+        "resourceType": "Observation",
+        "id": f"tmp-obs-{teil}-{index}",
+        "status": "final",
+        "category": [
+            {"coding": [
+                {"system": OBSERVATION_CATEGORY_SYSTEM, "code": "survey", "display": "Survey"}
+            ]}
+        ],
+        "code": {
+            "coding": [
+                {"system": LOINC_SYSTEM, "code": GCS_TOTAL, "display": GCS_TOTAL_DISPLAY}
+            ],
+            "text": "Glasgow Coma Score",
+        },
+        "subject": {"reference": f"Patient/tmp-pat-{patient_index}"},
+        "effectiveDateTime": datum,
+        "valueQuantity": {
+            "value": total, "unit": "Punktwert", "system": UCUM_SYSTEM, "code": "1"
+        },
+        "component": [
+            komponente("augen", augen),
+            komponente("motorik", motorik),
+            komponente("verbal", verbal),
+        ],
+    }
+
+
 def _medikamentencode(
     wert: object, index: int, beanstandungen: list[Beanstandung]
 ) -> MedicationCode:
@@ -955,10 +1036,14 @@ def baue_aus_parametern(
             budget -= 1
 
         for eintrag in einzelne[:max(budget, 0)]:
-            obs = baue_observation(
-                eintrag if isinstance(eintrag, dict) else {}, p_index, obs_index,
-                b, index_versatz
-            )
+            e = eintrag if isinstance(eintrag, dict) else {}
+            # Score- und Kurven-Observations haben ein eigenes Datenmodell
+            # und einen eigenen Bauweg — ein GCS ist kein valueQuantity,
+            # sondern ein Panel mit drei kodierten Komponenten (ADR-023).
+            if str(e.get("code", "")).strip() == GCS_TOTAL:
+                obs = baue_gcs(e, p_index, obs_index, b, index_versatz)
+            else:
+                obs = baue_observation(e, p_index, obs_index, b, index_versatz)
             if erste_begegnung:
                 obs["encounter"] = {"reference": erste_begegnung}
             ergebnis.ressourcen.append(obs)

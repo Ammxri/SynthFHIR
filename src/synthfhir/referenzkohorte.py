@@ -103,6 +103,12 @@ PARAMETER: dict = {
                 {"code": "9279-1", "wert": 18, "datum": "2024-08-03"},
                 {"code": "8310-5", "wert": 38.4, "datum": "2024-08-03"},
                 {"code": "2708-6", "wert": 96, "datum": "2024-08-03"},
+                # Glasgow Coma Score bei der stationären Aufnahme (ADR-023) —
+                # ein Score-Panel mit drei kodierten Komponenten, kein
+                # einfacher Messwert. Trägt ISiKGCS in den eingecheckten
+                # Beleg, damit das Profil gemessen wird, nicht nur
+                # katalogisiert.
+                {"code": "9269-2", "wert": 15, "datum": "2024-02-14"},
             ],
             "medikamente": [{"code": "C09AA05", "beginn": "2010-06-01"}],
         },

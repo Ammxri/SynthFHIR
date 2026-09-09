@@ -24,6 +24,7 @@ from synthfhir.domain.codes import (
     ENCOUNTER_CLASSES,
     MEDICATION_CODES,
     OBSERVATION_CODES,
+    SONDER_OBSERVATION_CODES,
 )
 from synthfhir.prompts import MAX_PATIENTEN
 from synthfhir.szenarien import (
@@ -331,7 +332,7 @@ def test_szenarien_decken_die_kataloge_breit_ab():
     assert len(benutzt["begegnungen"]) >= 3
     # Und alles Benutzte muss es geben — die Gegenprobe zum Zaehlen.
     assert benutzt["diagnosen"] <= set(CONDITION_CODES)
-    assert benutzt["messwerte"] <= set(OBSERVATION_CODES)
+    assert benutzt["messwerte"] <= set(OBSERVATION_CODES) | SONDER_OBSERVATION_CODES
     assert benutzt["medikamente"] <= set(MEDICATION_CODES)
     assert benutzt["begegnungen"] <= set(ENCOUNTER_CLASSES)
 
@@ -419,4 +420,5 @@ def test_ein_szenario_fuehrt_alle_vitalparameter_zusammen_vor():
         "ISiKAtemfrequenz", "ISiKKoerpertemperatur",
         "ISiKSauerstoffsaettigungArteriell",
         "ISiKKoerpergewicht", "ISiKKoerpergroesse",
+        "ISiKGCS",  # der Glasgow Coma Score gehört seit ADR-023 dazu
     }

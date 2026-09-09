@@ -28,6 +28,13 @@
       "warnungen": 15,
       "fehlertexte": []
     },
+    "ISiKGCS": {
+      "geprueft": 1,
+      "profil": "https://gematik.de/fhir/isik/StructureDefinition/ISiKGCS",
+      "fehler": 0,
+      "warnungen": 2,
+      "fehlertexte": []
+    },
     "ISiKKoerpergewicht": {
       "geprueft": 1,
       "profil": "https://gematik.de/fhir/isik/StructureDefinition/ISiKKoerpergewicht",
@@ -93,8 +100,8 @@
     }
   },
   "warnungen_gezaehlt": {
-    "Constraint failed: dom-6: 'A resource should have narrative for robust management' (defined in http://hl7.org/fhir/Struc": 32,
-    "Alle Observations sollten einen Performer haben": 14,
+    "Constraint failed: dom-6: 'A resource should have narrative for robust management' (defined in http://hl7.org/fhir/Struc": 33,
+    "Alle Observations sollten einen Performer haben": 15,
     "Keiner der angegebenen Codes ist im Valueset 'IdentifierType' (http://hl7.org/fhir/ValueSet/identifier-type|4.0.1), und ": 6,
     "A definition for CodeSystem 'http://fhir.de/CodeSystem/bfarm/icd-10-gm' version '2026' could not be found, so the code c": 4,
     "There are no valid display names found for the code http://snomed.info/sct#44054006 for language(s) 'de'. The display is": 1,
@@ -107,9 +114,9 @@
     "Cannot validate display 'Creatinine measurement, serum' for http://snomed.info/sct#70901006 in language de: No displays ": 1
   },
   "summe": {
-    "geprueft": 32,
+    "geprueft": 33,
     "fehler": 0,
-    "warnungen": 64
+    "warnungen": 66
   },
   "ungepruefte_meldungen": []
 }

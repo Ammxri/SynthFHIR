@@ -68,6 +68,7 @@ from .domain.codes import (
     ENCOUNTER_CLASSES,
     MEDICATION_CODES,
     OBSERVATION_CODES,
+    SONDER_OBSERVATION_CODES,
 )
 from .generation import Ergebnis, baue_und_pruefe
 from .kohorte import Kohortenergebnis, TeilParameter, baue_aus_aufzeichnung
@@ -252,20 +253,23 @@ _EINGEBAUT: list[Szenario] = [
             "Medikation."
         ),
         zeigt=(
-            "Jedes Vitalparameter-Profil des Katalogs an einem Patienten — "
-            "Herzfrequenz, Blutdruck-Panel, Atemfrequenz, Temperatur, "
-            "Sauerstoffsättigung, Gewicht und Größe (ADR-019)."
+            "Die sieben erwachsenen Vitalparameter-Profile an einem "
+            "Patienten — Herzfrequenz, Blutdruck-Panel, Atemfrequenz, "
+            "Temperatur, Sauerstoffsättigung, Gewicht und Größe (ADR-019) — "
+            "und der Glasgow Coma Score als Score-Panel mit drei kodierten "
+            "Komponenten (ADR-023)."
         ),
         parameter={"patienten": [
             _p("Gerhard", "Vollmer", "male", "1954-10-17",
                begegnungen=[{"art": "IMP", "datum": "2024-03-06"}],
                diagnosen=[{"code": "22298006", "beginn": "2024-03-06"},
                           {"code": "84114007", "beginn": "2024-03-06"}],
-               # Der vollständige Monitoring-Satz: jedes der sieben
-               # Vitalparameter-Profile. Das Blutdruckpaar wird zu EINER
-               # Panel-Observation (85354-9), die übrigen zu je einer
-               # eigenen. Gewicht und Größe gehören dazu, weil ein
-               # Intensivpatient sie für die Dosierung dokumentiert hat.
+               # Der vollständige Monitoring-Satz: die sieben
+               # Vitalparameter-Profile plus der Glasgow Coma Score. Das
+               # Blutdruckpaar wird zu EINER Panel-Observation (85354-9), der
+               # GCS zu einem Score-Panel mit drei Komponenten (ADR-023), die
+               # übrigen zu je einer eigenen. Gewicht und Größe gehören dazu,
+               # weil ein Intensivpatient sie für die Dosierung dokumentiert.
                messwerte=[
                    {"code": "8867-4", "wert": 88, "datum": "2024-03-06"},
                    {"code": "8480-6", "wert": 128, "datum": "2024-03-06"},
@@ -275,6 +279,7 @@ _EINGEBAUT: list[Szenario] = [
                    {"code": "2708-6", "wert": 95, "datum": "2024-03-06"},
                    {"code": "29463-7", "wert": 82, "datum": "2024-03-06"},
                    {"code": "8302-2", "wert": 178, "datum": "2024-03-06"},
+                   {"code": "9269-2", "wert": 14, "datum": "2024-03-06"},
                ],
                medikamente=[{"code": "B01AC06", "beginn": "2024-03-06"},
                             {"code": "C07AB07", "beginn": "2024-03-06"},
@@ -448,7 +453,9 @@ def unbekannte_codes(szenario: Szenario) -> list[tuple[str, str]]:
     """
     kataloge = {
         "diagnosen": ("code", CONDITION_CODES),
-        "messwerte": ("code", OBSERVATION_CODES),
+        # Die Score-/Kurven-Codes (GCS) sind gültige Eingaben mit eigenem
+        # Bauweg, stehen aber nicht in OBSERVATION_CODES.
+        "messwerte": ("code", set(OBSERVATION_CODES) | SONDER_OBSERVATION_CODES),
         "medikamente": ("code", MEDICATION_CODES),
         "begegnungen": ("art", ENCOUNTER_CLASSES),
     }

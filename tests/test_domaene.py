@@ -738,10 +738,13 @@ def test_die_referenzkohorte_traegt_das_blutdruckpanel():
     from synthfhir.referenzkohorte import baue
 
     res = baue()
-    panels = [r for r in res
-              if r["resourceType"] == "Observation" and r.get("component")]
-    assert len(panels) == 1
-    assert panels[0]["code"]["coding"][0]["code"] == "85354-9"
+    panels = {r["code"]["coding"][0]["code"] for r in res
+              if r["resourceType"] == "Observation" and r.get("component")}
+    # Zwei Observations mit Komponenten seit ADR-023: das Blutdruckpanel und
+    # der Glasgow Coma Score. Das Panel muss dabei sein — es ist der Fall,
+    # um den es dieser Kohorte geht.
+    assert "85354-9" in panels, "Blutdruckpanel fehlt in der Kohorte"
+    assert "9269-2" in panels, "GCS-Panel fehlt in der Kohorte"
 
 
 # --- SNOMED-Doppelkodierung fuer Laborwerte (ADR-015) ----------------------
